@@ -16,6 +16,11 @@ verified reference implementations** of the canonical encoding in three language
   parser + total evaluator + `DSL_HASH`, with Rust (`dsl-rs`) and Go (`dsl-go`)
   parity. Golden vectors `NORMATIVE` (reproduced byte-for-byte across all three).
   Tracks the v0.1.0-draft specs.
+- **CAL skeleton** (`@paradigm-terra/cal`, TypeScript) — the immutable hashable
+  foundation: wire-format validation, `CAL_HASH`, signing payload, event/receipt
+  hashing, lifecycle types. Golden vectors `PRE-NORMATIVE` (Rust/Go parity next).
+  Reducer + gas phases layer on top later. See
+  [`docs/notes/cal-skeleton-design.md`](docs/notes/cal-skeleton-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
 
@@ -43,6 +48,7 @@ canonical-go/   Go parity implementation (CGO_ENABLED=0)
 dsl/            DSL v1.2 reference implementation (@paradigm-terra/dsl, TypeScript)
 dsl-rs/         DSL v1.2 Rust parity implementation (musl static, vendored i256)
 dsl-go/         DSL v1.2 Go parity implementation (CGO_ENABLED=0, stdlib math/big)
+cal/            CAL skeleton: hashable foundation (@paradigm-terra/cal, TypeScript)
 fuzz/           Cross-language differential fuzzing harness + gate reports
 tools/          Unicode data (DerivedAge-15.1.0) and generators
 ```
