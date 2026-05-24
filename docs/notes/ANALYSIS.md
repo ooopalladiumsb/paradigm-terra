@@ -1,6 +1,7 @@
 # Анализ спецификаций Paradigm Terra и предложения по улучшению
 
 **Дата анализа:** 2026-05-22  
+**Обновлено:** 2026-05-24 (golden vectors реализованы и зафиксированы как NORMATIVE)  
 **Проверенные документы:** Конституция v0.9.5, Execution Spec v1, Canonical Encoding v1.3 (Consensus-Freeze), Constraint DSL v1.1  
 **Изученные внешние источники:** Cocoon, Acton, @ton/mcp, TON AI docs, agents.ton.org
 
@@ -194,7 +195,7 @@ Cocoon предоставляет:
 |-----------|--------|--------|
 | P0 (блокер) | Исправить адрес Developer Fund → canonical raw format | ✅ Исправлено: `0:e8797d197cc0261968ab8072b6abf41085d87803d6d3f3ebdb88c3d1ea9090cf` |
 | P0 (блокер) | Исправить CAL preconditions → использовать DSL JSON AST | ✅ Исправлено: полная DSL-схема с `op`/`lhs`/`rhs` вместо строк |
-| P0 (блокер) | Вычислить реальные golden vectors (убрать заглушки) | ⏳ Требует реализации `@paradigm-terra/canonical` |
+| P0 (блокер) | Вычислить реальные golden vectors (убрать заглушки) | ✅ Реализован `@paradigm-terra/canonical`; golden.json — NORMATIVE, паритет TS/Rust/Go подтверждён (diff-fuzz clean) |
 | P1 (критично) | Зафиксировать MCP schema hash в конституции | ✅ Добавлен формат и примечание; значение — после финализации @ton/mcp |
 | P1 (критично) | Определить процедуру выхода из CONSENSUS_UNCERTAINTY | ✅ Добавлена таблица условий восстановления для всех failure states |
 | P1 (критично) | Добавить `prev_receipt_hash` в receipt schema | ✅ Добавлено поле + genesis-значение (32 нулевых байта) |
