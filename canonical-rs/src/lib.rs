@@ -1,5 +1,5 @@
 //! `paradigm-terra-canonical` — Rust parity implementation of the Paradigm
-//! Terra Canonical Encoding Specification v1.3 (SCF) with v0.10.0-draft domain
+//! Terra Canonical Encoding Specification v1.3 (Consensus-Freeze) with v0.10.0-draft domain
 //! tag extensions (STATE_ROOT_V1, DSL_V1.2).
 //!
 //! This crate mirrors the TypeScript reference (`@paradigm-terra/canonical`)

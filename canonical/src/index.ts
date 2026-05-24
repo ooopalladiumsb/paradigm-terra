@@ -1,6 +1,6 @@
 /**
  * @paradigm-terra/canonical — reference implementation of
- * Canonical Encoding Specification v1.3 (SCF) with v0.10.0-draft additions.
+ * Canonical Encoding Specification v1.3 (Consensus-Freeze) with v0.10.0-draft additions.
  *
  * Public surface:
  *   - integers:  int256 / uint256 / uint64 / uint16 / uint8 BE encoding

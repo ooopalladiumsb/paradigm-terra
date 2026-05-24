@@ -1,7 +1,7 @@
 # `paradigm-terra-canonical` (Rust parity)
 
 Rust parity implementation of the **Paradigm Terra Canonical Encoding
-Specification v1.3 (SCF)** with the v0.10.0-draft domain-tag extensions
+Specification v1.3 (Consensus-Freeze)** with the v0.10.0-draft domain-tag extensions
 (`STATE_ROOT_V1`, `DSL_V1.2`). It mirrors the TypeScript reference
 (`../canonical`, `@paradigm-terra/canonical`) byte-for-byte.
 

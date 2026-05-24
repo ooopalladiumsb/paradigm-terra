@@ -358,7 +358,7 @@ const document = {
   meta: {
     package: "@paradigm-terra/canonical",
     version: "0.1.0",
-    spec_basis: "Canonical Encoding Specification v1.3 (SCF)",
+    spec_basis: "Canonical Encoding Specification v1.3 (Consensus-Freeze)",
     spec_extensions: "Constitution v0.10.0-draft + CAL Execution Spec v0.1.0-draft (STATE_ROOT_V1, DSL_V1.2)",
     generated_at: new Date().toISOString(),
     status:

@@ -1,5 +1,5 @@
 // Package canonical is the Go parity implementation of the Paradigm Terra
-// Canonical Encoding Specification v1.3 (SCF) with the v0.10.0-draft domain-tag
+// Canonical Encoding Specification v1.3 (Consensus-Freeze) with the v0.10.0-draft domain-tag
 // extensions (STATE_ROOT_V1, DSL_V1.2). It mirrors the TypeScript reference
 // (../canonical) and the Rust crate (../canonical-rs) byte-for-byte; the test
 // in parity_test.go verifies this against the committed golden vectors.
