@@ -12,6 +12,9 @@ verified reference implementations** of the canonical encoding in three language
   170k random cases + full single-codepoint and pair-sweep Unicode coverage.
 - **Golden vectors:** `NORMATIVE` — 44 field comparisons across 17 vectors, recomputed
   independently by each implementation.
+- **DSL v1.2** reference implementation (`@paradigm-terra/dsl`) — TypeScript
+  parser + total evaluator + `DSL_HASH`; golden vectors `PRE-NORMATIVE` (Rust/Go
+  parity ports pending). Tracks the v0.1.0-draft specs.
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
 
@@ -36,6 +39,7 @@ docs/
 canonical/      TypeScript reference implementation (@paradigm-terra/canonical)
 canonical-rs/   Rust parity implementation (musl static, zero C toolchain)
 canonical-go/   Go parity implementation (CGO_ENABLED=0)
+dsl/            DSL v1.2 reference implementation (@paradigm-terra/dsl, TypeScript)
 fuzz/           Cross-language differential fuzzing harness + gate reports
 tools/          Unicode data (DerivedAge-15.1.0) and generators
 ```

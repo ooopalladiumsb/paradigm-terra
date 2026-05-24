@@ -1,0 +1,5 @@
+# dependencies (restored via `npm install`)
+node_modules/
+
+# compiled output (regenerated via `npm run build`)
+dist/
