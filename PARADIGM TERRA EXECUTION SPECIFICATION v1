@@ -1,0 +1,342 @@
+```markdown
+# PARADIGM TERRA EXECUTION SPECIFICATION v1
+
+**Статус:** Specification Candidate Freeze (SCF) – окончательная редакция для Phase 0 (canonical layer).  
+**Дата:** 2026-05-13  
+**Зависит от:** Конституция v0.9.5, Canonical Encoding v1.3, Constraint DSL v1.1
+
+---
+
+## 1. Введение
+
+Настоящая спецификация определяет **детерминированный исполнимый слой** протокола Paradigm Terra. Она не заменяет Конституцию (которая отвечает на вопрос *«что разрешено»*), а задаёт *«как система детерминированно существует»*: сериализацию, хеширование, подписи, модель времени, цепочку событий, жизненный цикл CAL, переходы состояний отказа и детерминированный реплей.
+
+**Все компоненты протокола (контракты, оффчейн сервисы, MCP gateway, реплей) ДОЛЖНЫ следовать этой спецификации.**
+
+---
+
+## 2. Каноническая сериализация и хеширование
+
+### 2.1. Принципы
+
+- Все данные (события, CAL, состояния, receipts, Merkle‑деревья) сериализуются в соответствии с **Canonical Encoding Specification v1.3 (SCF)**.
+- Равенство объектов определяется побайтовым равенством канонических представлений.
+- JSON сериализация использует **restricted JCS profile** (RFC 8785 + integer‑only, запрет дробных/экспоненциальных форм, запрет суррогатных escape‑последовательностей).
+- Сортировка ключей объектов – **UTF‑8 байтовая лексикографическая** (не locale, не code point).
+- Все целые типы (int256, uint256, uint64, uint16, uint8) кодируются big‑endian.
+- TON адреса – канонический raw формат `<workchain>:<64 hex>` (bounceable/base64 запрещены).
+- UTF‑8 строки нормализуются в **NFC** (Unicode 15.1) **после** токенизации, **до** сравнения и хеширования.
+
+### 2.2. Domain‑separated hashing
+
+Все хеши вычисляются как:
+
+```
+hash = SHA256(domain_tag || canonical_bytes)
+```
+
+Domain tags (например, `PARADIGM_TERRA_STATE_V1`) фиксированы в конституции и могут быть изменены только через Tier 2 amendment.
+
+### 2.3. Binary framing
+
+Авторитетный формат хранения и передачи: `[type_tag:uint16][version:uint16][length:uint32][payload bytes]`. JSON‑обёртка используется только для диагностики и должна согласовываться с бинарной версией.
+
+---
+
+## 3. Унифицированная модель событий (Event Model)
+
+Все события протокола (смарт‑контрактов, оффчейн сервисов) должны соответствовать единой схеме.
+
+### 3.1. Event schema (JSON)
+
+```json
+{
+  "event_version": 1,
+  "event_id": "0x...",            // SHA256(domain_tag || canonical(event_without_id))
+  "stream_id": "registry",        // один из: registry, treasury, capability, governance, oracle
+  "seqno": 123,                   // монотонно возрастает в пределах потока
+  "contract": "Registry",
+  "contract_address": "0:<64 hex>",  // canonical raw format, bounceable/base64 запрещены
+  "event_type": "AgentRegistered",
+  "lt": "12345678",
+  "tx_hash": "0x...",             // опционально
+  "payload_hash": "0x...",        // SHA256 от канонического payload
+  "payload": { ... },             // сам payload
+  "prev_event_hash": "0x..."      // хеш предыдущего события в этом потоке
+}
+```
+
+### 3.2. Event hash chain
+
+Каждый поток имеет собственную цепочку событий. Поле `prev_event_hash` создаёт **конституционную цепочку событий** внутри потока. Хеш события вычисляется как:
+
+```
+event_hash = SHA256(
+  "PARADIGM_TERRA_EVENTCHAIN_V1" ||
+  canonical( prev_event_hash ) ||
+  canonical( event_without_id_and_prev )
+)
+```
+
+(где `event_without_id_and_prev` – каноническая сериализация события без полей `event_id` и `prev_event_hash`, но с остальными полями).
+
+**Генезис:** первое событие в потоке имеет `prev_event_hash = "0x0000...000"` (32 нулевых байта).
+
+### 3.3. Обязательные поля для всех событий
+
+- `event_version` (сейчас 1)
+- `event_id`, `stream_id`, `seqno`
+- `contract` (имя контракта)
+- `event_type`
+- `lt` – блокчейн‑lt или искусственный tick
+- `payload` – конкретные данные события
+
+---
+
+## 4. Государственные потоки и Merkle корень
+
+### 4.1. Потоки (streams)
+
+- Каждый поток (registry, treasury, capability, governance, oracle) независимо воспроизводим.
+- `last_event_hash` – хеш последнего события в потоке (хеш цепочки).
+- `state_hash` – хеш состояния части протокола, выводимого из событий потока.
+
+### 4.2. Глобальный Merkle root
+
+```
+global_merkle_root = MerkleRoot([hash(stream1.state_hash), hash(stream2.state_hash), ...])
+```
+
+Порядок потоков: лексикографический по `stream_id` (UTF‑8 байты). Построение Merkle дерева – бинарное сбалансированное дерево с дублированием последнего листа при нечётном количестве. Лист хешируется как:
+
+```
+LEAF_HASH = SHA256(
+  "PARADIGM_TERRA_MERKLE_LEAF_V1" ||
+  uint16_be(len(stream_id)) ||
+  utf8_bytes(stream_id) ||
+  state_hash_bytes ||
+  last_event_hash_bytes ||
+  uint64_be(last_seqno)
+)
+```
+
+Внутренний узел:
+
+```
+NODE_HASH = SHA256(
+  "PARADIGM_TERRA_MERKLE_NODE_V1" ||
+  left_child_hash ||
+  right_child_hash
+)
+```
+
+---
+
+## 5. Переходы состояния (State Transitions)
+
+Состояние протокола обновляется применением событий к предыдущему состоянию:
+
+```
+State(t+1) = apply_event(State(t), Event(t))
+```
+
+`apply_event` – чистая функция, без доступа к сети/времени/случайности. Если событие невалидно или нарушает инварианты, реплей переходит в `CONSENSUS_UNCERTAINTY`.
+
+Детерминированный порядок применения событий внутри одного тика:
+
+1. События **failure** (смена `failure_mode`)
+2. События **governance** (голосования, amendments)
+3. События **treasury** (движения средств, rate limits)
+4. События **capability** (изменение профилей, boost, slashing)
+5. События **oracle** (ценовые фиды)
+6. **Информационные** события (не меняют состояние)
+
+Внутри каждого потока события упорядочиваются по `seqno` (монотонно, строго +1). Поле `lt` используется только как метаданные, не для консенсусного порядка.
+
+**seqno gap:** если при реплее обнаружен пропуск `seqno` (следующий seqno > ожидаемого + 1) в любом потоке — немедленный переход в `CONSENSUS_UNCERTAINTY`. Пропуск seqno = 0 (дубликат) → `NONCANONICAL_EVENT`, поток не продвигается.
+
+**Tick model:** `TICK_DURATION = 5 с`, источник — TON блокчейн `lt`. `TICK_NUMBER(lt) = floor(lt / TICK_LT_UNITS)`, где `TICK_LT_UNITS` соответствует ~5 с в единицах lt. Недетерминированные источники времени (`Date.now()`, `System.currentTimeMillis()`) запрещены во всех путях валидации и реплея.
+
+---
+
+## 6. CAL (Constitutional Action Language) lifecycle
+
+CAL – это **детерминированный intent**, подписанный агентом или владельцем.
+
+### 6.1. CAL Schema v1
+
+```json
+{
+  "cal_version": "1",
+  "action": "transfer|swap|deploy|slash|...",
+  "agent_id": "0x...",
+  "preconditions": [
+    {
+      "dsl_version": "1.1",
+      "id": "capability_check",
+      "expr": {
+        "op": "gte",
+        "lhs": {"var": "state.capability.max_transfer_per_tick"},
+        "rhs": {"var": "params.amount"}
+      }
+    },
+    {
+      "dsl_version": "1.1",
+      "id": "exposure_check",
+      "expr": {
+        "op": "lte",
+        "lhs": {"op": "add", "lhs": {"var": "state.capability.current_exposure"}, "rhs": {"var": "params.amount"}},
+        "rhs": {"var": "state.capability.max_exposure"}
+      }
+    },
+    {
+      "dsl_version": "1.1",
+      "id": "failure_state_check",
+      "expr": {
+        "op": "eq",
+        "lhs": {"var": "state.failure_mode"},
+        "rhs": {"const": "NORMAL"}
+      }
+    }
+  ],
+  "invariants": ["no_shared_storage", "event_log_append", "nanoTON_denomination"],
+  "steps": [{"mcp_tool": "send_ton", "params": {...}}],
+  "receipt_required": true,
+  "nonce": 12345,
+  "expiration_tick": 67890
+}
+```
+
+> **Важно:** `preconditions` — массив DSL-выражений (Constraint DSL v1.1 JSON AST), не строки естественного языка. Каждый элемент идентифицирован полем `id` для трассировки. Нарушение любого precondition → CAL отклоняется (статус `VALIDATED` не присваивается).
+
+### 6.2. CAL lifecycle states
+
+- **CREATED** – CAL сформирован (JSON, не подписан)
+- **VALIDATED** – CAL прошёл синтаксическую и семантическую валидацию (включая проверку предусловий через Constraint DSL)
+- **SIGNED** – подписан агентом/владельцем (envelope)
+- **EXECUTED** – MCP gateway или executor выполнил шаги
+- **SETTLED** – транзакции подтверждены в блокчейне
+- **FINALIZED** – receipt записан, событие эмитировано
+
+### 6.3. CAL receipt
+
+После исполнения CAL **обязан** породить receipt (хранится в offchain базе, может быть опционально on-chain для критических действий):
+
+```json
+{
+  "receipt_version": 1,
+  "cal_hash": "0x...",
+  "prev_receipt_hash": "0x...",  // 0x000...000 (32 нулевых байта) для первого receipt агента
+  "execution_hash": "0x...",     // SHA256(последовательность действий)
+  "tx_hashes": ["0x...", ...],
+  "lt": "12345",
+  "tick": 12345,
+  "status": "success|failure",
+  "gas_used": "1000000",
+  "failure_reason": "string optional",
+  "executor_version": "1.0.0",
+  "dsl_version": "1.1",
+  "execution_spec_version": "1",
+  "state_transition_version": "1"
+}
+```
+
+Receipt также подписывается executor'ом (MCP gateway) для верификации. Receipt chain: каждый receipt содержит `prev_receipt_hash`, образуя собственную цепочку.
+
+---
+
+## 7. Deteministic replay и снапшоты
+
+### 7.1. Принцип
+
+Зная начальное состояние (генезис) и все события (event chain), можно **детерминированно** воспроизвести текущее состояние.
+
+### 7.2. Golden тесты
+
+Для каждого типа события и действия CAL существует набор **golden files**:
+- вход: каноническое событие / CAL
+- выход: изменение состояния, receipt, новые события
+
+Тесты запускаются на разных платформах (Linux, macOS, Node 20, Bun, Deno) и должны давать идентичные хеши.
+
+> **Тулчейн:** контракты разрабатываются и тестируются с помощью [Acton](https://ton-blockchain.github.io/acton/docs/welcome) — CLI-инструмента на Rust для компиляции, тестирования (с trace inspection) и деплоя Tolk-контрактов. Референсные реализации: [acton-contracts](https://github.com/ton-blockchain/acton-contracts) (NFT v1.1, Jetton v2.1, Wallet W5.2, Multisig v2.1).
+
+### 7.3. Snapshot формат
+
+Для ускорения реплея разрешены **детерминированные снэпшоты** (можно создавать каждые N тиков). Снэпшот содержит:
+
+```json
+{
+  "snapshot_version": 1,
+  "last_event_hash": "0x...",
+  "state_hash": "0x...",            // SHA256 от канонического представления полного состояния
+  "tick": 10000,
+  "agents": [{"agent_id": 1, "address": "EQ...", "version": 2, "capability_profile": {...}}],
+  "treasury_balances": {...},
+  "failure_mode": "NORMAL"
+}
+```
+
+Снэпшот должен быть верифицируем: пересчёт `state_hash` из содержимого должен совпадать. Replay engine может начать со снэпшота, если `last_event_hash` совпадает с цепочкой.
+
+---
+
+## 8. Требования к реализации
+
+### 8.1. Обязательные компоненты
+
+- **CAL Validator** – сервис, реализующий проверку CAL по схеме и конституционным preconditions.
+- **Event Indexer** – подписывается на события контрактов, сохраняет в БД с `prev_event_hash`.
+- **Replay Engine** – может воспроизвести всю цепочку событий от генезиса до заданного момента, детерминированно.
+- **Golden test suite** – не менее 30 тестов для покрытия основных сценариев ([Acton testing guide](https://ton-blockchain.github.io/acton/docs/testing/overview)).
+- **MCP Gateway** – [`@ton/mcp`](https://docs.ton.org/overview/ai/mcp) ([portal](https://mcp.ton.org/)): единственная точка взаимодействия агентов с блокчейном.
+
+### 8.2. Запреты
+
+- Использование недетерминированных источников (`Math.random()`, `Date.now()`, системного времени) внутри валидации / реплея.
+- Прямые вызовы TON API в обход MCP gateway (кроме emergency, но emergency запрещён конституцией). Все вызовы — через [`@ton/mcp`](https://docs.ton.org/overview/ai/mcp).
+- Любая форма неканонической сериализации, изменяющей хеш.
+
+---
+
+## 9. Многоязычность на уровне исполнения
+
+### 9.1. Протокольный уровень (инвариантен)
+
+Все идентификаторы протокола (event types, stream_id, action names, domain tags, MCP tool names, CAL fields, error codes) — **только ASCII**. Это Tier 3 invariant, не подлежит изменению.
+
+### 9.2. Данные приложения (разрешён любой язык)
+
+- Строковые поля в `payload` событий — любой Unicode, нормализованный NFC Unicode 15.1.
+- `governance.proposal.text` — любой язык + обязательное поле `summary_en` (≤500 символов).
+- `agent.metadata.name`, `agent.metadata.description` — любой язык.
+- `agent.metadata.preferred_language` — BCP-47 код (например, `"ru"`, `"zh-Hans"`, `"ar"`).
+
+### 9.3. Детерминизм и многоязычность
+
+Хеширование строк не зависит от языка: строка `"привет"` хешируется как её UTF-8 NFC байты. Сравнение строк — побайтово после NFC нормализации. Языковые коды не влияют на консенсус.
+
+### 9.4. Поддерживаемые языки (Tier 1)
+
+`en`, `ru`, `zh-Hans`, `es`, `ar`, `hi`, `fr`, `pt`, `ja`, `de`, `ko`. Расширение списка — через Tier 1 amendment (параметр, не механика).
+
+---
+
+## 10. Версионирование спецификации
+
+Execution spec имеет собственную версию (v1). Изменения в спецификации возможны только через **Tier 2 Amendment** (75% supermajority, 90 ticks). При изменении спецификации все компоненты протокола должны быть обновлены в течение **compatibility window** (1000 тиков ~83 минуты), иначе они перестают быть валидными участниками.
+
+---
+
+## 11. Заключение
+
+Данная спецификация определяет **детерминированный фундамент** для всего протокола Paradigm Terra. Любой код (контракты, оффчейн сервисы) обязан строго следовать этим правилам. Реализация начинается с CAL Validator, Event Schema и Golden тестов, а затем уже контрактов (FailureStateManager, Registry и т.д.).
+
+После утверждения этой спецификации она становится обязательной для всех участников сети (агентов, валидаторов, оффчейн нод).
+
+---
+
+**Дата SCF:** 2026-05-13
+**Дата редакции:** 2026-05-23 (CAL preconditions → DSL AST, tick model, seqno gap, prev_receipt_hash, multilingual, canonical addresses)
+**Следующий этап:** переход к Consensus Freeze после успешного кросс-языкового тестирования и фиксации golden vectors.
+```

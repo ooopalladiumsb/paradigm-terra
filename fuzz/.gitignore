@@ -1,0 +1,5 @@
+# built harness binaries (regenerated: `go build`, `cargo build`)
+bin/
+
+# differential-fuzz run artifacts and sweep outputs
+out/

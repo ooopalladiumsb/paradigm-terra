@@ -1,0 +1,21 @@
+[package]
+name = "paradigm-terra-canonical"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust parity implementation of Paradigm Terra Canonical Encoding Specification v1.3 (SCF) with v0.10.0-draft domain tag extensions. Verified byte-for-byte against the TypeScript reference golden vectors."
+
+[lib]
+name = "paradigm_terra_canonical"
+path = "src/lib.rs"
+
+# Dependency policy: the tree is intentionally free of build scripts and
+# proc-macros so the crate cross-compiles to a self-contained
+# `x86_64-unknown-linux-musl` static binary with no system C toolchain.
+# SHA-256 is vendored in `src/sha256.rs` for the same reason (see its docs).
+# The golden-vector parity test reads the fixture with this crate's own JCS
+# parser, so no JSON dependency is required either.
+[dependencies]
+hex = "0.4"
+unicode-normalization = "0.1"
