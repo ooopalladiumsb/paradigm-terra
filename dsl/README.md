@@ -62,10 +62,16 @@ npm run vectors:verify     # re-check the golden vectors
 ## Golden vectors & parity
 
 `vectors/golden.json` pins, for each (expression, scope, version, bindings),
-the evaluation outcome + reason and the `DSL_HASH`. Status is **PRE-NORMATIVE**:
-promote to NORMATIVE once the planned `dsl-rs` (Rust) and `dsl-go` (Go) parity
-ports reproduce every outcome and hash byte-for-byte — mirroring the canonical
-layer's workflow.
+the evaluation outcome + reason and the `DSL_HASH`. Status is **NORMATIVE** —
+reproduced byte-for-byte by the Rust ([`../dsl-rs`](../dsl-rs)) and Go
+([`../dsl-go`](../dsl-go)) parity implementations (every outcome + reason
+sub-code and every hash). Mirrors the canonical layer's promotion workflow.
+
+| Impl | Path | Build / test |
+|------|------|--------------|
+| TypeScript (reference) | `dsl/` | `npm test` |
+| Rust (parity) | `dsl-rs/` | `cargo test` (musl-static, vendored `i256`, no bignum dep) |
+| Go (parity) | `dsl-go/` | `go test ./...` (stdlib `math/big`) |
 
 ## Draft-status caveats
 

@@ -1,0 +1,20 @@
+[package]
+name = "paradigm-terra-dsl"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust parity implementation of Paradigm Terra DSL v1.2 (Constraint DSL v1.1 + CAL v0.1.0-draft extensions). Verified byte-for-byte against the TypeScript reference golden vectors (@paradigm-terra/dsl)."
+
+[lib]
+name = "paradigm_terra_dsl"
+path = "src/lib.rs"
+
+# Dependency policy mirrors canonical-rs: no build scripts, no proc-macros, so
+# the crate cross-compiles to a self-contained x86_64-unknown-linux-musl static
+# binary with no system C toolchain. int256 arithmetic is vendored in
+# `src/i256.rs` (sign + [u64;4] magnitude) for exactly this reason — a bignum
+# crate like num-bigint pulls an autocfg build script that links for the host.
+# JCS parsing, hashing, NFC and address handling are reused from canonical-rs.
+[dependencies]
+paradigm-terra-canonical = { path = "../canonical-rs" }

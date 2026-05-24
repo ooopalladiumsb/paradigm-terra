@@ -55,6 +55,15 @@ func (o *Object) Get(key string) (Value, bool) {
 	return v, ok
 }
 
+// Keys returns the object's keys in insertion order. Read-only accessor used by
+// downstream consumers (e.g. the DSL parser) that must enumerate an object's
+// members; it does not affect canonical serialization, which sorts by UTF-8.
+func (o *Object) Keys() []string {
+	out := make([]string, len(o.keys))
+	copy(out, o.keys)
+	return out
+}
+
 // Construction helpers for building values (used by tests / callers).
 
 // P builds a Pair.
