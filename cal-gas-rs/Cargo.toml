@@ -1,0 +1,20 @@
+[package]
+name = "paradigm-terra-cal-gas"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust parity implementation of the Paradigm Terra CAL gas layer (CAL Execution Spec v0.1.0-draft §9): the gas-unit model (reusing the DSL cost model), nano-PTRA pricing, the upfront escrow gate (§9.3), and the per-outcome refund/retention bill (§9.4). Verified byte-for-byte against the TypeScript reference golden vectors (@paradigm-terra/cal-gas)."
+
+[lib]
+name = "paradigm_terra_cal_gas"
+path = "src/lib.rs"
+
+# Dependency policy mirrors canonical-rs / dsl-rs: no build scripts, no
+# proc-macros, so the crate cross-compiles to a self-contained
+# x86_64-unknown-linux-musl static binary with no system C toolchain. uint256
+# arithmetic is vendored in `src/u256.rs` for exactly this reason. The DSL cost
+# model and JCS parsing/serialization are reused from the sibling parity crates.
+[dependencies]
+paradigm-terra-canonical = { path = "../canonical-rs" }
+paradigm-terra-dsl = { path = "../dsl-rs" }

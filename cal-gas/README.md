@@ -48,9 +48,9 @@ npm run vectors:generate
 ## Golden vectors & parity
 
 `vectors/golden.json` pins gas units, pricing, escrow, the §9.3 gate, and the full
-`GasBill` for all five outcomes across sample CALs/params. Status **PRE-NORMATIVE** —
-promote once the planned `cal-gas-rs` (Rust) and `cal-gas-go` (Go) parity ports
-reproduce every value byte-for-byte.
+`GasBill` for all five outcomes across sample CALs/params. Status **NORMATIVE** —
+the `cal-gas-rs` (Rust) and `cal-gas-go` (Go) parity ports reproduce every value
+byte-for-byte (135 checks each, verified 2026-05-25).
 
 ## License
 

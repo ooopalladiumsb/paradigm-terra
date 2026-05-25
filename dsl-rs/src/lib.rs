@@ -21,4 +21,4 @@ pub use ast::{Expr, Scope, Version};
 pub use errors::{DResult, DslError, Phase};
 pub use evaluate::{run, Bindings, Outcome};
 pub use hash::dsl_hash;
-pub use parse::parse_expression;
+pub use parse::{expression_cost, parse_expression};

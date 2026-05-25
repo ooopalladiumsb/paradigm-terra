@@ -333,3 +333,13 @@ pub fn parse_expression(j: &JcsValue, scope: Scope, version: Version) -> DResult
     let mut ctx = Ctx { scope, version, nodes: 0, cost: 0 };
     build(&mut ctx, j, 1)
 }
+
+/// Static, data-independent cost of a parsed expression (DSL v1.1 §3.2, CAL §9.2).
+/// Mirrors `expressionCost` in `parse.ts`: validate the AST, then return the
+/// accumulated cost. The gas layer (`cal-gas`) reuses this so the DSL portion of
+/// a CAL's gas is the exact numbers the DSL already pins.
+pub fn expression_cost(j: &JcsValue, scope: Scope, version: Version) -> DResult<u64> {
+    let mut ctx = Ctx { scope, version, nodes: 0, cost: 0 };
+    build(&mut ctx, j, 1)?;
+    Ok(ctx.cost)
+}

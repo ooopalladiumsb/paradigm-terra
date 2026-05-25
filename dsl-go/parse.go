@@ -416,3 +416,16 @@ func ParseExpression(j canonical.Value, scope Scope, version Version) (*Expr, *D
 	ctx := &parseCtx{scope: scope, version: version}
 	return ctx.build(j, 1)
 }
+
+// ExpressionCost returns the static, data-independent cost of a parsed
+// expression (DSL v1.1 §3.2, CAL §9.2). Mirrors expressionCost in parse.ts:
+// validate the AST, then return the accumulated cost. The gas layer (cal-gas)
+// reuses this so the DSL portion of a CAL's gas is the exact numbers the DSL
+// already pins.
+func ExpressionCost(j canonical.Value, scope Scope, version Version) (int64, *DslError) {
+	ctx := &parseCtx{scope: scope, version: version}
+	if _, e := ctx.build(j, 1); e != nil {
+		return 0, e
+	}
+	return ctx.cost, nil
+}

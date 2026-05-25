@@ -30,9 +30,11 @@ verified reference implementations** of the canonical encoding in three language
   [`docs/notes/cal-reducer-design.md`](docs/notes/cal-reducer-design.md).
 - **CAL gas** (`@paradigm-terra/cal-gas`, TypeScript) — deterministic §9 pricing &
   accounting: gas units (reusing the DSL cost model), nano-PTRA pricing, upfront
-  escrow (§9.3), and the per-outcome refund/retention bill (§9.4). Pure functions
-  the validator turns into event values. Golden vectors `PRE-NORMATIVE` (Rust/Go
-  parity next). See [`docs/notes/cal-gas-design.md`](docs/notes/cal-gas-design.md).
+  escrow (§9.3), and the per-outcome refund/retention bill (§9.4), in TypeScript
+  with Rust (`cal-gas-rs`) and Go (`cal-gas-go`) parity. Pure functions the
+  validator turns into event values. Golden vectors `NORMATIVE` (reproduced
+  byte-for-byte across all three; 135 checks each). See
+  [`docs/notes/cal-gas-design.md`](docs/notes/cal-gas-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
 
@@ -65,6 +67,8 @@ cal-rs/         CAL skeleton Rust parity implementation (reuses canonical-rs + d
 cal-go/         CAL skeleton Go parity implementation (reuses canonical-go + dsl-go)
 cal-reducer/    CAL event reducer: apply(State,Event)→State (@paradigm-terra/cal-reducer, TS) + fuzz/
 cal-gas/        CAL gas pricing & accounting §9 (@paradigm-terra/cal-gas, TS)
+cal-gas-rs/     CAL gas Rust parity implementation (musl static, vendored u256)
+cal-gas-go/     CAL gas Go parity implementation (CGO_ENABLED=0, stdlib math/big)
 cal-reducer-rs/ CAL reducer Rust parity implementation (musl static, vendored u256)
 cal-reducer-go/ CAL reducer Go parity implementation (CGO_ENABLED=0, stdlib math/big)
 fuzz/           Cross-language differential fuzzing harness + gate reports
