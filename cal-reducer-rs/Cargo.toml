@@ -14,3 +14,5 @@ path = "src/lib.rs"
 # come from canonical-rs; uint256 arithmetic is vendored in `src/u256.rs`.
 [dependencies]
 paradigm-terra-canonical = { path = "../canonical-rs" }
+# `hex` (pure Rust, no build script) only for the differential-fuzz harness bin.
+hex = "0.4"

@@ -61,8 +61,27 @@ reproduced byte-for-byte by the Rust ([`../cal-reducer-rs`](../cal-reducer-rs)) 
 | Rust (parity) | `cal-reducer-rs/` | `cargo test` (musl-static, vendored `u256`) |
 | Go (parity) | `cal-reducer-go/` | `go test ./...` (stdlib `math/big`) |
 
-A differential fuzzer over random well-formed sequences (asserting zero `STATE_ROOT`
-divergence) is the planned next hardening step, mirroring the canonical layer's gate.
+## Differential fuzzing
+
+`fuzz/` cross-checks all three implementations on random, model-guided event
+sequences (mostly valid CAL lifecycles so the fold runs deep, with occasional
+faults for error-path coverage). The identical seeded batch is piped to a harness
+per language; a case **passes** only when TS / Rust / Go agree on BOTH the
+resulting `STATE_ROOT` AND the `(ApplyError code, index)` of any fault — the
+reducer is a total, deterministic Tier-3 function (§7.2), so zero divergence is
+required.
+
+```
+# build the parity harnesses, then run
+( cd cal-reducer-rs && cargo build --bin fuzz_harness )
+( cd cal-reducer-go && go build -o ../cal-reducer/fuzz/bin/reducer_go_harness ./cmd/fuzzharness )
+node cal-reducer/fuzz/driver.mjs --cases 50000 --seed 1
+```
+
+Harnesses share the line protocol in [`fuzz/ts_harness.mjs`](fuzz/ts_harness.mjs):
+each line is the hex of canonical-JSON `{ start, events }`; output is
+`OK <state-root>` or `ERR <CODE>@<index>`. Divergences (none expected) are written
+to `fuzz/out/reducer_divergences.jsonl` with the offending case for replay.
 
 ## License
 
