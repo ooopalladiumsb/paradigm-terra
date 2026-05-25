@@ -1,0 +1,351 @@
+package calvalidator
+
+import (
+	"math/big"
+
+	canonical "github.com/paradigm-terra/canonical-go"
+	calgas "github.com/paradigm-terra/cal-gas-go"
+	dsl "github.com/paradigm-terra/dsl-go"
+)
+
+// ValidationResult is the validator verdict: the ordered reducer-ready events,
+// the terminal stage, the reason code (empty unless FAILED), an informational
+// detail (not consensus-critical), and the intended §9.4 settlement.
+type ValidationResult struct {
+	Events        []canonical.Value
+	TerminalStage string
+	ReasonCode    string
+	ReasonDetail  string
+	Bill          *calgas.GasBill
+}
+
+func getIn(v canonical.Value, path []string) (canonical.Value, bool) {
+	cur := v
+	for _, seg := range path {
+		o, ok := cur.(*canonical.Object)
+		if !ok {
+			return nil, false
+		}
+		cv, ok := o.Get(seg)
+		if !ok {
+			return nil, false
+		}
+		cur = cv
+	}
+	return cur, true
+}
+
+func asStr(v canonical.Value) string {
+	s, _ := v.(string)
+	return s
+}
+
+func asBigField(v canonical.Value, ok bool) *big.Int {
+	if !ok {
+		return big.NewInt(0)
+	}
+	iv, isInt := v.(canonical.Int)
+	if !isInt {
+		return big.NewInt(0)
+	}
+	n, good := new(big.Int).SetString(string(iv), 10)
+	if !good {
+		return big.NewInt(0)
+	}
+	return n
+}
+
+func intVal(n *big.Int) canonical.Value { return canonical.Int(n.String()) }
+
+func arrField(v canonical.Value, path []string) []canonical.Value {
+	if x, ok := getIn(v, path); ok {
+		if a, ok := x.([]canonical.Value); ok {
+			return a
+		}
+	}
+	return nil
+}
+
+func idPairs(calHash, agent string, nonce *big.Int) []canonical.Pair {
+	return []canonical.Pair{canonical.P("cal_hash", calHash), canonical.P("agent_id", agent), canonical.P("nonce", intVal(nonce))}
+}
+
+func failedEvent(calHash, agent string, nonce, tick *big.Int, reason, detail string, gasConsumed *big.Int) canonical.Value {
+	p := idPairs(calHash, agent, nonce)
+	p = append(p,
+		canonical.P("event_type", "cal.failed"),
+		canonical.P("tick_failed", intVal(tick)),
+		canonical.P("reason_code", reason),
+		canonical.P("reason_detail", detail),
+		canonical.P("gas_consumed_ptra", intVal(gasConsumed)),
+		canonical.P("ton_ingress_fee_paid", intVal(big.NewInt(0))),
+	)
+	return canonical.NewObject(p...)
+}
+
+func expiredEvent(calHash, agent string, nonce, tick *big.Int) canonical.Value {
+	p := idPairs(calHash, agent, nonce)
+	p = append(p,
+		canonical.P("event_type", "cal.expired"),
+		canonical.P("tick_expired", intVal(tick)),
+		canonical.P("gas_consumed_ptra", intVal(big.NewInt(0))),
+		canonical.P("ton_ingress_fee_paid", intVal(big.NewInt(0))),
+	)
+	return canonical.NewObject(p...)
+}
+
+// evalExpr evaluates an embedded expression; a {dsl_version, expr} envelope
+// overrides the default v1.2. `bindings` is a JcsValue object keyed by root.
+func evalExpr(node canonical.Value, present bool, scope dsl.Scope, bindings canonical.Value) dsl.Outcome {
+	version := dsl.V12
+	expr := node
+	exprPresent := present
+	if present {
+		if o, ok := node.(*canonical.Object); ok {
+			if _, has := o.Get("dsl_version"); has {
+				dv, _ := o.Get("dsl_version")
+				switch s, _ := dv.(string); s {
+				case "1.1":
+					version = dsl.V11
+				case "1.2":
+					version = dsl.V12
+				default:
+					return dsl.Outcome{Code: "VALIDATION_ERROR", Reason: "UNSUPPORTED_VERSION"}
+				}
+				e, has2 := o.Get("expr")
+				expr, exprPresent = e, has2
+			}
+		}
+	}
+	if !exprPresent {
+		return dsl.Outcome{Code: "PARSE_ERROR", Reason: "MALFORMED_NODE"}
+	}
+	return dsl.Run(expr, scope, version, dsl.BindingsFromJcs(bindings))
+}
+
+func capabilityGrants(snapshot canonical.Value, agent, action string) bool {
+	required := dsl.RequiredScopes(action)
+	if len(required) == 0 {
+		return true
+	}
+	granted := map[string]bool{}
+	if g, ok := getIn(snapshot, []string{"registry", "agents", agent, "granted_scopes"}); ok {
+		if arr, ok := g.([]canonical.Value); ok {
+			for _, x := range arr {
+				if s, ok := x.(string); ok {
+					granted[s] = true
+				}
+			}
+		}
+	}
+	for _, s := range required {
+		if !granted[s] {
+			return false
+		}
+	}
+	return true
+}
+
+// Validate runs the §3.1 lifecycle pipeline. `calHash` is opaque (echoed into
+// every event's cal_hash). Returns a GasError (as error) only on a gas/canonical
+// fault, which valid inputs never hit.
+func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, trace ExecutionTrace) (*ValidationResult, error) {
+	agent := asStr(mustGet(cal, "agent_id"))
+	action := asStr(mustGet(cal, "action"))
+	nonceV, nOk := getIn(cal, []string{"nonce"})
+	nonce := asBigField(nonceV, nOk)
+	expV, eOk := getIn(cal, []string{"expiration_tick"})
+	expiration := asBigField(expV, eOk)
+	tick := trace.CurrentTick
+	fee := calgas.FlatValidationFee(snapshot)
+
+	var events []canonical.Value
+	mk := func(stage, reason, detail string, bill *calgas.GasBill) *ValidationResult {
+		return &ValidationResult{Events: events, TerminalStage: stage, ReasonCode: reason, ReasonDetail: detail, Bill: bill}
+	}
+
+	preFail := func(reason, detail string) (*ValidationResult, error) {
+		bill, ge := calgas.Settle(calgas.FailedPrecond, cal, snapshot, big.NewInt(0))
+		if ge != nil {
+			return nil, ge
+		}
+		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, big.NewInt(0)))
+		return mk("FAILED", reason, detail, bill), nil
+	}
+	execFail := func(reason, detail string, committed []canonical.Value) (*ValidationResult, error) {
+		bw, err := calgas.EffectsBytes(committed)
+		if err != nil {
+			return nil, err
+		}
+		bill, ge := calgas.Settle(calgas.FailedExec, cal, snapshot, bw)
+		if ge != nil {
+			return nil, ge
+		}
+		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, bill.DynamicGasConsumed))
+		return mk("FAILED", reason, detail, bill), nil
+	}
+
+	// 1. action registered (§2.3)
+	if !dsl.IsRegisteredAction(action) {
+		bill, ge := calgas.Settle(calgas.FailedPrecond, cal, snapshot, big.NewInt(0))
+		if ge != nil {
+			return nil, ge
+		}
+		events = append(events, failedEvent(calHash, agent, nonce, tick, "UNKNOWN_ACTION", "action not in §2.3 registry", big.NewInt(0)))
+		return mk("FAILED", "UNKNOWN_ACTION", "action not in §2.3 registry", bill), nil
+	}
+
+	// 2. expiration before VALIDATED (§3.4)
+	if tick.Cmp(expiration) > 0 {
+		bill, ge := calgas.Settle(calgas.ExpiredPre, cal, snapshot, big.NewInt(0))
+		if ge != nil {
+			return nil, ge
+		}
+		events = append(events, expiredEvent(calHash, agent, nonce, tick))
+		return mk("EXPIRED", "", "expired before VALIDATED", bill), nil
+	}
+
+	// 3. nonce (§6.2)
+	snapNonceV, snOk := getIn(snapshot, []string{"cal", "nonces", agent})
+	expected := new(big.Int).Add(asBigField(snapNonceV, snOk), big.NewInt(1))
+	if nonce.Cmp(expected) != 0 {
+		return preFail("NONCE_MISMATCH", "nonce mismatch")
+	}
+
+	// 4. owner-sig (§8.2)
+	if dsl.IsOwnerRequired(action) && !trace.OwnerSigPresent {
+		return preFail("CAPABILITY_DENIED", "owner_sig required")
+	}
+
+	// 5. scope grant (§4.3)
+	if !capabilityGrants(snapshot, agent, action) {
+		return preFail("CAPABILITY_DENIED", "agent lacks required scope")
+	}
+
+	// 6. preconditions
+	preNode, preOk := getIn(cal, []string{"preconditions"})
+	pre := evalExpr(preNode, preOk, dsl.ScopePrecondition, canonical.NewObject(canonical.P("state", snapshot)))
+	if pre.Code != "EVALUATION_TRUE" {
+		reason := "PRECOND_ERROR"
+		if pre.Code == "EVALUATION_FALSE" {
+			reason = "PRECOND_FALSE"
+		}
+		return preFail(reason, "preconditions not satisfied")
+	}
+
+	// 7. escrow gate (§9.3)
+	if !calgas.CanValidate(cal, snapshot) {
+		return preFail("OUT_OF_GAS", "balance < escrow (§9.3)")
+	}
+
+	// --- cal.validated ---
+	{
+		p := idPairs(calHash, agent, nonce)
+		p = append(p, canonical.P("event_type", "cal.validated"), canonical.P("fee_debited_ptra", intVal(fee)))
+		events = append(events, canonical.NewObject(p...))
+	}
+	maxGas := calgas.MaxExpectedDynamicGas(cal, fee)
+
+	// 8. expiration recheck (defensive; constant tick → never fires here)
+	if tick.Cmp(expiration) > 0 {
+		bill, ge := calgas.Settle(calgas.ExpiredPost, cal, snapshot, big.NewInt(0))
+		if ge != nil {
+			return nil, ge
+		}
+		events = append(events, expiredEvent(calHash, agent, nonce, tick))
+		return mk("EXPIRED", "", "expired after VALIDATED", bill), nil
+	}
+
+	// 9–10. steps
+	steps := arrField(cal, []string{"steps"})
+	var committed []canonical.Value
+	for i, st := range steps {
+		if i >= len(trace.Steps) || !trace.Steps[i].OK {
+			detail := "step failed"
+			if i < len(trace.Steps) && trace.Steps[i].ErrorDetail != "" {
+				detail = trace.Steps[i].ErrorDetail
+			}
+			return execFail("STEP_ERROR", detail, committed)
+		}
+		committed = append(committed, trace.Steps[i].Effects...)
+		paramsV, _ := getIn(st, []string{"params"})
+		for _, pc := range arrField(st, []string{"post_conditions"}) {
+			b := canonical.NewObject(canonical.P("before", trace.StateBefore), canonical.P("after", trace.StateAfter), canonical.P("params", paramsV))
+			o := evalExpr(pc, true, dsl.ScopePostCondition, b)
+			if o.Code != "EVALUATION_TRUE" {
+				reason := "STEP_ERROR"
+				if o.Code == "EVALUATION_FALSE" {
+					reason = "POSTCOND_FALSE"
+				}
+				return execFail(reason, "post_condition not satisfied", committed)
+			}
+		}
+	}
+
+	// 11. dynamic gas vs budget (§9.3)
+	bytesWritten, err := calgas.EffectsBytes(committed)
+	if err != nil {
+		return nil, err
+	}
+	gu, ge := calgas.GasUnits(cal, bytesWritten)
+	if ge != nil {
+		return nil, ge
+	}
+	rawGas := calgas.ToNano(gu, calgas.GasPrice(snapshot))
+	if rawGas.Cmp(maxGas) > 0 {
+		return execFail("OUT_OF_GAS", "dynamic gas exceeds budget", committed)
+	}
+	consumed := rawGas
+
+	// --- cal.executed ---
+	{
+		p := idPairs(calHash, agent, nonce)
+		p = append(p, canonical.P("event_type", "cal.executed"), canonical.P("effects", committed), canonical.P("gas_consumed_ptra", intVal(consumed)))
+		events = append(events, canonical.NewObject(p...))
+	}
+
+	// 12. expiration recheck (defensive)
+	if tick.Cmp(expiration) > 0 {
+		bill, ge := calgas.Settle(calgas.ExpiredPost, cal, snapshot, big.NewInt(0))
+		if ge != nil {
+			return nil, ge
+		}
+		events = append(events, expiredEvent(calHash, agent, nonce, tick))
+		return mk("EXPIRED", "", "expired after VALIDATED", bill), nil
+	}
+
+	// 13. invariants
+	invs := arrField(cal, []string{"invariants"})
+	for _, inv := range invs {
+		b := canonical.NewObject(canonical.P("before", trace.StateBefore), canonical.P("after", trace.StateAfter))
+		o := evalExpr(inv, true, dsl.ScopeInvariant, b)
+		if o.Code != "EVALUATION_TRUE" {
+			return execFail("INVARIANT_FALSE", "invariant not satisfied", committed)
+		}
+	}
+
+	// --- cal.settled + cal.finalized ---
+	events = append(events, canonical.NewObject(canonical.P("event_type", "cal.settled"), canonical.P("cal_hash", calHash)))
+	bill, ge := calgas.Settle(calgas.Finalized, cal, snapshot, bytesWritten)
+	if ge != nil {
+		return nil, ge
+	}
+	{
+		p := idPairs(calHash, agent, nonce)
+		p = append(p,
+			canonical.P("event_type", "cal.finalized"),
+			canonical.P("tick_finalized", intVal(tick)),
+			canonical.P("gas_consumed_ptra", intVal(consumed)),
+			canonical.P("gas_refunded_ptra", intVal(bill.GasRefunded)),
+			canonical.P("steps_applied", intVal(big.NewInt(int64(len(steps))))),
+			canonical.P("invariants_checked", intVal(big.NewInt(int64(len(invs))))),
+		)
+		events = append(events, canonical.NewObject(p...))
+	}
+	return mk("FINALIZED", "", "", bill), nil
+}
+
+func mustGet(v canonical.Value, key string) canonical.Value {
+	cv, _ := getIn(v, []string{key})
+	return cv
+}

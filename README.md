@@ -39,8 +39,10 @@ verified reference implementations** of the canonical encoding in three language
   piece: a pure `validate(cal, snapshot, trace)` that drives a SIGNED CAL through
   the §3.1 lifecycle, wiring DSL evaluation + capability/owner/nonce/expiration
   checks + gas (cal-gas) into the self-describing stage events the reducer
-  consumes. Evaluates, does not execute — step effects arrive as a trace (§4.1).
-  Golden vectors `PRE-NORMATIVE` (Rust/Go parity next). See
+  consumes, in TypeScript with Rust (`validator-rs`) and Go (`validator-go`)
+  parity. Evaluates, does not execute — step effects arrive as a trace (§4.1).
+  Golden vectors `NORMATIVE` (reproduced byte-for-byte across all three; 120
+  checks each). See
   [`docs/notes/cal-validator-design.md`](docs/notes/cal-validator-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
@@ -77,6 +79,8 @@ cal-gas/        CAL gas pricing & accounting §9 (@paradigm-terra/cal-gas, TS)
 cal-gas-rs/     CAL gas Rust parity implementation (musl static, vendored u256)
 cal-gas-go/     CAL gas Go parity implementation (CGO_ENABLED=0, stdlib math/big)
 validator/      CAL validator §3-§9: validate(cal,snapshot,trace)→events (@paradigm-terra/cal-validator, TS)
+validator-rs/   CAL validator Rust parity implementation (reuses dsl-rs + cal-gas-rs)
+cal-validator-go/ CAL validator Go parity implementation (reuses dsl-go + cal-gas-go)
 cal-reducer-rs/ CAL reducer Rust parity implementation (musl static, vendored u256)
 cal-reducer-go/ CAL reducer Go parity implementation (CGO_ENABLED=0, stdlib math/big)
 fuzz/           Cross-language differential fuzzing harness + gate reports

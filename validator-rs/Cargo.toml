@@ -1,0 +1,19 @@
+[package]
+name = "paradigm-terra-cal-validator"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust parity implementation of the Paradigm Terra CAL validator (CAL Execution Spec v0.1.0-draft §3–§9): a pure validate(cal, snapshot, trace) that drives a SIGNED CAL through the lifecycle and emits the reducer-ready stage events. Verified byte-for-byte against the TypeScript reference golden vectors (@paradigm-terra/cal-validator)."
+
+[lib]
+name = "paradigm_terra_cal_validator"
+path = "src/lib.rs"
+
+# No build scripts / proc-macros (musl-static, no C toolchain). The DSL
+# evaluator + taxonomy come from dsl-rs; gas pricing/settlement from cal-gas-rs;
+# JCS from canonical-rs.
+[dependencies]
+paradigm-terra-canonical = { path = "../canonical-rs" }
+paradigm-terra-dsl = { path = "../dsl-rs" }
+paradigm-terra-cal-gas = { path = "../cal-gas-rs" }

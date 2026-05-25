@@ -40,8 +40,8 @@ check (§4.4), and Bounded Mode (§10).
 `vectors/golden.json` pins, per scenario, the emitted `event_type` sequence, the
 terminal stage, `reason_code`, the economic event fields, and the full `bill` —
 across the happy FINALIZED path, each reachable reason code, and `EXPIRED`.
-Status **PRE-NORMATIVE** — promote once the planned `validator-rs` (Rust) and
-`validator-go` (Go) parity ports reproduce every value byte-for-byte.
+Status **NORMATIVE** — the `validator-rs` (Rust) and `validator-go` (Go) parity
+ports reproduce every value byte-for-byte (120 checks each, verified 2026-05-25).
 
 ## License
 

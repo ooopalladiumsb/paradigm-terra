@@ -35,6 +35,14 @@ var ownerRequiredActions = map[string]bool{
 
 func isOwnerRequired(a string) bool { return ownerRequiredActions[a] }
 
+// IsOwnerRequired reports whether action requires a valid owner_sig (CAL §8.2).
+func IsOwnerRequired(a string) bool { return isOwnerRequired(a) }
+
+// RequiredScopes returns the scopes an action requires (CAL Annex A pending;
+// mirrors REQUIRES_SCOPE_TABLE in taxonomy.ts). The gas/validator layers
+// consult it. The returned slice MUST NOT be mutated.
+func RequiredScopes(action string) []string { return requiresScopeTable[action] }
+
 var requiresScopeTable = map[string][]string{
 	"wallet.send_ton":             {"ton_transfer"},
 	"wallet.send_jetton":          {"jetton_access"},

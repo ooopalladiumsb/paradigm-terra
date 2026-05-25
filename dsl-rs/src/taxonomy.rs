@@ -52,9 +52,10 @@ pub fn is_owner_required(action: &str) -> bool {
     OWNER_REQUIRED_ACTIONS.contains(&action)
 }
 
-/// Provisional action -> required scopes (CAL Annex A pending).
-pub fn requires_scope(action: &str, scope: &str) -> bool {
-    let scopes: &[&str] = match action {
+/// Provisional action -> required scopes (CAL Annex A pending). Mirrors the
+/// `REQUIRES_SCOPE_TABLE` of `taxonomy.ts`; the gas/validator layers consult it.
+pub fn required_scopes(action: &str) -> &'static [&'static str] {
+    match action {
         "wallet.send_ton" => &["ton_transfer"],
         "wallet.send_jetton" => &["jetton_access"],
         "wallet.send_nft" => &["nft_access"],
@@ -65,6 +66,9 @@ pub fn requires_scope(action: &str, scope: &str) -> bool {
         "ptra.unstake" => &["ptra_stake"],
         "governance.vote_as_agent" => &["ptra_governance_vote"],
         _ => &[],
-    };
-    scopes.contains(&scope)
+    }
+}
+
+pub fn requires_scope(action: &str, scope: &str) -> bool {
+    required_scopes(action).contains(&scope)
 }
