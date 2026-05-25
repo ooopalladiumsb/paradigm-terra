@@ -18,6 +18,10 @@ var registeredActions = map[string]bool{
 
 func isRegisteredAction(a string) bool { return registeredActions[a] }
 
+// IsRegisteredAction reports whether a is a registered `namespace.verb` action
+// (CAL §2.3). Exported for downstream consumers such as the CAL layer.
+func IsRegisteredAction(a string) bool { return isRegisteredAction(a) }
+
 var ownerRequiredActions = map[string]bool{
 	"capability.update":               true,
 	"agent.migrate":                   true,

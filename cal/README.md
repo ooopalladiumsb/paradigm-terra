@@ -45,10 +45,16 @@ npm run vectors:generate
 
 ## Golden vectors & parity
 
-`vectors/golden.json` pins validation outcomes, `CAL_HASH`, canonical unsigned
-bytes, and event/receipt hashes. Status **PRE-NORMATIVE** — promote to NORMATIVE
-once the planned `cal-rs` (Rust) and `cal-go` (Go) parity ports reproduce every
-field byte-for-byte, mirroring the canonical and DSL layers.
+`vectors/golden.json` pins validation outcomes (code + detail), `CAL_HASH`,
+canonical unsigned bytes, and event/receipt hashes. Status **NORMATIVE** —
+reproduced byte-for-byte by the Rust ([`../cal-rs`](../cal-rs)) and Go
+([`../cal-go`](../cal-go)) parity implementations.
+
+| Impl | Path | Build / test |
+|------|------|--------------|
+| TypeScript (reference) | `cal/` | `npm test` |
+| Rust (parity) | `cal-rs/` | `cargo test` (musl-static, reuses canonical-rs + dsl-rs) |
+| Go (parity) | `cal-go/` | `go test ./...` (reuses canonical-go + dsl-go) |
 
 ## License
 

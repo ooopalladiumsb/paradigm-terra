@@ -1,0 +1,17 @@
+[package]
+name = "paradigm-terra-cal"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust parity implementation of the Paradigm Terra CAL skeleton (CAL v0.1.0-draft): wire-format validation, CAL_HASH, signing payload, event/receipt hashing, lifecycle. Verified byte-for-byte against the TypeScript reference golden vectors (@paradigm-terra/cal)."
+
+[lib]
+name = "paradigm_terra_cal"
+path = "src/lib.rs"
+
+# No build scripts / proc-macros (musl-static, no C toolchain). JCS/hash/address
+# come from canonical-rs; embedded-DSL parse-validation + taxonomy from dsl-rs.
+[dependencies]
+paradigm-terra-canonical = { path = "../canonical-rs" }
+paradigm-terra-dsl = { path = "../dsl-rs" }
