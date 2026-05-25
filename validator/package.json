@@ -1,0 +1,29 @@
+{
+  "name": "@paradigm-terra/cal-validator",
+  "version": "0.1.0",
+  "description": "Deterministic CAL validator (CAL v0.1.0-draft §3–§9): drives a SIGNED CAL through the lifecycle state machine from (cal, snapshot, execution-trace), wiring DSL evaluation + capability/owner checks + gas (cal-gas) into the self-describing stage events the reducer consumes. Pure; evaluates, does not execute (steps arrive as a trace, §4.1).",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.0.0" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
+  "files": ["dist", "src", "vectors", "LICENSE"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "vectors:generate": "node --import tsx scripts/generate-vectors.ts",
+    "vectors:verify": "node --import tsx --test test/golden-vectors.test.ts"
+  },
+  "dependencies": {
+    "@paradigm-terra/canonical": "file:../canonical",
+    "@paradigm-terra/cal-gas": "file:../cal-gas",
+    "@paradigm-terra/dsl": "file:../dsl"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

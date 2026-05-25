@@ -1,0 +1,6 @@
+# dependencies (restored via `npm install`)
+node_modules/
+package-lock.json
+
+# compiled output (regenerated via `npm run build`)
+dist/
