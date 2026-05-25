@@ -1,0 +1,16 @@
+[package]
+name = "paradigm-terra-cal-reducer"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust parity implementation of the Paradigm Terra CAL event reducer (CAL v0.1.0-draft §7.1): apply(State, Event) -> State, per-CAL effect staging. Verified byte-for-byte against the TypeScript reference golden vectors (@paradigm-terra/cal-reducer)."
+
+[lib]
+name = "paradigm_terra_cal_reducer"
+path = "src/lib.rs"
+
+# No build scripts / proc-macros (musl-static, no C toolchain). JCS / STATE_ROOT
+# come from canonical-rs; uint256 arithmetic is vendored in `src/u256.rs`.
+[dependencies]
+paradigm-terra-canonical = { path = "../canonical-rs" }

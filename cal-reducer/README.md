@@ -51,11 +51,18 @@ npm run vectors:generate
 ## Golden vectors & parity
 
 `vectors/golden.json` pins the genesis `STATE_ROOT`, the per-event `STATE_ROOT` for
-each (start state, event sequence), and the `ApplyError` codes. Status
-**PRE-NORMATIVE** — promote to NORMATIVE once the planned `cal-reducer-rs` (Rust) and
-`cal-reducer-go` (Go) parity ports reproduce every root and code byte-for-byte, with a
-differential fuzzer asserting zero `STATE_ROOT` divergence on random well-formed
-sequences.
+each (start state, event sequence), and the `ApplyError` codes. Status **NORMATIVE** —
+reproduced byte-for-byte by the Rust ([`../cal-reducer-rs`](../cal-reducer-rs)) and Go
+([`../cal-reducer-go`](../cal-reducer-go)) parity implementations.
+
+| Impl | Path | Build / test |
+|------|------|--------------|
+| TypeScript (reference) | `cal-reducer/` | `npm test` |
+| Rust (parity) | `cal-reducer-rs/` | `cargo test` (musl-static, vendored `u256`) |
+| Go (parity) | `cal-reducer-go/` | `go test ./...` (stdlib `math/big`) |
+
+A differential fuzzer over random well-formed sequences (asserting zero `STATE_ROOT`
+divergence) is the planned next hardening step, mirroring the canonical layer's gate.
 
 ## License
 

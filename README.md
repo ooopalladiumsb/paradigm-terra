@@ -21,10 +21,11 @@ verified reference implementations** of the canonical encoding in three language
   (`@paradigm-terra/cal`) with Rust (`cal-rs`) and Go (`cal-go`) parity. Golden
   vectors `NORMATIVE` (reproduced byte-for-byte across all three). See
   [`docs/notes/cal-skeleton-design.md`](docs/notes/cal-skeleton-design.md).
-- **CAL reducer** (`@paradigm-terra/cal-reducer`, TypeScript) — the deterministic
-  `apply(State, Event) → State` fold with per-CAL effect staging (§7.1). Events
-  are self-describing; gas pricing + validator logic remain separate phases.
-  Golden vectors `PRE-NORMATIVE` (Rust/Go parity next). See
+- **CAL reducer** — the deterministic `apply(State, Event) → State` fold with
+  per-CAL effect staging (§7.1), in TypeScript (`@paradigm-terra/cal-reducer`)
+  with Rust (`cal-reducer-rs`) and Go (`cal-reducer-go`) parity. Events are
+  self-describing; gas pricing + validator logic remain separate phases. Golden
+  vectors `NORMATIVE` (reproduced byte-for-byte across all three). See
   [`docs/notes/cal-reducer-design.md`](docs/notes/cal-reducer-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
@@ -57,6 +58,8 @@ cal/            CAL skeleton: hashable foundation (@paradigm-terra/cal, TypeScri
 cal-rs/         CAL skeleton Rust parity implementation (reuses canonical-rs + dsl-rs)
 cal-go/         CAL skeleton Go parity implementation (reuses canonical-go + dsl-go)
 cal-reducer/    CAL event reducer: apply(State,Event)→State (@paradigm-terra/cal-reducer, TS)
+cal-reducer-rs/ CAL reducer Rust parity implementation (musl static, vendored u256)
+cal-reducer-go/ CAL reducer Go parity implementation (CGO_ENABLED=0, stdlib math/big)
 fuzz/           Cross-language differential fuzzing harness + gate reports
 tools/          Unicode data (DerivedAge-15.1.0) and generators
 ```
