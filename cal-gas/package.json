@@ -1,0 +1,28 @@
+{
+  "name": "@paradigm-terra/cal-gas",
+  "version": "0.1.0",
+  "description": "Deterministic CAL gas pricing & accounting (CAL v0.1.0-draft §9): gas units (reusing the DSL cost model), nano-PTRA pricing, upfront escrow, and the per-outcome refund/retention bill. Pure functions; the validator wires the values into events.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.0.0" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
+  "files": ["dist", "src", "vectors", "LICENSE"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "vectors:generate": "node --import tsx scripts/generate-vectors.ts",
+    "vectors:verify": "node --import tsx --test test/golden-vectors.test.ts"
+  },
+  "dependencies": {
+    "@paradigm-terra/canonical": "file:../canonical",
+    "@paradigm-terra/dsl": "file:../dsl"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

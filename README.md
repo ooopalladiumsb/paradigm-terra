@@ -25,8 +25,14 @@ verified reference implementations** of the canonical encoding in three language
   per-CAL effect staging (§7.1), in TypeScript (`@paradigm-terra/cal-reducer`)
   with Rust (`cal-reducer-rs`) and Go (`cal-reducer-go`) parity. Events are
   self-describing; gas pricing + validator logic remain separate phases. Golden
-  vectors `NORMATIVE` (reproduced byte-for-byte across all three). See
+  vectors `NORMATIVE` (reproduced byte-for-byte across all three); cross-language
+  differential fuzzer in `cal-reducer/fuzz/` (gate CLEAN, ~202k cases). See
   [`docs/notes/cal-reducer-design.md`](docs/notes/cal-reducer-design.md).
+- **CAL gas** (`@paradigm-terra/cal-gas`, TypeScript) — deterministic §9 pricing &
+  accounting: gas units (reusing the DSL cost model), nano-PTRA pricing, upfront
+  escrow (§9.3), and the per-outcome refund/retention bill (§9.4). Pure functions
+  the validator turns into event values. Golden vectors `PRE-NORMATIVE` (Rust/Go
+  parity next). See [`docs/notes/cal-gas-design.md`](docs/notes/cal-gas-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
 
@@ -57,7 +63,8 @@ dsl-go/         DSL v1.2 Go parity implementation (CGO_ENABLED=0, stdlib math/bi
 cal/            CAL skeleton: hashable foundation (@paradigm-terra/cal, TypeScript)
 cal-rs/         CAL skeleton Rust parity implementation (reuses canonical-rs + dsl-rs)
 cal-go/         CAL skeleton Go parity implementation (reuses canonical-go + dsl-go)
-cal-reducer/    CAL event reducer: apply(State,Event)→State (@paradigm-terra/cal-reducer, TS)
+cal-reducer/    CAL event reducer: apply(State,Event)→State (@paradigm-terra/cal-reducer, TS) + fuzz/
+cal-gas/        CAL gas pricing & accounting §9 (@paradigm-terra/cal-gas, TS)
 cal-reducer-rs/ CAL reducer Rust parity implementation (musl static, vendored u256)
 cal-reducer-go/ CAL reducer Go parity implementation (CGO_ENABLED=0, stdlib math/big)
 fuzz/           Cross-language differential fuzzing harness + gate reports
