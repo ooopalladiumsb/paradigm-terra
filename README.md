@@ -44,6 +44,16 @@ verified reference implementations** of the canonical encoding in three language
   Golden vectors `NORMATIVE` (reproduced byte-for-byte across all three; 120
   checks each). See
   [`docs/notes/cal-validator-design.md`](docs/notes/cal-validator-design.md).
+- **Orchestrator / node** (`@paradigm-terra/orchestrator`, TypeScript) — the
+  integration layer: folds a program of per-tick `{cal, trace}` submissions through
+  `cal.created`/`cal.signed` → `validate()` → `apply()` over one evolving `State`,
+  enforcing §6.1 serialization + §6.2 nonce streams, advancing ticks, and recording
+  the STATE_ROOT per event and the Canonical Encoding §6.3 global Merkle root per
+  tick, in TypeScript with Rust (`orchestrator-rs`) and Go (`orchestrator-go`)
+  parity. The event log is byte-for-byte replayable (§7.2). Golden vectors
+  `NORMATIVE` (reproduced byte-for-byte across all three; 69 checks). `EXPIRED_POST` /
+  `AGENT_BUSY` need a staged validator and are deferred. See
+  [`docs/notes/orchestrator-design.md`](docs/notes/orchestrator-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
 

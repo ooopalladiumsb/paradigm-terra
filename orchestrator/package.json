@@ -1,0 +1,30 @@
+{
+  "name": "@paradigm-terra/orchestrator",
+  "version": "0.1.0",
+  "description": "Deterministic multi-tick node/orchestrator (CAL Exec Spec §6 serialization, §7 reducer, CE §6.3 global Merkle root): folds a program of per-tick CAL submissions through the validator -> reducer pipeline over a single evolving State, records every per-event STATE_ROOT and the per-tick global stream Merkle root, and is byte-for-byte replayable. Pure; consumes execution traces (does not execute).",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.0.0" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
+  "files": ["dist", "src", "vectors", "LICENSE"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "vectors:generate": "node --import tsx scripts/generate-vectors.ts",
+    "vectors:verify": "node --import tsx --test test/golden-vectors.test.ts"
+  },
+  "dependencies": {
+    "@paradigm-terra/canonical": "file:../canonical",
+    "@paradigm-terra/cal": "file:../cal",
+    "@paradigm-terra/cal-reducer": "file:../cal-reducer",
+    "@paradigm-terra/cal-validator": "file:../validator"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

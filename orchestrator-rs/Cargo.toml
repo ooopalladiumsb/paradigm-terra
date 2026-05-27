@@ -1,0 +1,22 @@
+[package]
+name = "paradigm-terra-orchestrator"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust parity implementation of the Paradigm Terra orchestrator/node (CAL Exec Spec §6/§7 + Canonical Encoding v1.3 §6.3): folds a program of per-tick {cal, trace} submissions through validate -> apply over one evolving State, recording per-event STATE_ROOT and the per-tick global stream Merkle root, replayable. Verified byte-for-byte against the TypeScript reference golden vectors (@paradigm-terra/orchestrator)."
+
+[lib]
+name = "paradigm_terra_orchestrator"
+path = "src/lib.rs"
+
+# No build scripts / proc-macros (musl-static, no C toolchain). Composes the
+# existing parity crates: cal-rs (CAL_HASH/EVENT_HASH), cal-reducer-rs (apply,
+# genesis, state_root), validator-rs (validate), canonical-rs (Merkle + JCS),
+# cal-gas-rs (U256, shared with the validator's tick type).
+[dependencies]
+paradigm-terra-canonical = { path = "../canonical-rs" }
+paradigm-terra-cal = { path = "../cal-rs" }
+paradigm-terra-cal-gas = { path = "../cal-gas-rs" }
+paradigm-terra-cal-reducer = { path = "../cal-reducer-rs" }
+paradigm-terra-cal-validator = { path = "../validator-rs" }
