@@ -186,7 +186,8 @@ On any failure (precondition false, invariant false, step error, post-condition 
 | `STEP_ERROR` | Step verb failed (MCP error, contract revert). |
 | `POSTCOND_FALSE` | A step's post-condition evaluated FALSE. |
 | `INVARIANT_FALSE` | A top-level invariant evaluated FALSE. |
-| `OUT_OF_GAS` | Dynamic gas exhausted during execution. |
+| `INSUFFICIENT_ESCROW` | Agent balance below the §9.3 escrow requirement (`Flat_Validation_Fee + Max_Expected_Dynamic_Gas`) at the admission gate — rejected before VALIDATED, no PTRA taken. |
+| `OUT_OF_GAS` | Dynamic gas consumed during execution exceeds the escrowed `Max_Expected_Dynamic_Gas` budget (post-VALIDATED overrun). |
 | `UNKNOWN_ACTION` | `action` not in §2.3 registry. |
 | `BOUNDED_BLOCKED` | Action not in Bounded Mode whitelist (§10.2). |
 | `SCHEMA_MISMATCH` | MCP schema hash mismatch. |
@@ -445,10 +446,20 @@ state.ptra.balances[agent_id] ≥ Flat_Validation_Fee + Max_Expected_Dynamic_Gas
 ### 9.4. Refunds and slashing
 
 - FINALIZED: unused gas refunded; `Flat_Validation_Fee` retained by validators.
-- FAILED with `PRECOND_FALSE` or `CAPABILITY_DENIED`: full `Flat_Validation_Fee` retained (spam charge); no dynamic gas consumed (validation stopped before execution).
-- FAILED with `STEP_ERROR`, `POSTCOND_FALSE`, `INVARIANT_FALSE`, `OUT_OF_GAS`: `Flat_Validation_Fee` + actually consumed dynamic gas retained; rollback applied.
+- FAILED with `PRECOND_FALSE` or `CAPABILITY_DENIED`: `Flat_Validation_Fee` retained (spam charge); no dynamic gas consumed (validation stopped before execution).
+- FAILED with `STEP_ERROR`, `POSTCOND_FALSE`, `INVARIANT_FALSE`, `OUT_OF_GAS` (execution overrun): `Flat_Validation_Fee` + actually consumed dynamic gas retained; rollback applied.
+- FAILED with `UNKNOWN_ACTION`, `NONCE_MISMATCH`, `PRECOND_ERROR`, or `INSUFFICIENT_ESCROW` (the §9.3 escrow shortfall): **no PTRA consumed** — these are ingress-class (§9.1, the TON ingress fee is the anti-spam) or unaffordable, so no `Flat_Validation_Fee` can be retained.
 - EXPIRED before VALIDATED: no PTRA consumed (TON ingress fee only).
 - EXPIRED after VALIDATED: `Flat_Validation_Fee` retained.
+
+> **Spam-charge availability (§9.4 Tier-2 clarification, 2026-05-26).** The
+> precondition and capability gates are evaluated *before* the §9.3 escrow gate,
+> so at a `PRECOND_FALSE`/`CAPABILITY_DENIED` rejection the agent is not yet
+> guaranteed to hold `Flat_Validation_Fee`. The retained spam charge is therefore
+> `min(Flat_Validation_Fee, state.ptra.balances[agent_id])` — the most that can be
+> honestly taken before escrow. The full fee is guaranteed only once §9.3 passes.
+> This pre-VALIDATED charge is non-refundable, booked at the `cal.failed` event
+> (the CAL never reaches VALIDATED, so it is not escrowed at `cal.validated`).
 
 Retained gas flows to `state.treasury.collected_fees_window`, then distributed per Constitution §VIII.
 

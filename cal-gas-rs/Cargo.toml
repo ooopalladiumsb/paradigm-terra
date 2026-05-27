@@ -18,3 +18,5 @@ path = "src/lib.rs"
 [dependencies]
 paradigm-terra-canonical = { path = "../canonical-rs" }
 paradigm-terra-dsl = { path = "../dsl-rs" }
+# `hex` (pure Rust, no build script) only for the differential-fuzz harness bin.
+hex = "0.4"

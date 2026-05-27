@@ -79,14 +79,26 @@ fn parity_with_typescript_golden_vectors() {
         results.push((Some(res.terminal_stage) == out.get("terminal_stage").and_then(JcsValue::as_str), format!("{id}: terminal_stage")));
         results.push((res.reason_code == out.get("reason_code").and_then(JcsValue::as_str), format!("{id}: reason_code")));
 
-        results.push((ev_int(&res.events, "cal.validated", "fee_debited_ptra") == gstr(out, "fee_debited_ptra"), format!("{id}: fee_debited")));
+        // §9.3 upfront escrow: cal.validated carries escrow_ptra = fee + Max_Expected_Dynamic_Gas.
+        results.push((ev_int(&res.events, "cal.validated", "escrow_ptra") == gstr(out, "escrow_ptra"), format!("{id}: escrow")));
         let terminal = res.events.last().expect("terminal event");
+        // §9.4 Tier-2: the spam charge a pre-VALIDATED cal.failed carries (min(fee, balance)).
+        let terminal_fee = match terminal.get("fee_debited_ptra") {
+            Some(JcsValue::Int(s)) => Some(s.clone()),
+            _ => None,
+        };
+        results.push((terminal_fee == gstr(out, "terminal_fee_debited_ptra"), format!("{id}: terminal_fee_debited")));
         let gas_consumed = match terminal.get("gas_consumed_ptra") {
             Some(JcsValue::Int(s)) => Some(s.clone()),
             _ => None,
         };
         results.push((gas_consumed == gstr(out, "gas_consumed_ptra"), format!("{id}: gas_consumed")));
-        results.push((ev_int(&res.events, "cal.finalized", "gas_refunded_ptra") == gstr(out, "gas_refunded_ptra"), format!("{id}: gas_refunded")));
+        // The unused-gas refund the terminal event carries (finalized / post-VALIDATED failed / expired-post).
+        let gas_refunded = match terminal.get("gas_refunded_ptra") {
+            Some(JcsValue::Int(s)) => Some(s.clone()),
+            _ => None,
+        };
+        results.push((gas_refunded == gstr(out, "gas_refunded_ptra"), format!("{id}: gas_refunded")));
 
         let bill = out.get("bill").expect("bill");
         results.push((res.bill.fee_retained.to_dec_str() == gstr(bill, "fee_retained").unwrap_or_default(), format!("{id}: bill.fee_retained")));

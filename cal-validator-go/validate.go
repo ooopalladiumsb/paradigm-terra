@@ -70,27 +70,45 @@ func idPairs(calHash, agent string, nonce *big.Int) []canonical.Pair {
 	return []canonical.Pair{canonical.P("cal_hash", calHash), canonical.P("agent_id", agent), canonical.P("nonce", intVal(nonce))}
 }
 
-func failedEvent(calHash, agent string, nonce, tick *big.Int, reason, detail string, gasConsumed *big.Int) canonical.Value {
+// failedEvent builds a cal.failed event. feeDebited carries the §9.4 spam charge
+// the reducer debits at a pre-VALIDATED failure (present even when zero); pass
+// nil for post-VALIDATED (execFail) failures, where the fee was already escrowed
+// at cal.validated. gasRefunded carries the unused-gas refund on a post-VALIDATED
+// failure (§9.3); pass nil for pre-VALIDATED failures, which omit the field
+// (matches TS/Rust byte-for-byte).
+func failedEvent(calHash, agent string, nonce, tick *big.Int, reason, detail string, feeDebited, gasConsumed, gasRefunded *big.Int) canonical.Value {
 	p := idPairs(calHash, agent, nonce)
 	p = append(p,
 		canonical.P("event_type", "cal.failed"),
 		canonical.P("tick_failed", intVal(tick)),
 		canonical.P("reason_code", reason),
 		canonical.P("reason_detail", detail),
-		canonical.P("gas_consumed_ptra", intVal(gasConsumed)),
-		canonical.P("ton_ingress_fee_paid", intVal(big.NewInt(0))),
 	)
+	if feeDebited != nil {
+		p = append(p, canonical.P("fee_debited_ptra", intVal(feeDebited)))
+	}
+	p = append(p, canonical.P("gas_consumed_ptra", intVal(gasConsumed)))
+	if gasRefunded != nil {
+		p = append(p, canonical.P("gas_refunded_ptra", intVal(gasRefunded)))
+	}
+	p = append(p, canonical.P("ton_ingress_fee_paid", intVal(big.NewInt(0))))
 	return canonical.NewObject(p...)
 }
 
-func expiredEvent(calHash, agent string, nonce, tick *big.Int) canonical.Value {
+// expiredEvent builds a cal.expired event. gasRefunded carries the unused-gas
+// refund on a post-VALIDATED expiry (§9.3 = the full Max_Expected_Dynamic_Gas);
+// pass nil for a pre-VALIDATED expiry, which omits the field.
+func expiredEvent(calHash, agent string, nonce, tick, gasRefunded *big.Int) canonical.Value {
 	p := idPairs(calHash, agent, nonce)
 	p = append(p,
 		canonical.P("event_type", "cal.expired"),
 		canonical.P("tick_expired", intVal(tick)),
 		canonical.P("gas_consumed_ptra", intVal(big.NewInt(0))),
-		canonical.P("ton_ingress_fee_paid", intVal(big.NewInt(0))),
 	)
+	if gasRefunded != nil {
+		p = append(p, canonical.P("gas_refunded_ptra", intVal(gasRefunded)))
+	}
+	p = append(p, canonical.P("ton_ingress_fee_paid", intVal(big.NewInt(0))))
 	return canonical.NewObject(p...)
 }
 
@@ -164,12 +182,16 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		return &ValidationResult{Events: events, TerminalStage: stage, ReasonCode: reason, ReasonDetail: detail, Bill: bill}
 	}
 
-	preFail := func(reason, detail string) (*ValidationResult, error) {
-		bill, ge := calgas.Settle(calgas.FailedPrecond, cal, snapshot, big.NewInt(0))
+	// preFail: pre-VALIDATED FAILED (no cal.validated). The event carries
+	// fee_debited_ptra (= bill.FeeRetained), which the reducer debits at
+	// cal.failed (Tier-2 revision). FailedPrecond → §9.4 spam charge
+	// min(fee, balance); FailedNoCharge → §9.1 ingress-class, zero. events == bill.
+	preFail := func(reason, detail string, outcome calgas.Outcome) (*ValidationResult, error) {
+		bill, ge := calgas.Settle(outcome, cal, snapshot, big.NewInt(0))
 		if ge != nil {
 			return nil, ge
 		}
-		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, big.NewInt(0)))
+		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, bill.FeeRetained, big.NewInt(0), nil))
 		return mk("FAILED", reason, detail, bill), nil
 	}
 	execFail := func(reason, detail string, committed []canonical.Value) (*ValidationResult, error) {
@@ -181,18 +203,14 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		if ge != nil {
 			return nil, ge
 		}
-		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, bill.DynamicGasConsumed))
+		// post-VALIDATED: fee already escrowed; omit fee_debited_ptra (nil).
+		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, nil, bill.DynamicGasConsumed, bill.GasRefunded))
 		return mk("FAILED", reason, detail, bill), nil
 	}
 
-	// 1. action registered (§2.3)
+	// 1. action registered (§2.3) — malformed, §9.1 ingress-class, no charge
 	if !dsl.IsRegisteredAction(action) {
-		bill, ge := calgas.Settle(calgas.FailedPrecond, cal, snapshot, big.NewInt(0))
-		if ge != nil {
-			return nil, ge
-		}
-		events = append(events, failedEvent(calHash, agent, nonce, tick, "UNKNOWN_ACTION", "action not in §2.3 registry", big.NewInt(0)))
-		return mk("FAILED", "UNKNOWN_ACTION", "action not in §2.3 registry", bill), nil
+		return preFail("UNKNOWN_ACTION", "action not in §2.3 registry", calgas.FailedNoCharge)
 	}
 
 	// 2. expiration before VALIDATED (§3.4)
@@ -201,7 +219,7 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		if ge != nil {
 			return nil, ge
 		}
-		events = append(events, expiredEvent(calHash, agent, nonce, tick))
+		events = append(events, expiredEvent(calHash, agent, nonce, tick, nil))
 		return mk("EXPIRED", "", "expired before VALIDATED", bill), nil
 	}
 
@@ -209,42 +227,46 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 	snapNonceV, snOk := getIn(snapshot, []string{"cal", "nonces", agent})
 	expected := new(big.Int).Add(asBigField(snapNonceV, snOk), big.NewInt(1))
 	if nonce.Cmp(expected) != 0 {
-		return preFail("NONCE_MISMATCH", "nonce mismatch")
+		// malformed/replay, §9.1 ingress-class, no charge
+		return preFail("NONCE_MISMATCH", "nonce mismatch", calgas.FailedNoCharge)
 	}
 
-	// 4. owner-sig (§8.2)
+	// 4. owner-sig (§8.2) — §9.4 spam charge
 	if dsl.IsOwnerRequired(action) && !trace.OwnerSigPresent {
-		return preFail("CAPABILITY_DENIED", "owner_sig required")
+		return preFail("CAPABILITY_DENIED", "owner_sig required", calgas.FailedPrecond)
 	}
 
-	// 5. scope grant (§4.3)
+	// 5. scope grant (§4.3) — §9.4 spam charge
 	if !capabilityGrants(snapshot, agent, action) {
-		return preFail("CAPABILITY_DENIED", "agent lacks required scope")
+		return preFail("CAPABILITY_DENIED", "agent lacks required scope", calgas.FailedPrecond)
 	}
 
-	// 6. preconditions
+	// 6. preconditions — PRECOND_FALSE retains the §9.4 fee; PRECOND_ERROR is ingress-class, no charge
 	preNode, preOk := getIn(cal, []string{"preconditions"})
 	pre := evalExpr(preNode, preOk, dsl.ScopePrecondition, canonical.NewObject(canonical.P("state", snapshot)))
 	if pre.Code != "EVALUATION_TRUE" {
-		reason := "PRECOND_ERROR"
+		reason, outcome := "PRECOND_ERROR", calgas.FailedNoCharge
 		if pre.Code == "EVALUATION_FALSE" {
-			reason = "PRECOND_FALSE"
+			reason, outcome = "PRECOND_FALSE", calgas.FailedPrecond
 		}
-		return preFail(reason, "preconditions not satisfied")
+		return preFail(reason, "preconditions not satisfied", outcome)
 	}
 
-	// 7. escrow gate (§9.3)
+	// 7. escrow gate (§9.3) — agent cannot cover escrow, no PTRA can be taken.
+	//    §3.5: dedicated INSUFFICIENT_ESCROW, distinct from the gate-11 OUT_OF_GAS overrun.
 	if !calgas.CanValidate(cal, snapshot) {
-		return preFail("OUT_OF_GAS", "balance < escrow (§9.3)")
+		return preFail("INSUFFICIENT_ESCROW", "balance < escrow (§9.3)", calgas.FailedNoCharge)
 	}
 
-	// --- cal.validated ---
+	// --- cal.validated: §9.3 upfront deposit — escrow = fee + Max_Expected_Dynamic_Gas.
+	// The reducer debits the full escrow; the unused gas is refunded at the terminal
+	// event (gas_refunded_ptra) and the treasury keeps escrow − refund.
+	maxGas := calgas.MaxExpectedDynamicGas(cal, fee)
 	{
 		p := idPairs(calHash, agent, nonce)
-		p = append(p, canonical.P("event_type", "cal.validated"), canonical.P("fee_debited_ptra", intVal(fee)))
+		p = append(p, canonical.P("event_type", "cal.validated"), canonical.P("escrow_ptra", intVal(new(big.Int).Add(fee, maxGas))))
 		events = append(events, canonical.NewObject(p...))
 	}
-	maxGas := calgas.MaxExpectedDynamicGas(cal, fee)
 
 	// 8. expiration recheck (defensive; constant tick → never fires here)
 	if tick.Cmp(expiration) > 0 {
@@ -252,7 +274,7 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		if ge != nil {
 			return nil, ge
 		}
-		events = append(events, expiredEvent(calHash, agent, nonce, tick))
+		events = append(events, expiredEvent(calHash, agent, nonce, tick, bill.GasRefunded))
 		return mk("EXPIRED", "", "expired after VALIDATED", bill), nil
 	}
 
@@ -310,7 +332,7 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		if ge != nil {
 			return nil, ge
 		}
-		events = append(events, expiredEvent(calHash, agent, nonce, tick))
+		events = append(events, expiredEvent(calHash, agent, nonce, tick, bill.GasRefunded))
 		return mk("EXPIRED", "", "expired after VALIDATED", bill), nil
 	}
 

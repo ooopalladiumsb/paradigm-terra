@@ -114,7 +114,7 @@ func Apply(state, ev canonical.Value) (canonical.Value, *ApplyError) {
 		entry := canonical.O(
 			canonical.P("agent_id", agent),
 			canonical.P("stage", "CREATED"),
-			canonical.P("fee_debited_ptra", canonical.IntU(0)),
+			canonical.P("escrowed_ptra", canonical.IntU(0)),
 			canonical.P("gas_consumed_ptra", canonical.IntU(0)),
 			canonical.P("staged", canonical.A()),
 		)
@@ -148,16 +148,19 @@ func Apply(state, ev canonical.Value) (canonical.Value, *ApplyError) {
 		}
 		agent, _ := getIn(h, []string{"agent_id"})
 		agentS, _ := agent.(string)
-		fee, e := evUint(ev, "fee_debited_ptra")
+		// §9.3 upfront deposit: escrow = Flat_Validation_Fee + Max_Expected_Dynamic_Gas.
+		// The reducer debits the full escrow; the unused gas is refunded at the terminal
+		// event and the treasury keeps escrow − refund (= fee + consumed).
+		escrow, e := evUint(ev, "escrow_ptra")
 		if e != nil {
 			return nil, e
 		}
-		nb := new(big.Int).Sub(u256At(state, []string{"ptra", "balances", agentS}), fee)
+		nb := new(big.Int).Sub(u256At(state, []string{"ptra", "balances", agentS}), escrow)
 		if nb.Sign() < 0 {
 			return nil, aerr("INSUFFICIENT_BALANCE")
 		}
 		s := setIn(state, []string{"ptra", "balances", agentS}, intVal(nb))
-		s = setIn(s, []string{"cal", "in_flight", ch, "fee_debited_ptra"}, intVal(fee))
+		s = setIn(s, []string{"cal", "in_flight", ch, "escrowed_ptra"}, intVal(escrow))
 		return setIn(s, []string{"cal", "in_flight", ch, "stage"}, "VALIDATED"), nil
 
 	case "cal.executed":
@@ -215,8 +218,10 @@ func Apply(state, ev canonical.Value) (canonical.Value, *ApplyError) {
 		}
 		agentV, _ := getIn(h, []string{"agent_id"})
 		agent, _ := agentV.(string)
-		fee := u256At(state, []string{"cal", "in_flight", ch, "fee_debited_ptra"})
-		gas := u256At(state, []string{"cal", "in_flight", ch, "gas_consumed_ptra"})
+		// Refund the unused gas from the escrow; the treasury keeps escrow − refund
+		// (= Flat_Validation_Fee + consumed gas). The agent's net debit equals the
+		// treasury's gain.
+		escrowed := u256At(state, []string{"cal", "in_flight", ch, "escrowed_ptra"})
 		refund, e := optUint(ev, "gas_refunded_ptra")
 		if e != nil {
 			return nil, e
@@ -240,7 +245,7 @@ func Apply(state, ev canonical.Value) (canonical.Value, *ApplyError) {
 			}
 			s = setIn(s, []string{"ptra", "balances", agent}, intVal(nb))
 		}
-		retained := new(big.Int).Sub(new(big.Int).Add(fee, gas), refund)
+		retained := new(big.Int).Sub(escrowed, refund)
 		if retained.Sign() < 0 {
 			return nil, aerr("UNDERFLOW")
 		}
@@ -262,13 +267,58 @@ func Apply(state, ev canonical.Value) (canonical.Value, *ApplyError) {
 		}
 		agentV, _ := getIn(h, []string{"agent_id"})
 		agent, _ := agentV.(string)
-		fee := u256At(state, []string{"cal", "in_flight", ch, "fee_debited_ptra"})
-		gas := u256At(state, []string{"cal", "in_flight", ch, "gas_consumed_ptra"})
-		ns, fe := addFees(state, new(big.Int).Add(fee, gas))
-		if fe != nil {
-			return nil, fe
+		stage := stageOf(h)
+		// Staged effects are discarded (all-or-nothing, §3.5). The fee/gas settlement
+		// splits by whether the CAL escrowed.
+		s := state
+		if stage == "CREATED" || stage == "SIGNED" {
+			// Pre-VALIDATED: no escrow was ever taken (no cal.validated). §9.4 charges a
+			// spam fee on PRECOND_FALSE/CAPABILITY_DENIED — the event carries it
+			// (min(fee, balance), baked by the validator); debit it and retain it.
+			// No-charge / ingress-class failures carry 0.
+			chargeNow, ce := optUint(ev, "fee_debited_ptra")
+			if ce != nil {
+				return nil, ce
+			}
+			if chargeNow.Sign() > 0 {
+				nb := new(big.Int).Sub(u256At(s, []string{"ptra", "balances", agent}), chargeNow)
+				if nb.Sign() < 0 {
+					return nil, aerr("INSUFFICIENT_BALANCE")
+				}
+				s = setIn(s, []string{"ptra", "balances", agent}, intVal(nb))
+			}
+			ns, fe := addFees(s, chargeNow)
+			if fe != nil {
+				return nil, fe
+			}
+			s = ns
+		} else {
+			// Post-VALIDATED: the escrow (fee + maxGas) was debited at cal.validated.
+			// Refund the unused gas; the treasury keeps escrow − refund (= fee +
+			// consumed). Same arithmetic as cal.finalized, but staged effects drop.
+			escrowed := u256At(state, []string{"cal", "in_flight", ch, "escrowed_ptra"})
+			refund, re := optUint(ev, "gas_refunded_ptra")
+			if re != nil {
+				return nil, re
+			}
+			if refund.Sign() > 0 {
+				nb := new(big.Int).Add(u256At(s, []string{"ptra", "balances", agent}), refund)
+				if nb.Cmp(uint256Max) > 0 {
+					return nil, aerr("OVERFLOW")
+				}
+				s = setIn(s, []string{"ptra", "balances", agent}, intVal(nb))
+			}
+			retained := new(big.Int).Sub(escrowed, refund)
+			if retained.Sign() < 0 {
+				return nil, aerr("UNDERFLOW")
+			}
+			ns, fe := addFees(s, retained)
+			if fe != nil {
+				return nil, fe
+			}
+			s = ns
 		}
-		s := bumpNonce(ns, agent)
+		s = bumpNonce(s, agent)
 		return deleteIn(s, []string{"cal", "in_flight", ch}), nil
 
 	case "ptra.transferred":

@@ -88,7 +88,7 @@ function applyEvent(state: State, ev: Event): State {
       return setIn(state, ["cal", "in_flight", ch], {
         agent_id: agent,
         stage: "CREATED",
-        fee_debited_ptra: 0n,
+        escrowed_ptra: 0n,
         gas_consumed_ptra: 0n,
         staged: [],
       }) as State;
@@ -104,10 +104,13 @@ function applyEvent(state: State, ev: Event): State {
       const h = requireFlight(state, ch);
       if (h["stage"] !== "SIGNED") throw new ApplyError("BAD_STAGE", `${ch}:${String(h["stage"])}`);
       const agent = h["agent_id"] as string;
-      const fee = reqUint(ev, "fee_debited_ptra");
-      if (bal(state, agent) < fee) throw new ApplyError("INSUFFICIENT_BALANCE", agent);
-      let s = setIn(state, ["ptra", "balances", agent], bal(state, agent) - fee) as State;
-      s = setIn(s, ["cal", "in_flight", ch, "fee_debited_ptra"], fee) as State;
+      // §9.3 upfront deposit: the agent escrows the full Flat_Validation_Fee +
+      // Max_Expected_Dynamic_Gas at VALIDATED; the unused gas is refunded at the
+      // terminal event and the treasury keeps escrow − refund (= fee + consumed).
+      const escrow = reqUint(ev, "escrow_ptra");
+      if (bal(state, agent) < escrow) throw new ApplyError("INSUFFICIENT_BALANCE", agent);
+      let s = setIn(state, ["ptra", "balances", agent], bal(state, agent) - escrow) as State;
+      s = setIn(s, ["cal", "in_flight", ch, "escrowed_ptra"], escrow) as State;
       return setIn(s, ["cal", "in_flight", ch, "stage"], "VALIDATED") as State;
     }
     case "cal.executed": {
@@ -131,13 +134,16 @@ function applyEvent(state: State, ev: Event): State {
       const h = requireFlight(state, ch);
       if (h["stage"] !== "SETTLED") throw new ApplyError("BAD_STAGE", `${ch}:${String(h["stage"])}`);
       const agent = h["agent_id"] as string;
-      const fee = h["fee_debited_ptra"] as bigint;
-      const gas = h["gas_consumed_ptra"] as bigint;
+      // Refund the unused gas from the escrow; the treasury keeps escrow − refund
+      // (= Flat_Validation_Fee + consumed gas). Conserves: the agent's net debit
+      // (escrow − refund) equals the treasury's gain.
+      const escrowed = h["escrowed_ptra"] as bigint;
       const refund = optUint(ev, "gas_refunded_ptra");
       let s: State = state;
       for (const d of h["staged"] as Json[]) s = applyDeltaJson(s, d); // commit
       if (refund > 0n) s = setIn(s, ["ptra", "balances", agent], bal(s, agent) + refund) as State;
-      s = addFees(s, fee + gas - refund);
+      if (refund > escrowed) throw new ApplyError("UNDERFLOW", ch); // refund can't exceed the escrow
+      s = addFees(s, escrowed - refund);
       s = bumpNonce(s, agent);
       return deleteIn(s, ["cal", "in_flight", ch]) as State;
     }
@@ -146,9 +152,30 @@ function applyEvent(state: State, ev: Event): State {
       const ch = reqStr(ev, "cal_hash");
       const h = requireFlight(state, ch);
       const agent = h["agent_id"] as string;
-      const fee = h["fee_debited_ptra"] as bigint;
-      const gas = h["gas_consumed_ptra"] as bigint;
-      let s = addFees(state, fee + gas); // staged effects discarded
+      const stage = h["stage"];
+      // Staged effects are discarded (all-or-nothing, §3.5). The fee/gas settlement
+      // splits by whether the CAL escrowed:
+      let s: State = state;
+      if (stage === "CREATED" || stage === "SIGNED") {
+        // Pre-VALIDATED: no escrow was ever taken (no cal.validated). §9.4 charges a
+        // spam fee on PRECOND_FALSE/CAPABILITY_DENIED — the event carries it
+        // (min(fee, balance), baked by the validator); debit it and retain it.
+        // No-charge / ingress-class failures carry 0.
+        const chargeNow = optUint(ev, "fee_debited_ptra");
+        if (bal(s, agent) < chargeNow) throw new ApplyError("INSUFFICIENT_BALANCE", agent);
+        if (chargeNow > 0n) s = setIn(s, ["ptra", "balances", agent], bal(s, agent) - chargeNow) as State;
+        s = addFees(s, chargeNow);
+      } else {
+        // Post-VALIDATED: the escrow (fee + maxGas) was debited at cal.validated.
+        // Refund the unused gas; the treasury keeps escrow − refund (= fee +
+        // consumed). Same arithmetic as cal.finalized, but staged effects are
+        // dropped instead of committed.
+        const escrowed = h["escrowed_ptra"] as bigint;
+        const refund = optUint(ev, "gas_refunded_ptra");
+        if (refund > 0n) s = setIn(s, ["ptra", "balances", agent], bal(s, agent) + refund) as State;
+        if (refund > escrowed) throw new ApplyError("UNDERFLOW", ch); // refund can't exceed the escrow
+        s = addFees(s, escrowed - refund);
+      }
       s = bumpNonce(s, agent);
       return deleteIn(s, ["cal", "in_flight", ch]) as State;
     }

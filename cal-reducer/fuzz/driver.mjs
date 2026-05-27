@@ -107,18 +107,27 @@ function genCase() {
     if (fl) {
       if (chance(0.1)) {
         // invalid: wrong-stage transition (terminates the fold with BAD_STAGE)
-        events.push({ event_type: "cal.validated", cal_hash: fl.cal, fee_debited_ptra: randBig(20) });
+        events.push({ event_type: "cal.validated", cal_hash: fl.cal, escrow_ptra: randBig(20) });
         break;
       }
       if (chance(0.2)) {
-        // terminate validly
-        events.push({ event_type: chance(0.5) ? "cal.failed" : "cal.expired", cal_hash: fl.cal });
+        // terminate validly. Pre-VALIDATED: a cal.failed may carry the §9.4 Tier-2
+        // spam charge (fee_debited_ptra) the reducer debits now (bounded well below
+        // funding). Post-VALIDATED: the escrow was taken at cal.validated, so the
+        // terminal event refunds the unused gas (treasury keeps escrow − refund).
+        const ev = { event_type: chance(0.5) ? "cal.failed" : "cal.expired", cal_hash: fl.cal };
+        if (fl.stage === "CREATED" || fl.stage === "SIGNED") {
+          if (ev.event_type === "cal.failed" && chance(0.6)) ev.fee_debited_ptra = randBig(28);
+        } else if (chance(0.6)) {
+          ev.gas_refunded_ptra = randBig(18);
+        }
+        events.push(ev);
         inFlight.delete(agent);
         continue;
       }
       const et = NEXT[fl.stage];
       const ev = { event_type: et, cal_hash: fl.cal };
-      if (et === "cal.validated") ev.fee_debited_ptra = chance(0.05) ? randBig(96) : randBig(28);
+      if (et === "cal.validated") ev.escrow_ptra = chance(0.05) ? randBig(96) : randBig(28);
       if (et === "cal.executed") {
         ev.gas_consumed_ptra = randBig(28);
         ev.effects = [{ ns: "treasury", op: "add", path: ["nav"], value: randBig(20) }];

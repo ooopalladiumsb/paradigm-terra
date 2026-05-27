@@ -90,13 +90,9 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         bill,
     };
 
-    // 1. action registered (§2.3)
+    // 1. action registered (§2.3) — malformed, §9.1 ingress-class, no charge
     if !is_registered_action(&action) {
-        let bill = settle(GasOutcome::FailedPrecond, cal, snapshot, &U256::ZERO)?;
-        let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
-        p.extend([("event_type", si("cal.failed")), ("tick_failed", ii(&tick)), ("reason_code", si("UNKNOWN_ACTION")), ("reason_detail", si("action not in §2.3 registry")), ("gas_consumed_ptra", ii(&U256::ZERO)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
-        events.push(JcsValue::object(p));
-        return Ok(mk(events, "FAILED", Some("UNKNOWN_ACTION"), "action not in §2.3 registry".into(), bill));
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "UNKNOWN_ACTION", "action not in §2.3 registry", GasOutcome::FailedNoCharge);
     }
 
     // 2. expiration before VALIDATED (§3.4) — no PTRA
@@ -108,48 +104,55 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         return Ok(mk(events, "EXPIRED", None, "expired before VALIDATED".into(), bill));
     }
 
-    // 3. nonce (§6.2)
+    // 3. nonce (§6.2) — malformed/replay, §9.1 ingress-class, no charge
     let expected = as_big(get_in(snapshot, &["cal", "nonces", &agent]), U256::ZERO).checked_add(&U256::from_u64(1)).expect("nonce overflow");
     if nonce != expected {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "NONCE_MISMATCH", "nonce mismatch");
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "NONCE_MISMATCH", "nonce mismatch", GasOutcome::FailedNoCharge);
     }
 
-    // 4. owner-sig (§8.2)
+    // 4. owner-sig (§8.2) — §9.4 spam charge
     if is_owner_required(&action) && !trace.owner_sig_present {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "owner_sig required");
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond);
     }
 
-    // 5. scope grant (§4.3)
+    // 5. scope grant (§4.3) — §9.4 spam charge
     if !capability_grants(snapshot, &agent, &action) {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "agent lacks required scope");
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "agent lacks required scope", GasOutcome::FailedPrecond);
     }
 
-    // 6. preconditions
+    // 6. preconditions — PRECOND_FALSE retains the §9.4 fee; PRECOND_ERROR is ingress-class, no charge
     let pre = eval_expr(get_in(cal, &["preconditions"]), Scope::Precondition, &Bindings { state: Some(snapshot.clone()), ..Default::default() });
     if !is_true(&pre) {
-        let reason = if pre.code == "EVALUATION_FALSE" { "PRECOND_FALSE" } else { "PRECOND_ERROR" };
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, reason, "preconditions not satisfied");
+        let (reason, outcome) = if pre.code == "EVALUATION_FALSE" {
+            ("PRECOND_FALSE", GasOutcome::FailedPrecond)
+        } else {
+            ("PRECOND_ERROR", GasOutcome::FailedNoCharge)
+        };
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, reason, "preconditions not satisfied", outcome);
     }
 
-    // 7. escrow gate (§9.3)
+    // 7. escrow gate (§9.3) — agent cannot cover escrow, no PTRA can be taken.
+    //    §3.5: dedicated INSUFFICIENT_ESCROW, distinct from the gate-11 OUT_OF_GAS overrun.
     if !can_validate(cal, snapshot) {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "OUT_OF_GAS", "balance < escrow (§9.3)");
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "INSUFFICIENT_ESCROW", "balance < escrow (§9.3)", GasOutcome::FailedNoCharge);
     }
 
-    // --- cal.validated ---
+    // --- cal.validated: §9.3 upfront deposit — escrow = fee + Max_Expected_Dynamic_Gas.
+    // The reducer debits the full escrow; the unused gas is refunded at the terminal
+    // event (gas_refunded_ptra) and the treasury keeps escrow − refund.
+    let max_gas = max_expected_dynamic_gas(cal, fee);
     {
         let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
         p.push(("event_type", si("cal.validated")));
-        p.push(("fee_debited_ptra", ii(&fee)));
+        p.push(("escrow_ptra", ii(&fee.checked_add(&max_gas).expect("escrow overflow"))));
         events.push(JcsValue::object(p));
     }
-    let max_gas = max_expected_dynamic_gas(cal, fee);
 
     // 8. expiration recheck (defensive; constant tick → never fires here)
     if tick > expiration {
         let bill = settle(GasOutcome::ExpiredPost, cal, snapshot, &U256::ZERO)?;
         let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
-        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
+        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
         return Ok(mk(events, "EXPIRED", None, "expired after VALIDATED".into(), bill));
     }
@@ -201,7 +204,7 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
     if tick > expiration {
         let bill = settle(GasOutcome::ExpiredPost, cal, snapshot, &U256::ZERO)?;
         let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
-        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
+        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
         return Ok(mk(events, "EXPIRED", None, "expired after VALIDATED".into(), bill));
     }
@@ -237,8 +240,11 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
     Ok(mk(events, "FINALIZED", None, String::new(), bill))
 }
 
-/// Pre-validation FAILED (gates 3–7): no cal.validated emitted, so the reducer
-/// moves no PTRA; the bill is the intended §9.4 FAILED_PRECOND settlement.
+/// Pre-VALIDATED FAILED (gates 1, 3–7): no cal.validated fires. The cal.failed
+/// event carries `fee_debited_ptra` (= the bill's fee_retained), which the
+/// reducer debits at cal.failed (Tier-2 revision). `FailedPrecond` retains the
+/// §9.4 spam charge min(fee, balance); `FailedNoCharge` (malformed/replay/escrow
+/// shortfall) is §9.1 ingress-class and retains nothing. events == bill either way.
 #[allow(clippy::too_many_arguments)]
 fn pre_fail(
     events: &mut Vec<JcsValue>,
@@ -250,14 +256,16 @@ fn pre_fail(
     tick: &U256,
     reason: &'static str,
     detail: &str,
+    outcome: GasOutcome,
 ) -> Result<ValidationResult, GasError> {
-    let bill = settle(GasOutcome::FailedPrecond, cal, snapshot, &U256::ZERO)?;
+    let bill = settle(outcome, cal, snapshot, &U256::ZERO)?;
     let mut p = id_pairs(cal_hash, agent, nonce);
     p.extend([
         ("event_type", si("cal.failed")),
         ("tick_failed", ii(tick)),
         ("reason_code", si(reason)),
         ("reason_detail", si(detail)),
+        ("fee_debited_ptra", ii(&bill.fee_retained)),
         ("gas_consumed_ptra", ii(&U256::ZERO)),
         ("ton_ingress_fee_paid", ii(&U256::ZERO)),
     ]);
@@ -288,6 +296,7 @@ fn exec_fail(
         ("reason_code", si(reason)),
         ("reason_detail", si(detail)),
         ("gas_consumed_ptra", ii(&bill.dynamic_gas_consumed)),
+        ("gas_refunded_ptra", ii(&bill.gas_refunded)),
         ("ton_ingress_fee_paid", ii(&U256::ZERO)),
     ]);
     events.push(JcsValue::object(p));

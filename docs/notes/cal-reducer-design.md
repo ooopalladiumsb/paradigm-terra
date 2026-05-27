@@ -99,6 +99,12 @@ Delta = { ns: "<namespace>", op: "set" | "add" | "sub" | "delete",
   **stages** these (does not touch committed namespaces) until finalize.
 - `cal.validated` carries `fee_debited_ptra` (computed by the gas phase). The reducer
   debits it immediately (committed — it is the non-refundable anti-spam charge, §9.4).
+- `cal.failed` / `cal.expired` for a **pre-VALIDATED** CAL (stage `CREATED`/`SIGNED`)
+  carries `fee_debited_ptra` too — the §9.4 spam charge that was never escrowed
+  because no `cal.validated` fired. The reducer debits it from the agent and retains
+  it at the terminal event (§9.4 Tier-2 revision, 2026-05-26). The validator bakes in
+  `min(fee, balance)`, so the debit never underflows; a no-charge failure
+  (`UNKNOWN_ACTION`/`NONCE_MISMATCH`/`PRECOND_ERROR`/escrow shortfall) carries `0`.
 - `cal.finalized` carries `gas_refunded_ptra` and the receipt fields (§5.1).
 - Mirrored externals `ptra.transferred`, `oracle.feed_submitted` (§7.4) carry their deltas
   and apply **immediately** (they are external facts, not staged).
@@ -125,7 +131,7 @@ mutation. `H = in_flight[cal_hash]`.
 | `cal.executed` | `H.stage == VALIDATED` | `H.stage = EXECUTED`; `H.staged = effects`; `H.gas_consumed_ptra = gas_consumed_ptra` |
 | `cal.settled` | `H.stage == EXECUTED` | `H.stage = SETTLED` |
 | `cal.finalized` | `H.stage == SETTLED` | **commit** `H.staged` to namespaces; `balances[agent_id] += gas_refunded_ptra`; `treasury.collected_fees_window += (H.fee_debited_ptra + H.gas_consumed_ptra − gas_refunded_ptra)`; `nonces[agent_id] += 1`; `delete in_flight[cal_hash]` |
-| `cal.failed` / `cal.expired` | `H.stage` non-terminal | **discard** `H.staged`; `treasury.collected_fees_window += (H.fee_debited_ptra + H.gas_consumed_ptra)`; `nonces[agent_id] += 1`; `delete in_flight[cal_hash]` |
+| `cal.failed` / `cal.expired` | `H.stage` non-terminal | **discard** `H.staged`; if `H.stage ∈ {CREATED, SIGNED}` debit the event's `fee_debited_ptra` (= `chargeNow`, the §9.4 spam charge, never escrowed pre-VALIDATED) from `balances[agent_id]` — else `chargeNow = 0`; `treasury.collected_fees_window += (H.fee_debited_ptra + H.gas_consumed_ptra + chargeNow)`; `nonces[agent_id] += 1`; `delete in_flight[cal_hash]` |
 | `ptra.transferred` | — | apply carried deltas to `ptra.balances` (lazy-init absent ⇒ 0) |
 | `oracle.feed_submitted` | — | `oracles.feeds[symbol] = aggregated` (value carried) |
 | `tick.advanced` | `new_tick > tick.current` | `tick.current = new_tick`; recompute `failure_mode.is_bounded_mode` (§9) |
@@ -138,12 +144,16 @@ fold's behavior on error is fixed in §7.
 
 ## 6. All-or-nothing via staging (§3.5)
 
-Committed namespaces change only at **`cal.validated`** (fee debit, non-refundable) and
-**`cal.finalized`** (commit staged step effects + gas refund). Between them, step effects
-live in `H.staged`. Rollback on `cal.failed`/`cal.expired` is therefore just *dropping the
-staged delta* — no `state.before`/`state.after` snapshot is needed in the reducer. (The
-spec's §7.1 sketch phrases this as "rollback state.after to state.before"; staging is the
-equivalent, reducer-friendly formulation and is the recommended model.)
+Committed namespaces change at **`cal.validated`** (fee debit, non-refundable),
+**`cal.finalized`** (commit staged step effects + gas refund), and — since the §9.4
+Tier-2 revision — at a **pre-VALIDATED `cal.failed`/`cal.expired`** (the spam-fee debit,
+also non-refundable, for a CAL rejected before it could escrow at `cal.validated`).
+Between validated and finalized, step effects live in `H.staged`. Rollback on
+`cal.failed`/`cal.expired` is therefore just *dropping the staged delta* (and, when
+pre-VALIDATED, charging the carried spam fee) — no `state.before`/`state.after` snapshot
+is needed in the reducer. (The spec's §7.1 sketch phrases the rollback as "rollback
+state.after to state.before"; staging is the equivalent, reducer-friendly formulation
+and is the recommended model.)
 
 ---
 

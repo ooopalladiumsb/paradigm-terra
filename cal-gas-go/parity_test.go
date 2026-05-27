@@ -51,7 +51,7 @@ func TestParityWithTypeScriptGoldenVectors(t *testing.T) {
 		t.Fatalf("expected at least 5 gas vectors, got %d", len(doc.Vectors))
 	}
 	checks := 0
-	outcomes := []Outcome{Finalized, FailedPrecond, FailedExec, ExpiredPre, ExpiredPost}
+	outcomes := []Outcome{Finalized, FailedPrecond, FailedNoCharge, FailedExec, ExpiredPre, ExpiredPost}
 
 	for _, v := range doc.Vectors {
 		cal, e1 := canonical.ParseCanonical(v.CalCanonical)

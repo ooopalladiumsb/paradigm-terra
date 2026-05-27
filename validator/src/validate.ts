@@ -45,7 +45,8 @@ export type ReasonCode =
   | "STEP_ERROR"
   | "POSTCOND_FALSE"
   | "INVARIANT_FALSE"
-  | "OUT_OF_GAS";
+  | "INSUFFICIENT_ESCROW" // §9.3 escrow gate: balance < fee + Max_Expected_Dynamic_Gas (pre-VALIDATED)
+  | "OUT_OF_GAS"; // §9.3 dynamic-gas overrun at execution (post-VALIDATED)
 
 export type Event = Record<string, Json>;
 
@@ -113,16 +114,31 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
     bill,
   });
 
-  // Pre-validation FAILED: fee retained intended (bill), but no cal.validated → the
-  // reducer moves no PTRA (design §6). Emits cal.failed only.
-  const preFail = (reason: ReasonCode, detail: string): ValidationResult => {
+  // Pre-VALIDATED FAILED that retains the §9.4 spam charge (PRECOND_FALSE,
+  // CAPABILITY_DENIED). No cal.validated fires, so the fee was never escrowed:
+  // the failure event carries `fee_debited_ptra` and the reducer debits it at
+  // cal.failed (Tier-2 revision). The amount is min(fee, balance) — the escrow
+  // gate (§9.3) runs *after* these gates, so the full fee is not yet guaranteed.
+  // events == bill: the event's fee_debited_ptra IS the bill's feeRetained.
+  const spamFail = (reason: ReasonCode, detail: string): ValidationResult => {
     const bill = settle("FAILED_PRECOND", cal, snapshot, 0n);
-    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
+    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, fee_debited_ptra: bill.feeRetained, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
+    return result("FAILED", reason, detail, bill);
+  };
+
+  // Pre-VALIDATED FAILED that moves no PTRA: malformed/replay submissions
+  // (UNKNOWN_ACTION, NONCE_MISMATCH), a precondition that errored rather than
+  // returned false (PRECOND_ERROR), or an agent that cannot even cover the
+  // escrow (§9.3). §9.4 charges only PRECOND_FALSE / CAPABILITY_DENIED; these
+  // are §9.1 ingress-class (TON ingress fee only). fee_debited_ptra = 0.
+  const noChargeFail = (reason: ReasonCode, detail: string): ValidationResult => {
+    const bill = settle("FAILED_NO_CHARGE", cal, snapshot, 0n);
+    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, fee_debited_ptra: 0n, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
 
   // 1. action registered (§2.3)
-  if (!isRegisteredAction(action)) return preFail("UNKNOWN_ACTION", `action ${JSON.stringify(action)} not in §2.3 registry`);
+  if (!isRegisteredAction(action)) return noChargeFail("UNKNOWN_ACTION", `action ${JSON.stringify(action)} not in §2.3 registry`);
 
   // 2. expiration before VALIDATED (§3.4) — no PTRA touched
   if (tick > expiration) {
@@ -133,36 +149,42 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
 
   // 3. nonce monotonicity (§6.2)
   const expectedNonce = asBig(getIn(snapshot, ["cal", "nonces", agent])) + 1n;
-  if (nonce !== expectedNonce) return preFail("NONCE_MISMATCH", `nonce ${nonce} != ${expectedNonce}`);
+  if (nonce !== expectedNonce) return noChargeFail("NONCE_MISMATCH", `nonce ${nonce} != ${expectedNonce}`);
 
-  // 4. owner co-signature for OWNER_REQUIRED_ACTIONS (§8.2)
-  if (isOwnerRequired(action) && !trace.ownerSigPresent) return preFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
+  // 4. owner co-signature for OWNER_REQUIRED_ACTIONS (§8.2) — §9.4 spam charge
+  if (isOwnerRequired(action) && !trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
 
-  // 5. scope grant (§4.3)
-  if (!capabilityGrants(snapshot, agent, action)) return preFail("CAPABILITY_DENIED", `agent lacks required scope for ${action}`);
+  // 5. scope grant (§4.3) — §9.4 spam charge
+  if (!capabilityGrants(snapshot, agent, action)) return spamFail("CAPABILITY_DENIED", `agent lacks required scope for ${action}`);
 
-  // 6. preconditions over the snapshot
+  // 6. preconditions over the snapshot — PRECOND_FALSE retains the §9.4 fee;
+  //    PRECOND_ERROR (a malformed/erroring expression) is ingress-class, no charge.
   const pre = evalExpr(getIn(cal, ["preconditions"]), "precondition", { state: snapshot });
   if (pre.code !== "EVALUATION_TRUE") {
-    const reason: ReasonCode = pre.code === "EVALUATION_FALSE" ? "PRECOND_FALSE" : "PRECOND_ERROR";
-    return preFail(reason, `preconditions ${pre.code}${pre.reason ? `/${pre.reason}` : ""}`);
+    const detail = `preconditions ${pre.code}${pre.reason ? `/${pre.reason}` : ""}`;
+    return pre.code === "EVALUATION_FALSE" ? spamFail("PRECOND_FALSE", detail) : noChargeFail("PRECOND_ERROR", detail);
   }
 
-  // 7. §9.3 escrow gate: balance ≥ Flat_Validation_Fee + Max_Expected_Dynamic_Gas
-  if (!canValidate(cal, snapshot)) return preFail("OUT_OF_GAS", `balance < escrow (§9.3)`);
+  // 7. §9.3 escrow gate: balance ≥ Flat_Validation_Fee + Max_Expected_Dynamic_Gas.
+  //    The agent cannot cover escrow, so no PTRA can be taken (no charge). Distinct
+  //    from the post-VALIDATED OUT_OF_GAS overrun (gate 11): this is the admission
+  //    shortfall, §3.5 reason code INSUFFICIENT_ESCROW.
+  if (!canValidate(cal, snapshot)) return noChargeFail("INSUFFICIENT_ESCROW", `balance < escrow (§9.3)`);
 
-  // --- cal.validated: fee debited ---
-  events.push({ event_type: "cal.validated", ...idBase(), fee_debited_ptra: fee });
-
+  // --- cal.validated: §9.3 upfront deposit — the agent escrows fee + Max_Expected_
+  // Dynamic_Gas. The reducer debits the full escrow; the unused gas is refunded at
+  // the terminal event (gas_refunded_ptra), and the treasury keeps escrow − refund.
   const maxGas = maxExpectedDynamicGas(cal, fee);
+  events.push({ event_type: "cal.validated", ...idBase(), escrow_ptra: fee + maxGas });
+
   const expirePost = (): ValidationResult => {
     const bill = settle("EXPIRED_POST", cal, snapshot, 0n);
-    events.push({ event_type: "cal.expired", ...idBase(), tick_expired: tick, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
+    events.push({ event_type: "cal.expired", ...idBase(), tick_expired: tick, gas_consumed_ptra: 0n, gas_refunded_ptra: bill.gasRefunded, ton_ingress_fee_paid: 0n });
     return result("EXPIRED", null, `expired after VALIDATED: tick ${tick} > expiration ${expiration}`, bill);
   };
   const execFail = (reason: ReasonCode, detail: string, committed: Json[]): ValidationResult => {
     const bill = settle("FAILED_EXEC", cal, snapshot, effectsBytes(committed));
-    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, gas_consumed_ptra: bill.dynamicGasConsumed, ton_ingress_fee_paid: 0n });
+    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, gas_consumed_ptra: bill.dynamicGasConsumed, gas_refunded_ptra: bill.gasRefunded, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
 

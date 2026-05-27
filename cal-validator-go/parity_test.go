@@ -24,9 +24,10 @@ type goldenDoc struct {
 		Output            struct {
 			EventTypes    []string `json:"event_types"`
 			TerminalStage string   `json:"terminal_stage"`
-			ReasonCode    *string  `json:"reason_code"`
-			FeeDebited    *string  `json:"fee_debited_ptra"`
-			GasConsumed   *string  `json:"gas_consumed_ptra"`
+			ReasonCode         *string `json:"reason_code"`
+			Escrow             *string `json:"escrow_ptra"`
+			TerminalFeeDebited *string `json:"terminal_fee_debited_ptra"`
+			GasConsumed        *string `json:"gas_consumed_ptra"`
 			GasRefunded   *string  `json:"gas_refunded_ptra"`
 			Bill          struct {
 				FeeRetained        string `json:"fee_retained"`
@@ -168,31 +169,48 @@ func TestParityWithTypeScriptGoldenVectors(t *testing.T) {
 			t.Errorf("%s: reason_code got %q want %v", v.ID, res.ReasonCode, o.ReasonCode)
 		}
 
-		feeGot, feeOk := evInt(res.Events, "cal.validated", "fee_debited_ptra")
+		// §9.3 upfront escrow: cal.validated carries escrow_ptra = fee + Max_Expected_Dynamic_Gas.
+		escGot, escOk := evInt(res.Events, "cal.validated", "escrow_ptra")
 		checks++
-		if !eqOpt(feeGot, feeOk, o.FeeDebited) {
-			t.Errorf("%s: fee_debited got %q(%v) want %v", v.ID, feeGot, feeOk, o.FeeDebited)
+		if !eqOpt(escGot, escOk, o.Escrow) {
+			t.Errorf("%s: escrow got %q(%v) want %v", v.ID, escGot, escOk, o.Escrow)
 		}
 
+		// Terminal-event economics: §9.4 Tier-2 pre-VALIDATED spam charge (fee_debited_ptra),
+		// the consumed gas, and the §9.3 unused-gas refund (gas_refunded_ptra).
+		tfGot, tfOk := "", false
 		gcGot, gcOk := "", false
+		grGot, grOk := "", false
 		if len(res.Events) > 0 {
 			if eo, ok := res.Events[len(res.Events)-1].(*canonical.Object); ok {
+				if v, ok := eo.Get("fee_debited_ptra"); ok {
+					if iv, ok := v.(canonical.Int); ok {
+						tfGot, tfOk = string(iv), true
+					}
+				}
 				if v, ok := eo.Get("gas_consumed_ptra"); ok {
 					if iv, ok := v.(canonical.Int); ok {
 						gcGot, gcOk = string(iv), true
 					}
 				}
+				if v, ok := eo.Get("gas_refunded_ptra"); ok {
+					if iv, ok := v.(canonical.Int); ok {
+						grGot, grOk = string(iv), true
+					}
+				}
 			}
+		}
+		checks++
+		if !eqOpt(tfGot, tfOk, o.TerminalFeeDebited) {
+			t.Errorf("%s: terminal_fee_debited got %q(%v) want %v", v.ID, tfGot, tfOk, o.TerminalFeeDebited)
 		}
 		checks++
 		if !eqOpt(gcGot, gcOk, o.GasConsumed) {
 			t.Errorf("%s: gas_consumed got %q(%v) want %v", v.ID, gcGot, gcOk, o.GasConsumed)
 		}
-
-		refGot, refOk := evInt(res.Events, "cal.finalized", "gas_refunded_ptra")
 		checks++
-		if !eqOpt(refGot, refOk, o.GasRefunded) {
-			t.Errorf("%s: gas_refunded got %q(%v) want %v", v.ID, refGot, refOk, o.GasRefunded)
+		if !eqOpt(grGot, grOk, o.GasRefunded) {
+			t.Errorf("%s: gas_refunded got %q(%v) want %v", v.ID, grGot, grOk, o.GasRefunded)
 		}
 
 		for _, c := range []struct {

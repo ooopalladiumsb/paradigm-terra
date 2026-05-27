@@ -51,11 +51,16 @@ test("golden validator vectors reproduce events, economics, and bill", () => {
     assert.equal(res.terminalStage, o.terminal_stage, `${v.id}: terminal_stage`);
     assert.equal(res.reasonCode, o.reason_code, `${v.id}: reason_code`);
 
-    assert.equal(num(res.events, "cal.validated", "fee_debited_ptra"), o.fee_debited_ptra, `${v.id}: fee_debited`);
+    // §9.3 upfront escrow: cal.validated carries escrow_ptra = fee + Max_Expected_Dynamic_Gas.
+    assert.equal(num(res.events, "cal.validated", "escrow_ptra"), o.escrow_ptra, `${v.id}: escrow`);
     const terminal = res.events[res.events.length - 1]!;
+    const tfd = typeof terminal["fee_debited_ptra"] === "bigint" ? (terminal["fee_debited_ptra"] as bigint).toString() : null;
+    assert.equal(tfd, o.terminal_fee_debited_ptra, `${v.id}: terminal_fee_debited`);
     const gc = typeof terminal["gas_consumed_ptra"] === "bigint" ? (terminal["gas_consumed_ptra"] as bigint).toString() : null;
     assert.equal(gc, o.gas_consumed_ptra, `${v.id}: gas_consumed`);
-    assert.equal(num(res.events, "cal.finalized", "gas_refunded_ptra"), o.gas_refunded_ptra, `${v.id}: gas_refunded`);
+    // The unused-gas refund the terminal event carries (finalized / post-VALIDATED failed / expired-post).
+    const gr = typeof terminal["gas_refunded_ptra"] === "bigint" ? (terminal["gas_refunded_ptra"] as bigint).toString() : null;
+    assert.equal(gr, o.gas_refunded_ptra, `${v.id}: gas_refunded`);
 
     assert.equal(res.bill.feeRetained.toString(), o.bill.fee_retained, `${v.id}: bill.feeRetained`);
     assert.equal(res.bill.dynamicGasConsumed.toString(), o.bill.dynamic_gas_consumed, `${v.id}: bill.consumed`);

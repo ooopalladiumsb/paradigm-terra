@@ -71,22 +71,43 @@ test("canValidate gates on covering the full escrow (§9.3)", () => {
 });
 
 test("settle: each bill is internally consistent (charge = fee + consumed)", () => {
-  for (const o of ["FINALIZED", "FAILED_EXEC", "FAILED_PRECOND", "EXPIRED_POST"] as const) {
+  for (const o of ["FINALIZED", "FAILED_EXEC", "FAILED_PRECOND", "FAILED_NO_CHARGE", "EXPIRED_POST"] as const) {
     const b = settle(o, cal(), state(10n ** 12n), 80n);
     assert.equal(b.totalAgentCharge, b.feeRetained + b.dynamicGasConsumed, `${o}: charge`);
   }
 });
 
-test("settle: EXPIRED_PRE charges nothing; PRECOND/EXPIRED_POST charge only the fee", () => {
+test("settle: EXPIRED_PRE and FAILED_NO_CHARGE move no PTRA (§9.1 ingress-class)", () => {
   const st = state(10n ** 12n);
-  const pre = settle("EXPIRED_PRE", cal(), st, 80n);
-  assert.deepEqual([pre.feeRetained, pre.dynamicGasConsumed, pre.gasRefunded, pre.totalAgentCharge], [0n, 0n, 0n, 0n]);
-  for (const o of ["FAILED_PRECOND", "EXPIRED_POST"] as const) {
+  for (const o of ["EXPIRED_PRE", "FAILED_NO_CHARGE"] as const) {
     const b = settle(o, cal(), st, 80n);
-    assert.equal(b.dynamicGasConsumed, 0n);
-    assert.equal(b.totalAgentCharge, 100000n); // flat fee only
-    assert.equal(b.gasRefunded, 100000n * 100n); // full max gas refunded
+    assert.deepEqual([b.feeRetained, b.dynamicGasConsumed, b.gasRefunded, b.totalAgentCharge], [0n, 0n, 0n, 0n], o);
   }
+});
+
+test("settle FAILED_PRECOND (§9.4 spam): full fee charged, nothing escrowed", () => {
+  // ample balance → full flat fee retained; no escrow was taken, so gasRefunded = 0.
+  const b = settle("FAILED_PRECOND", cal(), state(10n ** 12n), 80n);
+  assert.equal(b.feeRetained, 100000n);
+  assert.equal(b.dynamicGasConsumed, 0n);
+  assert.equal(b.gasRefunded, 0n);
+  assert.equal(b.totalAgentCharge, 100000n);
+});
+
+test("settle FAILED_PRECOND: spam charge capped at balance (min(fee, balance))", () => {
+  // balance below the flat fee (the §9.3 escrow gate runs after precond/capability):
+  // charge what is there, never more.
+  const b = settle("FAILED_PRECOND", cal(), state(30000n), 80n);
+  assert.equal(b.feeRetained, 30000n);
+  assert.equal(b.totalAgentCharge, 30000n);
+  assert.equal(b.gasRefunded, 0n);
+});
+
+test("settle EXPIRED_POST: fee already escrowed at cal.validated; max gas refunded", () => {
+  const b = settle("EXPIRED_POST", cal(), state(10n ** 12n), 80n);
+  assert.equal(b.dynamicGasConsumed, 0n);
+  assert.equal(b.totalAgentCharge, 100000n); // flat fee only
+  assert.equal(b.gasRefunded, 100000n * 100n); // full max gas refunded
 });
 
 test("settle FINALIZED: refund = maxGas − consumed; charge = fee + consumed", () => {

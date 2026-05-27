@@ -98,27 +98,59 @@ Full Constitution §V scope matrix / CAL Annex A, real Ed25519 verification, the
 MCP schema-hash check (§4.4), and Bounded-Mode whitelisting (§10) are **deferred**
 — same posture as every prior phase (crypto/external pinned later).
 
-## 6. Gas & the reducer-accounting gap
+## 6. Gas & the reducer-accounting reconciliation
 
 Gas comes entirely from [[../../cal-gas]]: `flatValidationFee`,
 `maxExpectedDynamicGas`, `gasUnits`, `toNano`, `canValidate`, `settle`. The
 result's `bill` is the **intended** §9.4 settlement.
 
-The emitted **events** realize only what the *frozen* reducer books:
+### 6.1 Pre-VALIDATED fee — CLOSED (§9.4 Tier-2 revision, 2026-05-26)
 
-- The reducer debits the fee at `cal.validated` and reads `gas_consumed_ptra`
-  from the in-flight record set at `cal.executed`.
-- Failures **before** `cal.validated` (gates 1–7) therefore move **no PTRA** via
-  the reducer, and failures before `cal.executed` (gates 8–11) charge the fee
-  only — even though §9.4 says `PRECOND_FALSE`/`CAPABILITY_DENIED` retain the fee
-  and `OUT_OF_GAS` retains fee + consumed gas.
+The original gap: failures before `cal.validated` (gates 1–7) emit no
+`cal.validated`, so the frozen reducer escrowed nothing and moved **no PTRA**,
+even though §9.4 charges the flat fee on `PRECOND_FALSE`/`CAPABILITY_DENIED`.
 
-This divergence is the item flagged "deferred to the validator phase" in the gas
-note. The reducer is NORMATIVE/frozen, so we do **not** change it now; instead
-the validator surfaces both views (`events` = reducer-realizable, `bill` =
-intended) and the golden pins both, making the gap explicit and testable. The
-§9.3 escrow gate (gate 7) has no dedicated `reason_code` in §3.5; it is reported
-as `OUT_OF_GAS` provisionally, to be reconciled at Conformance Freeze.
+Closed by a Tier-2 reducer revision plus a validator change:
+
+- The pre-VALIDATED `cal.failed` now carries `fee_debited_ptra`, and the reducer
+  debits it from the agent and retains it at the terminal event (it was never
+  escrowed). See [[cal-reducer-design]] §4/§5.
+- The charge is `min(fee, balance)` — the §9.3 escrow gate runs *after* the
+  precond/capability gates, so the full fee is not yet guaranteed; the validator
+  bakes the concrete (capped) amount into the event, so the reducer never
+  recomputes or underflows. `cal-gas.settle` mirrors this in `FAILED_PRECOND`.
+- **Spec-literal scope (decision 2026-05-26):** only `PRECOND_FALSE` and
+  `CAPABILITY_DENIED` charge. `UNKNOWN_ACTION`/`NONCE_MISMATCH` (malformed/replay,
+  §9.1 ingress-class), `PRECOND_ERROR` (a precondition that errored, not merely
+  returned false), and the §9.3 escrow shortfall (`OUT_OF_GAS`, agent cannot
+  cover escrow) retain **nothing** — modelled by the new `FAILED_NO_CHARGE`
+  outcome. For these, `events == bill` exactly (both zero).
+
+Net: for every **pre-VALIDATED** outcome, the events the reducer realizes now
+equal the intended `bill`.
+
+### 6.2 Post-VALIDATED consumed gas — CLOSED (2026-05-26)
+
+`cal.executed` (which records `gas_consumed_ptra` in the in-flight record) is
+emitted only *after* the step/post-condition/gas-overrun gates (9–11). So a
+failure at those gates emitted a `cal.failed` whose `gas_consumed_ptra` the
+reducer read from the in-flight record — still `0` because `cal.executed` never
+fired — while the `bill` (`FAILED_EXEC`) includes the consumed dynamic gas. The
+residue: the treasury realized the fee only, not the consumed gas.
+
+Closed by a reducer revision: for a stage-`VALIDATED` failure (i.e. before
+`cal.executed`), the reducer reads `gas_consumed_ptra` from the **event** — the
+validator already bakes `bill.dynamicGasConsumed` into the `cal.failed` event
+(self-describing, same posture as the §9.4 spam charge). `INVARIANT_FALSE` (gate
+13, after `cal.executed`) and the happy `FINALIZED` path are unchanged (they read
+the recorded value); `EXPIRED_POST` carries `0` either way. Net: for **every**
+`FAILED_EXEC` outcome the treasury now realizes `fee + consumed gas`, matching the
+bill. Pinned by `cal-reducer` golden `postvalidated_exec_fail_consumed_gas` and
+the round-trip test, reproduced byte-for-byte by Rust + Go.
+
+The §9.3 escrow gate (gate 7) now reports a dedicated `INSUFFICIENT_ESCROW`
+reason code (§3.5), distinct from the post-VALIDATED `OUT_OF_GAS` dynamic-gas
+overrun at gate 11 — the two were previously conflated under `OUT_OF_GAS`.
 
 ## 7. Events emitted (reducer-ready fields)
 
@@ -132,7 +164,9 @@ cal.settled    { cal_hash }
 cal.finalized  { cal_hash, agent_id, nonce, tick_finalized, gas_consumed_ptra,
                  gas_refunded_ptra, steps_applied, invariants_checked }
 cal.failed     { cal_hash, agent_id, nonce, tick_failed, reason_code,
-                 reason_detail, gas_consumed_ptra, ton_ingress_fee_paid }
+                 reason_detail, fee_debited_ptra?, gas_consumed_ptra, ton_ingress_fee_paid }
+                 // fee_debited_ptra present (§9.4 Tier-2) on a PRE-VALIDATED failure —
+                 // the spam charge min(fee, balance) the reducer debits; omitted post-VALIDATED.
 cal.expired    { cal_hash, agent_id, nonce, tick_expired, gas_consumed_ptra,
                  ton_ingress_fee_paid }
 ```

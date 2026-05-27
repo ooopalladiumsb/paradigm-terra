@@ -11,7 +11,7 @@ use paradigm_terra_canonical::jcs::{parse_canonical, JcsValue};
 
 const GOLDEN: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../cal-gas/vectors/golden.json"));
 
-const OUTCOMES: [&str; 5] = ["FINALIZED", "FAILED_PRECOND", "FAILED_EXEC", "EXPIRED_PRE", "EXPIRED_POST"];
+const OUTCOMES: [&str; 6] = ["FINALIZED", "FAILED_PRECOND", "FAILED_NO_CHARGE", "FAILED_EXEC", "EXPIRED_PRE", "EXPIRED_POST"];
 
 fn s<'a>(v: &'a JcsValue, key: &str) -> &'a str {
     v.get(key).and_then(JcsValue::as_str).unwrap_or_else(|| panic!("missing string field {key}"))
