@@ -76,13 +76,12 @@ func idPairs(calHash, agent string, nonce *big.Int) []canonical.Pair {
 // at cal.validated. gasRefunded carries the unused-gas refund on a post-VALIDATED
 // failure (§9.3); pass nil for pre-VALIDATED failures, which omit the field
 // (matches TS/Rust byte-for-byte).
-func failedEvent(calHash, agent string, nonce, tick *big.Int, reason, detail string, feeDebited, gasConsumed, gasRefunded *big.Int) canonical.Value {
+func failedEvent(calHash, agent string, nonce, tick *big.Int, reason string, feeDebited, gasConsumed, gasRefunded *big.Int) canonical.Value {
 	p := idPairs(calHash, agent, nonce)
 	p = append(p,
 		canonical.P("event_type", "cal.failed"),
 		canonical.P("tick_failed", intVal(tick)),
 		canonical.P("reason_code", reason),
-		canonical.P("reason_detail", detail),
 	)
 	if feeDebited != nil {
 		p = append(p, canonical.P("fee_debited_ptra", intVal(feeDebited)))
@@ -191,7 +190,7 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		if ge != nil {
 			return nil, ge
 		}
-		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, bill.FeeRetained, big.NewInt(0), nil))
+		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, bill.FeeRetained, big.NewInt(0), nil))
 		return mk("FAILED", reason, detail, bill), nil
 	}
 	execFail := func(reason, detail string, committed []canonical.Value) (*ValidationResult, error) {
@@ -204,7 +203,7 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 			return nil, ge
 		}
 		// post-VALIDATED: fee already escrowed; omit fee_debited_ptra (nil).
-		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, detail, nil, bill.DynamicGasConsumed, bill.GasRefunded))
+		events = append(events, failedEvent(calHash, agent, nonce, tick, reason, nil, bill.DynamicGasConsumed, bill.GasRefunded))
 		return mk("FAILED", reason, detail, bill), nil
 	}
 

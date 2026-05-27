@@ -2,8 +2,9 @@
  * Golden-vector verification for the validator. Rebuilds (cal, snapshot, trace)
  * from the stored canonical text, re-runs `validate`, and asserts the emitted
  * event sequence, terminal stage, reason code, economic event fields, and the
- * §9.4 bill all match. The Rust/Go ports must reproduce this. `reason_detail` is
- * informational and intentionally not asserted.
+ * §9.4 bill all match. The Rust/Go ports must reproduce this. `reason_detail` lives
+ * only on the returned result (never an emitted event field — a node hashes events
+ * into the CE §6.3 Merkle root), so it is informational and not asserted.
  */
 
 import assert from "node:assert/strict";

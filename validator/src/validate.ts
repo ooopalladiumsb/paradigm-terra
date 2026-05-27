@@ -122,7 +122,7 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
   // events == bill: the event's fee_debited_ptra IS the bill's feeRetained.
   const spamFail = (reason: ReasonCode, detail: string): ValidationResult => {
     const bill = settle("FAILED_PRECOND", cal, snapshot, 0n);
-    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, fee_debited_ptra: bill.feeRetained, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
+    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, fee_debited_ptra: bill.feeRetained, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
 
@@ -133,7 +133,7 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
   // are §9.1 ingress-class (TON ingress fee only). fee_debited_ptra = 0.
   const noChargeFail = (reason: ReasonCode, detail: string): ValidationResult => {
     const bill = settle("FAILED_NO_CHARGE", cal, snapshot, 0n);
-    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, fee_debited_ptra: 0n, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
+    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, fee_debited_ptra: 0n, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
 
@@ -184,7 +184,7 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
   };
   const execFail = (reason: ReasonCode, detail: string, committed: Json[]): ValidationResult => {
     const bill = settle("FAILED_EXEC", cal, snapshot, effectsBytes(committed));
-    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, reason_detail: detail, gas_consumed_ptra: bill.dynamicGasConsumed, gas_refunded_ptra: bill.gasRefunded, ton_ingress_fee_paid: 0n });
+    events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, gas_consumed_ptra: bill.dynamicGasConsumed, gas_refunded_ptra: bill.gasRefunded, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
 

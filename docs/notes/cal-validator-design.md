@@ -23,7 +23,7 @@ ValidationResult = {
   events:        Event[],          // ordered, reducer-ready stage events
   terminalStage: FINALIZED | FAILED | EXPIRED,
   reasonCode:    ReasonCode | null,   // non-null only for FAILED
-  reasonDetail:  string,
+  reasonDetail:  string,           // off-chain diagnostic ONLY — never an event field (§7)
   bill:          GasBill,          // intended §9.4 settlement (from cal-gas)
 }
 ```
@@ -164,9 +164,12 @@ cal.settled    { cal_hash }
 cal.finalized  { cal_hash, agent_id, nonce, tick_finalized, gas_consumed_ptra,
                  gas_refunded_ptra, steps_applied, invariants_checked }
 cal.failed     { cal_hash, agent_id, nonce, tick_failed, reason_code,
-                 reason_detail, fee_debited_ptra?, gas_consumed_ptra, ton_ingress_fee_paid }
+                 fee_debited_ptra?, gas_consumed_ptra, ton_ingress_fee_paid }
                  // fee_debited_ptra present (§9.4 Tier-2) on a PRE-VALIDATED failure —
                  // the spam charge min(fee, balance) the reducer debits; omitted post-VALIDATED.
+                 // reason_detail is deliberately NOT an event field: a node folds every event
+                 // into the CE §6.3 global Merkle root, so a free-form, port-divergent string
+                 // must never enter one. It lives only on ValidationResult (§2) for off-chain logs.
 cal.expired    { cal_hash, agent_id, nonce, tick_expired, gas_consumed_ptra,
                  ton_ingress_fee_paid }
 ```

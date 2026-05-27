@@ -4,8 +4,9 @@
  * Pins, for each (cal, snapshot, execution-trace): the ordered emitted
  * `event_type` sequence, the terminal stage, the `reason_code` (or null), the
  * economic event fields (escrow / terminal_fee_debited / gas_consumed /
- * gas_refunded), and the full §9.4 `bill`. `reason_detail` is human-facing and
- * intentionally NOT pinned (it may differ across ports). Inputs are stored as
+ * gas_refunded), and the full §9.4 `bill`. `reason_detail` is human-facing, lives
+ * only on the returned result (never an emitted event field — a node folds events
+ * into the CE §6.3 Merkle root), and is intentionally NOT pinned. Inputs are stored as
  * canonical-JSON text; all amounts are decimal strings (uint256). Promote
  * PRE-NORMATIVE → NORMATIVE once validator-rs and validator-go reproduce every
  * value byte-for-byte.
