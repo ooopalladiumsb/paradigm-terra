@@ -10,7 +10,8 @@ use paradigm_terra_cal_gas::{
     as_big, can_validate, effects_bytes, flat_validation_fee, gas_price, gas_units, get_in,
     max_expected_dynamic_gas, settle, to_nano, GasBill, GasError, Outcome as GasOutcome, U256,
 };
-use paradigm_terra_dsl::taxonomy::{is_owner_required, is_registered_action, required_scopes};
+use paradigm_terra_dsl::emergency::effective_invariants;
+use paradigm_terra_dsl::taxonomy::{is_bounded_allowed, is_owner_required, is_registered_action, required_scopes};
 use paradigm_terra_dsl::{run, Bindings, Outcome as DslOutcome, Scope, Version};
 
 use crate::trace::ExecutionTrace;
@@ -95,6 +96,12 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "UNKNOWN_ACTION", "action not in §2.3 registry", GasOutcome::FailedNoCharge);
     }
 
+    // 1.5. §10.2 Bounded-Mode admission gate — no-charge (ingress-class).
+    let bounded_mode = matches!(get_in(snapshot, &["failure_mode", "is_bounded_mode"]), Some(JcsValue::Bool(true)));
+    if bounded_mode && !is_bounded_allowed(&action) {
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "BOUNDED_BLOCKED", "action not in §10.2 Bounded-Mode whitelist", GasOutcome::FailedNoCharge);
+    }
+
     // 2. expiration before VALIDATED (§3.4) — no PTRA
     if tick > expiration {
         let bill = settle(GasOutcome::ExpiredPre, cal, snapshot, &U256::ZERO)?;
@@ -110,8 +117,9 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "NONCE_MISMATCH", "nonce mismatch", GasOutcome::FailedNoCharge);
     }
 
-    // 4. owner-sig (§8.2) — §9.4 spam charge
-    if is_owner_required(&action) && !trace.owner_sig_present {
+    // 4. owner-sig (§8.2) — §9.4 spam charge. §10.4: Bounded Mode escalates every
+    //    action to owner-required.
+    if (is_owner_required(&action) || bounded_mode) && !trace.owner_sig_present {
         return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond);
     }
 
@@ -209,11 +217,12 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         return Ok(mk(events, "EXPIRED", None, "expired after VALIDATED".into(), bill));
     }
 
-    // 13. invariants
-    let invariants: Vec<JcsValue> = match get_in(cal, &["invariants"]) {
+    // 13. invariants — Bounded Mode appends the DSL §7.1 / CAL §10.3 emergency set.
+    let declared: Vec<JcsValue> = match get_in(cal, &["invariants"]) {
         Some(JcsValue::Array(a)) => a.clone(),
         _ => Vec::new(),
     };
+    let invariants: Vec<JcsValue> = effective_invariants(&declared, bounded_mode);
     for inv in &invariants {
         let b = Bindings { before: Some(trace.state_before.clone()), after: Some(trace.state_after.clone()), ..Default::default() };
         let o = eval_expr(Some(inv), Scope::Invariant, &b);

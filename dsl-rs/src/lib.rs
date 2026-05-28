@@ -9,6 +9,7 @@
 //! reused from `paradigm-terra-canonical`.
 
 pub mod ast;
+pub mod emergency;
 pub mod errors;
 pub mod evaluate;
 pub mod hash;

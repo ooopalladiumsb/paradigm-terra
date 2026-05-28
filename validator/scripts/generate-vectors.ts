@@ -50,6 +50,34 @@ function calSend(extra: Obj = {}): Obj {
   };
 }
 
+/**
+ * §10.2 / §10.4 emergency CAL: oracles.submit_feed (whitelisted, not statically
+ * owner-required) shaped to satisfy the three §7.1 injected invariants when the
+ * trace's state.after preserves treasury.developer_fund_balance, treasury.nav,
+ * and failure_mode.is_bounded_mode = true.
+ */
+function calOracle(extra: Obj = {}): Obj {
+  return {
+    cal_version: "0.1.0",
+    action: "oracles.submit_feed",
+    agent_id: A,
+    nonce: 1n,
+    expiration_tick: 100n,
+    preconditions: { op: "gte", lhs: { var: `state.ptra.balances.${A}` }, rhs: { const: 0n } },
+    invariants: [],
+    steps: [
+      {
+        verb: "oracles.submit_feed",
+        params: { feed: "ton_usd", value: 1n },
+        post_conditions: [],
+      },
+    ],
+    receipt_required: true,
+    signatures: { operator_sig: SIG, owner_sig: SIG },
+    ...extra,
+  };
+}
+
 function calTreasury(extra: Obj = {}): Obj {
   return {
     cal_version: "0.1.0",
@@ -72,11 +100,11 @@ function calTreasury(extra: Obj = {}): Obj {
   };
 }
 
-function snap(opts: { balance?: bigint; nonce?: bigint; scopes?: string[]; price?: bigint } = {}): Obj {
-  const { balance = 10n ** 18n, nonce = 0n, scopes = ["ton_transfer"], price = 1000n } = opts;
+function snap(opts: { balance?: bigint; nonce?: bigint; scopes?: string[]; price?: bigint; bounded?: boolean } = {}): Obj {
+  const { balance = 10n ** 18n, nonce = 0n, scopes = ["ton_transfer"], price = 1000n, bounded = false } = opts;
   return {
     cal: { in_flight: {}, nonces: { [A]: nonce } },
-    failure_mode: { is_bounded_mode: false, capture_guard_counters: {} },
+    failure_mode: { is_bounded_mode: bounded, capture_guard_counters: {} },
     governance: { gas_price_nano_ptra_per_unit: price, genesis_validator_set: [], params: {} },
     oracles: { feeds: {} },
     ptra: { balances: { [A]: balance } },
@@ -94,6 +122,11 @@ const HAPPY_BEFORE: JcsValue = { x: 5n, treasury: { nav: 0n } };
 const HAPPY_AFTER: JcsValue = { x: 1n, treasury: { nav: 0n } };
 const TREASURY_BEFORE: JcsValue = { x: 5n, treasury: { nav: 0n } };
 const TREASURY_AFTER: JcsValue = { x: 1n, treasury: { nav: 5n } };
+// Bounded-mode invariant scope (DSL §7.1): treasury.developer_fund_balance and
+// treasury.nav must be non-decreasing, and failure_mode.is_bounded_mode = true.
+const BOUNDED_BEFORE: JcsValue = { treasury: { nav: 0n, developer_fund_balance: 100n }, failure_mode: { is_bounded_mode: true } };
+const BOUNDED_AFTER_OK: JcsValue = { treasury: { nav: 0n, developer_fund_balance: 100n }, failure_mode: { is_bounded_mode: true } };
+const BOUNDED_AFTER_BAD: JcsValue = { treasury: { nav: 0n, developer_fund_balance: 50n }, failure_mode: { is_bounded_mode: true } };
 
 function trace(opts: {
   tick?: bigint;
@@ -163,6 +196,34 @@ const specs: Spec[] = [
     trace: trace({}),
   },
   { id: "expired_pre", description: "current tick past expiration before VALIDATED → EXPIRED", cal: calSend(), snapshot: snap(), trace: trace({ tick: 200n }) },
+  {
+    id: "bounded_blocked",
+    description: "§10.2 bounded mode, action not in whitelist → BOUNDED_BLOCKED (no charge)",
+    cal: calSend(),
+    snapshot: snap({ bounded: true }),
+    trace: trace({}),
+  },
+  {
+    id: "bounded_sig_escalation",
+    description: "§10.4 bounded mode, whitelisted action without owner_sig → CAPABILITY_DENIED (spam-charge)",
+    cal: calOracle({ signatures: { operator_sig: SIG } }),
+    snapshot: snap({ bounded: true }),
+    trace: trace({ before: BOUNDED_BEFORE, after: BOUNDED_AFTER_OK, owner: false }),
+  },
+  {
+    id: "bounded_emergency_invariant_violated",
+    description: "§10.3 bounded mode, whitelisted, owner_sig, developer_fund decreased → INVARIANT_FALSE",
+    cal: calOracle(),
+    snapshot: snap({ bounded: true }),
+    trace: trace({ before: BOUNDED_BEFORE, after: BOUNDED_AFTER_BAD, owner: true }),
+  },
+  {
+    id: "bounded_whitelist_pass",
+    description: "§10 bounded mode, whitelisted + owner_sig + injected invariants hold → FINALIZED",
+    cal: calOracle(),
+    snapshot: snap({ bounded: true }),
+    trace: trace({ before: BOUNDED_BEFORE, after: BOUNDED_AFTER_OK, owner: true }),
+  },
 ];
 
 function traceToJcs(t: ExecutionTrace): JcsValue {
@@ -226,10 +287,10 @@ const doc = {
   meta: {
     package: "@paradigm-terra/cal-validator",
     version: "0.1.0",
-    spec_basis: "CAL Execution Specification v0.1.0-draft §3–§9 — lifecycle (§3), validator role (§4), nonce (§6), gas (§9). §9.3 upfront escrow (2026-05-27): cal.validated emits escrow_ptra = Flat_Validation_Fee + Max_Expected_Dynamic_Gas; the terminal event carries gas_refunded_ptra so the treasury keeps escrow − refund (= fee + consumed) for every post-VALIDATED outcome. §9.4 Tier-2: pre-VALIDATED PRECOND_FALSE/CAPABILITY_DENIED retain min(fee, balance) on cal.failed; UNKNOWN_ACTION/NONCE_MISMATCH/PRECOND_ERROR retain nothing. §3.5: the §9.3 escrow-admission shortfall reports a dedicated INSUFFICIENT_ESCROW reason code, distinct from the post-VALIDATED OUT_OF_GAS dynamic-gas overrun.",
+    spec_basis: "CAL Execution Specification v0.1.0-draft §3–§10 — lifecycle (§3), validator role (§4), nonce (§6), gas (§9), Bounded Mode (§10). §9.3 upfront escrow (2026-05-27): cal.validated emits escrow_ptra = Flat_Validation_Fee + Max_Expected_Dynamic_Gas; the terminal event carries gas_refunded_ptra so the treasury keeps escrow − refund (= fee + consumed) for every post-VALIDATED outcome. §9.4 Tier-2: pre-VALIDATED PRECOND_FALSE/CAPABILITY_DENIED retain min(fee, balance) on cal.failed; UNKNOWN_ACTION/NONCE_MISMATCH/PRECOND_ERROR retain nothing. §3.5: the §9.3 escrow-admission shortfall reports a dedicated INSUFFICIENT_ESCROW reason code, distinct from the post-VALIDATED OUT_OF_GAS dynamic-gas overrun. §10 (2026-05-28): when state.failure_mode.is_bounded_mode == true, the validator rejects any action absent from BOUNDED_MODE_WHITELIST with BOUNDED_BLOCKED (no-charge), escalates every action to owner-required per §10.4, and appends the DSL §7.1 emergency invariant set to the declared invariants per §10.3.",
     generated_at: new Date().toISOString(),
     status:
-      "NORMATIVE — generated by the TypeScript reference implementation under the §9.3 upfront-escrow model and verified byte-for-byte by the Rust (validator-rs) and Go (cal-validator-go) parity implementations on 2026-05-27 (the emitted event sequence, terminal stage, reason code, economic event fields escrow_ptra/terminal_fee_debited_ptra/gas_consumed_ptra/gas_refunded_ptra, and full §9.4 bill). Cross-language differential fuzzing clean (validator 100k+ cases per seed, 0 divergences).",
+      "NORMATIVE — generated by the TypeScript reference implementation under the §9.3 upfront-escrow model with §10 Bounded Mode admission gate, and verified byte-for-byte by the Rust (validator-rs) and Go (cal-validator-go) parity implementations on 2026-05-28 (the emitted event sequence, terminal stage, reason code, economic event fields escrow_ptra/terminal_fee_debited_ptra/gas_consumed_ptra/gas_refunded_ptra, and full §9.4 bill). Cross-language differential fuzzing clean (validator 100k+ cases per seed, 0 divergences).",
   },
   vectors,
 };

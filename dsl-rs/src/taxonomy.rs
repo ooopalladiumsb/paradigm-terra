@@ -52,6 +52,20 @@ pub fn is_owner_required(action: &str) -> bool {
     OWNER_REQUIRED_ACTIONS.contains(&action)
 }
 
+/// CAL §10.2 — actions admissible while `state.failure_mode.is_bounded_mode == true`. Tier 1 amendable.
+pub const BOUNDED_MODE_WHITELIST: &[&str] = &[
+    "failure_mode.emergency_withdraw",
+    "failure_mode.exit_bounded",
+    "oracles.force_update",
+    "oracles.submit_feed",
+    "agent.freeze",
+    "cal.cancel",
+];
+
+pub fn is_bounded_allowed(action: &str) -> bool {
+    BOUNDED_MODE_WHITELIST.contains(&action)
+}
+
 /// Provisional action -> required scopes (CAL Annex A pending). Mirrors the
 /// `REQUIRES_SCOPE_TABLE` of `taxonomy.ts`; the gas/validator layers consult it.
 pub fn required_scopes(action: &str) -> &'static [&'static str] {

@@ -38,6 +38,20 @@ func isOwnerRequired(a string) bool { return ownerRequiredActions[a] }
 // IsOwnerRequired reports whether action requires a valid owner_sig (CAL §8.2).
 func IsOwnerRequired(a string) bool { return isOwnerRequired(a) }
 
+// boundedModeWhitelist is the CAL §10.2 set of actions admissible while
+// state.failure_mode.is_bounded_mode == true. Tier 1 amendable.
+var boundedModeWhitelist = map[string]bool{
+	"failure_mode.emergency_withdraw": true,
+	"failure_mode.exit_bounded":       true,
+	"oracles.force_update":            true,
+	"oracles.submit_feed":             true,
+	"agent.freeze":                    true,
+	"cal.cancel":                      true,
+}
+
+// IsBoundedAllowed reports whether action is admissible in Bounded Mode (CAL §10.2).
+func IsBoundedAllowed(a string) bool { return boundedModeWhitelist[a] }
+
 // RequiredScopes returns the scopes an action requires (CAL Annex A pending;
 // mirrors REQUIRES_SCOPE_TABLE in taxonomy.ts). The gas/validator layers
 // consult it. The returned slice MUST NOT be mutated.

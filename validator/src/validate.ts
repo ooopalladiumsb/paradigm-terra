@@ -8,6 +8,8 @@
  */
 
 import {
+  effectiveInvariants,
+  isBoundedAllowed,
   isOwnerRequired,
   isRegisteredAction,
   parseEnvelope,
@@ -45,6 +47,7 @@ export type ReasonCode =
   | "STEP_ERROR"
   | "POSTCOND_FALSE"
   | "INVARIANT_FALSE"
+  | "BOUNDED_BLOCKED" // §10.2 action not in Bounded-Mode whitelist
   | "INSUFFICIENT_ESCROW" // §9.3 escrow gate: balance < fee + Max_Expected_Dynamic_Gas (pre-VALIDATED)
   | "OUT_OF_GAS"; // §9.3 dynamic-gas overrun at execution (post-VALIDATED)
 
@@ -140,6 +143,14 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
   // 1. action registered (§2.3)
   if (!isRegisteredAction(action)) return noChargeFail("UNKNOWN_ACTION", `action ${JSON.stringify(action)} not in §2.3 registry`);
 
+  // 1.5. §10.2 Bounded-Mode admission gate: when state.failure_mode.is_bounded_mode
+  //      is true the validator MUST reject any action absent from the whitelist.
+  //      No-charge (ingress-class) — not listed in §9.4's spam-charge set.
+  const boundedMode = getIn(snapshot, ["failure_mode", "is_bounded_mode"]) === true;
+  if (boundedMode && !isBoundedAllowed(action)) {
+    return noChargeFail("BOUNDED_BLOCKED", `action ${action} not in §10.2 Bounded-Mode whitelist`);
+  }
+
   // 2. expiration before VALIDATED (§3.4) — no PTRA touched
   if (tick > expiration) {
     const bill = settle("EXPIRED_PRE", cal, snapshot, 0n);
@@ -151,8 +162,10 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
   const expectedNonce = asBig(getIn(snapshot, ["cal", "nonces", agent])) + 1n;
   if (nonce !== expectedNonce) return noChargeFail("NONCE_MISMATCH", `nonce ${nonce} != ${expectedNonce}`);
 
-  // 4. owner co-signature for OWNER_REQUIRED_ACTIONS (§8.2) — §9.4 spam charge
-  if (isOwnerRequired(action) && !trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
+  // 4. owner co-signature for OWNER_REQUIRED_ACTIONS (§8.2) — §9.4 spam charge.
+  //    §10.4: in Bounded Mode every action is treated as if it were owner-required.
+  const ownerRequired = isOwnerRequired(action) || boundedMode;
+  if (ownerRequired && !trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
 
   // 5. scope grant (§4.3) — §9.4 spam charge
   if (!capabilityGrants(snapshot, agent, action)) return spamFail("CAPABILITY_DENIED", `agent lacks required scope for ${action}`);
@@ -224,9 +237,13 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
   // 12. re-check expiration (defensive)
   if (tick > expiration) return expirePost();
 
-  // 13. invariants over state.before / state.after
+  // 13. invariants over state.before / state.after — Bounded Mode appends the
+  //     constitutional emergency set (DSL v1.2 §7.1 / CAL §10.3), evaluated under
+  //     the same scope as declared invariants. The injected set is not part of
+  //     the CAL hash but is part of consensus (deterministic in is_bounded_mode).
   const invNode = getIn(cal, ["invariants"]);
-  const invariants = Array.isArray(invNode) ? invNode : [];
+  const declared = Array.isArray(invNode) ? invNode : [];
+  const invariants = effectiveInvariants(declared as readonly unknown[], boundedMode) as Json[];
   for (let i = 0; i < invariants.length; i++) {
     const o = evalExpr(invariants[i], "invariant", { before: trace.stateBefore, after: trace.stateAfter });
     if (o.code !== "EVALUATION_TRUE") {

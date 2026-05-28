@@ -212,6 +212,16 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		return preFail("UNKNOWN_ACTION", "action not in §2.3 registry", calgas.FailedNoCharge)
 	}
 
+	// 1.5. §10.2 Bounded-Mode admission gate — no-charge (ingress-class).
+	boundedV, _ := getIn(snapshot, []string{"failure_mode", "is_bounded_mode"})
+	boundedMode := false
+	if b, ok := boundedV.(bool); ok && b {
+		boundedMode = true
+	}
+	if boundedMode && !dsl.IsBoundedAllowed(action) {
+		return preFail("BOUNDED_BLOCKED", "action not in §10.2 Bounded-Mode whitelist", calgas.FailedNoCharge)
+	}
+
 	// 2. expiration before VALIDATED (§3.4)
 	if tick.Cmp(expiration) > 0 {
 		bill, ge := calgas.Settle(calgas.ExpiredPre, cal, snapshot, big.NewInt(0))
@@ -230,8 +240,9 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		return preFail("NONCE_MISMATCH", "nonce mismatch", calgas.FailedNoCharge)
 	}
 
-	// 4. owner-sig (§8.2) — §9.4 spam charge
-	if dsl.IsOwnerRequired(action) && !trace.OwnerSigPresent {
+	// 4. owner-sig (§8.2) — §9.4 spam charge. §10.4: Bounded Mode escalates every
+	//    action to owner-required.
+	if (dsl.IsOwnerRequired(action) || boundedMode) && !trace.OwnerSigPresent {
 		return preFail("CAPABILITY_DENIED", "owner_sig required", calgas.FailedPrecond)
 	}
 
@@ -335,8 +346,9 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		return mk("EXPIRED", "", "expired after VALIDATED", bill), nil
 	}
 
-	// 13. invariants
-	invs := arrField(cal, []string{"invariants"})
+	// 13. invariants — Bounded Mode appends the DSL §7.1 / CAL §10.3 emergency set.
+	declared := arrField(cal, []string{"invariants"})
+	invs := dsl.EffectiveInvariants(declared, boundedMode)
 	for _, inv := range invs {
 		b := canonical.NewObject(canonical.P("before", trace.StateBefore), canonical.P("after", trace.StateAfter))
 		o := evalExpr(inv, true, dsl.ScopeInvariant, b)

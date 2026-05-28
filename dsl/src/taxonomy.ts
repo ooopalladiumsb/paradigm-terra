@@ -51,6 +51,20 @@ export function isOwnerRequired(action: string): boolean {
   return OWNER_REQUIRED_ACTIONS.has(action);
 }
 
+/** CAL §10.2 — actions admissible while `state.failure_mode.is_bounded_mode == true`. Tier 1 amendable. */
+export const BOUNDED_MODE_WHITELIST: ReadonlySet<string> = new Set([
+  "failure_mode.emergency_withdraw",
+  "failure_mode.exit_bounded",
+  "oracles.force_update",
+  "oracles.submit_feed",
+  "agent.freeze",
+  "cal.cancel",
+]);
+
+export function isBoundedAllowed(action: string): boolean {
+  return BOUNDED_MODE_WHITELIST.has(action);
+}
+
 /**
  * DRAFT provisional action → required asset/treasury scopes (CAL Annex A pending).
  * Used only by the gate-only `requires_scope` operator.
