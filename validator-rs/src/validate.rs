@@ -11,7 +11,7 @@ use paradigm_terra_cal_gas::{
     max_expected_dynamic_gas, settle, to_nano, GasBill, GasError, Outcome as GasOutcome, U256,
 };
 use paradigm_terra_dsl::emergency::effective_invariants;
-use paradigm_terra_dsl::taxonomy::{is_bounded_allowed, is_owner_required, is_registered_action, required_scopes};
+use paradigm_terra_dsl::taxonomy::{implied_scopes, is_bounded_allowed, is_owner_required, is_registered_action, required_scopes};
 use paradigm_terra_dsl::{run, Bindings, Outcome as DslOutcome, Scope, Version};
 
 use crate::trace::ExecutionTrace;
@@ -59,10 +59,16 @@ fn capability_grants(snapshot: &JcsValue, agent: &str, action: &str) -> bool {
     if required.is_empty() {
         return true;
     }
-    let granted: HashSet<&str> = match get_in(snapshot, &["registry", "agents", agent, "granted_scopes"]) {
-        Some(JcsValue::Array(items)) => items.iter().filter_map(JcsValue::as_str).collect(),
-        _ => HashSet::new(),
-    };
+    let mut granted: HashSet<&str> = HashSet::new();
+    if let Some(JcsValue::Array(items)) = get_in(snapshot, &["registry", "agents", agent, "granted_scopes"]) {
+        for s in items.iter().filter_map(JcsValue::as_str) {
+            granted.insert(s);
+            // Annex A tier implication: extend the granted set in place.
+            for implied in implied_scopes(s) {
+                granted.insert(implied);
+            }
+        }
+    }
     required.iter().all(|s| granted.contains(s))
 }
 

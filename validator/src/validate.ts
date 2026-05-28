@@ -9,6 +9,7 @@
 
 import {
   effectiveInvariants,
+  expandGrantedScopes,
   isBoundedAllowed,
   isOwnerRequired,
   isRegisteredAction,
@@ -85,13 +86,18 @@ function evalExpr(node: Json | undefined, scope: Scope, bindings: Bindings): Dsl
   return run(expr, { scope, version, bindings });
 }
 
-/** v0.1.0 capability grant: agent's `granted_scopes` covers the action's required scopes. */
+/**
+ * v0.1.0 capability grant (Annex A): the agent's `granted_scopes`, expanded by
+ * tier implication (treasury_access:transfer ⇒ :view, governance_scope:vote ⇒
+ * :propose), MUST cover every scope the action requires.
+ */
 function capabilityGrants(snapshot: Json, agent: string, action: string): boolean {
   const required = REQUIRES_SCOPE_TABLE[action] ?? [];
   if (required.length === 0) return true;
   const granted = getIn(snapshot, ["registry", "agents", agent, "granted_scopes"]);
-  const set = new Set<string>();
-  if (Array.isArray(granted)) for (const x of granted) if (typeof x === "string") set.add(x);
+  const raw: string[] = [];
+  if (Array.isArray(granted)) for (const x of granted) if (typeof x === "string") raw.push(x);
+  const set = expandGrantedScopes(raw);
   return required.every((s) => set.has(s));
 }
 

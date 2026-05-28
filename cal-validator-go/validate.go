@@ -151,6 +151,9 @@ func capabilityGrants(snapshot canonical.Value, agent, action string) bool {
 			for _, x := range arr {
 				if s, ok := x.(string); ok {
 					granted[s] = true
+					for _, implied := range dsl.ImpliedScopes(s) {
+						granted[implied] = true
+					}
 				}
 			}
 		}

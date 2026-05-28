@@ -727,10 +727,55 @@ Total agent debit on success: `391,000 nano_PTRA`.
 
 ## 14. Annexes (to be populated at Conformance Freeze)
 
-- **Annex A**: Final registered action taxonomy (`namespace.verb` enum + capability requirement matrix).
+- **Annex A**: Final registered action taxonomy (`namespace.verb` enum + capability requirement matrix). *Draft populated 2026-05-28; promotes to Conformance-Freeze form on Tier 3 ratification.*
 - **Annex B**: Full `apply(state, event) → state'` reducer table.
 - **Annex C**: Gas unit benchmarks across reference implementations (TypeScript, Rust, Go).
 - **Annex D**: Bounded Mode whitelist final form + emergency invariant set.
+
+### Annex A (DRAFT) — Action taxonomy + capability requirement matrix
+
+The registered actions are the closed `namespace.verb` enum below, Tier 2
+amendable. For each action the validator (§4.3) requires the listed scopes to
+appear in `state.registry.agents[agent_id].granted_scopes` (set membership;
+empty list = no scope check, only the §4 signature gate applies). Scope
+strings draw from Constitution §V `asset_scope`, `treasury_access_level`, and
+`governance_scope` flattened to a single string set:
+
+| `asset_scope.*` | `ton_transfer`, `jetton_access`, `nft_access`, `swap_access`, `ptra_stake`, `ptra_governance_vote` |
+| `treasury_access_level` | `treasury_access:view`, `treasury_access:transfer` (tier; granting `:transfer` implies `:view`) |
+| `governance_scope` | `governance_scope:propose`, `governance_scope:vote` (tier; `:vote` implies `:propose`) |
+
+> Tier note: an agent whose `granted_scopes` contains `treasury_access:transfer` is treated as also holding `treasury_access:view` at gate-evaluation time (likewise `governance_scope:vote` ⇒ `:propose`). The flattening is recorded in the registry; the implication is applied by the validator without rewriting the agent profile.
+
+| Action | Required scopes | Owner-sig required (§8.2) | Notes |
+|---|---|---|---|
+| `wallet.send_ton` | `ton_transfer` | no | Value gate at §8.2 may escalate. |
+| `wallet.send_jetton` | `jetton_access` | no | Covers PTRA jetton transfers (TEP-74). |
+| `wallet.send_nft` | `nft_access` | no | |
+| `agent.register` | — | no | Self-registration; payload-validated. |
+| `agent.migrate` | — | yes | Identity migration. |
+| `agent.freeze` | — | no | Self-freeze or oracle-driven; owner not required. |
+| `agent.unfreeze` | — | no | Recovery path; owner-required in practice via §8.2 if listed. |
+| `capability.update` | — | yes | Owner edits its own capability profile. |
+| `capability.temporal_boost_request` | — | no | Collateral-driven; structural. |
+| `capability.temporal_boost_release` | — | no | Releases collateral on success. |
+| `treasury.transfer` | `treasury_access:transfer` | yes | |
+| `treasury.distribute_rewards` | `treasury_access:transfer` | no | Treasury-side periodic action. |
+| `treasury.buyback_burn` | `treasury_access:transfer` | no | §15.4 deflation path. |
+| `governance.propose_amendment` | `governance_scope:propose` | yes | |
+| `governance.vote` | `governance_scope:vote` | no | |
+| `governance.finalize_amendment` | `governance_scope:vote` | no | Anyone with vote rights may finalize a passed proposal. |
+| `governance.vote_as_agent` | `ptra_governance_vote` | yes | §15.6 staked-PTRA voting. |
+| `oracles.submit_feed` | — | no | Authority via registry membership, not scope. |
+| `oracles.slash` | — | no | Authority via registry membership. |
+| `oracles.force_update` | — | no | §10 emergency; Bounded-Mode whitelisted. |
+| `ptra.stake` | `ptra_stake` | yes | §15.5. |
+| `ptra.unstake` | `ptra_stake` | yes | §15.5. |
+| `ptra.claim_rewards` | `ptra_stake` | no | Must already be a staker. |
+| `failure_mode.emergency_withdraw` | — | yes | §10 emergency exit; owner-required + bounded whitelisted. |
+| `failure_mode.enter_bounded` | — | no | Deterministic from §10.1 triggers. |
+| `failure_mode.exit_bounded` | — | no | Tier 1 quorum at the §10.5 governance layer. |
+| `cal.cancel` | — | no | Originating-agent check is structural (§6.3). |
 
 ---
 
