@@ -29,4 +29,11 @@ export interface ExecutionTrace {
   readonly stateAfter: Json;
   /** Whether a valid `owner_sig` co-signature is present (§8.2 structural check). */
   readonly ownerSigPresent: boolean;
+  /**
+   * Validator-local pinned MCP schema hash (§4.4). Compared to
+   * `state.registry.mcp_schema_hash`; mismatch fails the CAL with
+   * `SCHEMA_MISMATCH` (no-charge, ingress-class). The empty string means
+   * "this validator has no pin configured" → gate is skipped.
+   */
+  readonly pinnedMcpSchemaHash?: string;
 }

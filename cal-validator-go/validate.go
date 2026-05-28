@@ -212,6 +212,18 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		return preFail("UNKNOWN_ACTION", "action not in §2.3 registry", calgas.FailedNoCharge)
 	}
 
+	// 1.25. §4.4 MCP schema-hash pin: when the validator has configured a non-empty
+	//       pinned hash, it MUST equal state.registry.mcp_schema_hash. System-level
+	//       fault → no-charge (ingress-class). The node-level MCP_DEGRADED_MODE
+	//       transition (Constitution §VI) sits outside this pure function.
+	if trace.PinnedMCPSchemaHash != "" {
+		stateSchemaV, _ := getIn(snapshot, []string{"registry", "mcp_schema_hash"})
+		stateSchema := asStr(stateSchemaV)
+		if stateSchema != trace.PinnedMCPSchemaHash {
+			return preFail("SCHEMA_MISMATCH", "pinned mcp_schema_hash != state", calgas.FailedNoCharge)
+		}
+	}
+
 	// 1.5. §10.2 Bounded-Mode admission gate — no-charge (ingress-class).
 	boundedV, _ := getIn(snapshot, []string{"failure_mode", "is_bounded_mode"})
 	boundedMode := false

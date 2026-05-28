@@ -48,6 +48,7 @@ export type ReasonCode =
   | "POSTCOND_FALSE"
   | "INVARIANT_FALSE"
   | "BOUNDED_BLOCKED" // §10.2 action not in Bounded-Mode whitelist
+  | "SCHEMA_MISMATCH" // §4.4 validator's pinned MCP schema hash ≠ state.registry.mcp_schema_hash
   | "INSUFFICIENT_ESCROW" // §9.3 escrow gate: balance < fee + Max_Expected_Dynamic_Gas (pre-VALIDATED)
   | "OUT_OF_GAS"; // §9.3 dynamic-gas overrun at execution (post-VALIDATED)
 
@@ -142,6 +143,20 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
 
   // 1. action registered (§2.3)
   if (!isRegisteredAction(action)) return noChargeFail("UNKNOWN_ACTION", `action ${JSON.stringify(action)} not in §2.3 registry`);
+
+  // 1.25. §4.4 MCP schema-hash pin: when the validator has configured a pinned
+  //       hash (trace.pinnedMcpSchemaHash !== ""), it MUST equal
+  //       state.registry.mcp_schema_hash. A mismatch is a system-level fault,
+  //       not the agent's — no-charge (ingress-class). Per Constitution §VI the
+  //       node also enters MCP_DEGRADED_MODE, but that is a node-level state
+  //       transition outside this pure function.
+  const pinned = trace.pinnedMcpSchemaHash ?? "";
+  if (pinned !== "") {
+    const stateSchema = asStr(getIn(snapshot, ["registry", "mcp_schema_hash"]));
+    if (stateSchema !== pinned) {
+      return noChargeFail("SCHEMA_MISMATCH", `pinned mcp_schema_hash ${pinned} != state ${stateSchema}`);
+    }
+  }
 
   // 1.5. §10.2 Bounded-Mode admission gate: when state.failure_mode.is_bounded_mode
   //      is true the validator MUST reject any action absent from the whitelist.

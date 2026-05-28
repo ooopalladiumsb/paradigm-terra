@@ -29,4 +29,8 @@ type ExecutionTrace struct {
 	StateBefore     canonical.Value
 	StateAfter      canonical.Value
 	OwnerSigPresent bool
+	// PinnedMCPSchemaHash is the validator-local pinned MCP schema hash (§4.4).
+	// Compared to state.registry.mcp_schema_hash; mismatch fails the CAL with
+	// SCHEMA_MISMATCH (no-charge, ingress-class). Empty string = no pin.
+	PinnedMCPSchemaHash string
 }

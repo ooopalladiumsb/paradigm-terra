@@ -23,6 +23,7 @@ function toTrace(j: any): ExecutionTrace {
   return {
     currentTick: j.current_tick as bigint,
     ownerSigPresent: j.owner_sig_present as boolean,
+    pinnedMcpSchemaHash: (j.pinned_mcp_schema_hash as string | undefined) ?? "",
     stateBefore: j.state_before as Json,
     stateAfter: j.state_after as Json,
     steps: (j.steps as any[]).map((s) => ({

@@ -23,4 +23,8 @@ pub struct ExecutionTrace {
     pub state_after: JcsValue,
     /// Whether a valid owner_sig co-signature is present (§8.2 structural check).
     pub owner_sig_present: bool,
+    /// Validator-local pinned MCP schema hash (§4.4). Compared to
+    /// `state.registry.mcp_schema_hash`; mismatch fails the CAL with
+    /// `SCHEMA_MISMATCH` (no-charge, ingress-class). Empty string = no pin.
+    pub pinned_mcp_schema_hash: String,
 }

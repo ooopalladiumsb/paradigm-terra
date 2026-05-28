@@ -96,6 +96,17 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "UNKNOWN_ACTION", "action not in §2.3 registry", GasOutcome::FailedNoCharge);
     }
 
+    // 1.25. §4.4 MCP schema-hash pin: when the validator has configured a non-empty
+    //       pinned hash, it MUST equal state.registry.mcp_schema_hash. System-level
+    //       fault → no-charge (ingress-class). The node-level MCP_DEGRADED_MODE
+    //       transition (Constitution §VI) sits outside this pure function.
+    if !trace.pinned_mcp_schema_hash.is_empty() {
+        let state_schema = get_in(snapshot, &["registry", "mcp_schema_hash"]).and_then(JcsValue::as_str).unwrap_or("");
+        if state_schema != trace.pinned_mcp_schema_hash {
+            return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "SCHEMA_MISMATCH", "pinned mcp_schema_hash != state", GasOutcome::FailedNoCharge);
+        }
+    }
+
     // 1.5. §10.2 Bounded-Mode admission gate — no-charge (ingress-class).
     let bounded_mode = matches!(get_in(snapshot, &["failure_mode", "is_bounded_mode"]), Some(JcsValue::Bool(true)));
     if bounded_mode && !is_bounded_allowed(&action) {

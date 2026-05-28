@@ -73,12 +73,17 @@ func buildTrace(j canonical.Value) ExecutionTrace {
 			}
 		}
 	}
+	pinned := ""
+	if p, ok := get("pinned_mcp_schema_hash").(string); ok {
+		pinned = p
+	}
 	return ExecutionTrace{
-		CurrentTick:     bigOf(get("current_tick")),
-		Steps:           steps,
-		StateBefore:     get("state_before"),
-		StateAfter:      get("state_after"),
-		OwnerSigPresent: boolOf(get("owner_sig_present")),
+		CurrentTick:         bigOf(get("current_tick")),
+		Steps:               steps,
+		StateBefore:         get("state_before"),
+		StateAfter:          get("state_after"),
+		OwnerSigPresent:     boolOf(get("owner_sig_present")),
+		PinnedMCPSchemaHash: pinned,
 	}
 }
 
