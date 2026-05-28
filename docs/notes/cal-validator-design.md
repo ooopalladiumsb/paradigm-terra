@@ -208,5 +208,5 @@ re-checks are defensive only, exercised under multi-tick orchestration.)
 2. **post_condition / invariant binding** — all evaluate against the single
    `(stateBefore, stateAfter)` pair in the trace; per-step intermediate states
    are collapsed to the final after-state (revisit if a CAL needs staged reads).
-3. **Escrow-gate reason** — `OUT_OF_GAS` (provisional; §3.5 lacks an
-   insufficient-balance code).
+3. **Escrow-gate reason** — `INSUFFICIENT_ESCROW` (CLOSED 2026-05-26; the §3.5
+   enum now carries the dedicated code, distinct from `OUT_OF_GAS`).
