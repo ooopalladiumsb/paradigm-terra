@@ -506,17 +506,7 @@ with reason `BOUNDED_BLOCKED`. The whitelist is Tier 1 amendable.
 
 ### 10.3. Emergency invariants
 
-For every CAL admitted in Bounded Mode, the runtime injects an additional invariant **regardless** of what the CAL declares:
-
-```dsl
-{
-  "op": "gte",
-  "lhs": {"var": "state.after.treasury.developer_fund_balance"},
-  "rhs": {"var": "state.before.treasury.developer_fund_balance"}
-}
-```
-
-Violation → FAILED with `INVARIANT_FALSE`.
+For every CAL admitted in Bounded Mode, the runtime injects the **three-invariant emergency set** on top of whatever the CAL declares: developer-fund non-decreasing, NAV non-decreasing, and `is_bounded_mode` pinned `true` for the duration of the CAL. The verbatim set is pinned by **DSL Spec v0.1.0-draft §7.1** and reproduced here by **Annex D.2** (§14). Violation → FAILED with `INVARIANT_FALSE`.
 
 ### 10.4. Signature escalation
 
@@ -738,7 +728,7 @@ Total agent debit on success: `391,000 nano_PTRA`.
 - **Annex A**: Final registered action taxonomy (`namespace.verb` enum + capability requirement matrix). *Draft populated 2026-05-28; promotes to Conformance-Freeze form on Tier 3 ratification.*
 - **Annex B**: Full `apply(state, event) → state'` reducer table. *Draft populated 2026-05-28; supersedes the non-exhaustive §7.1 sketch.*
 - **Annex C**: Gas unit benchmarks across reference implementations (TypeScript, Rust, Go). *Draft populated 2026-05-28 (model pinned; wall-clock columns deferred to Conformance Freeze).*
-- **Annex D**: Bounded Mode whitelist final form + emergency invariant set.
+- **Annex D**: Bounded Mode whitelist final form + emergency invariant set. *Draft populated 2026-05-28; supersedes the §10.3 single-invariant listing.*
 
 ### Annex A (DRAFT) — Action taxonomy + capability requirement matrix
 
@@ -975,6 +965,118 @@ the `cal-gas/vectors/golden.json` parity vectors pin every count, and any
 implementation that diverges fails the cross-language differential fuzzer.
 The wall-clock columns of §C.3 are advisory inputs to the Tier 2 amendment
 process; they do not affect consensus.
+
+### Annex D (DRAFT) — Bounded Mode whitelist + emergency invariant set
+
+Pins the §10 Bounded Mode configuration as it stands at draft date. The
+admission whitelist (§D.1) and the injected invariant set (§D.2) are
+together the "final form" Annex D will carry at Conformance Freeze. The
+trigger and exit conditions (§D.3, §D.4) cross-reference §10.1 / §10.5 and
+Constitution §VI.6.bis without restating them.
+
+#### D.1 Admission whitelist (final form, §10.2)
+
+When `state.failure_mode.is_bounded_mode == true`, the validator admits
+**only** the six `namespace.verb` actions below; any other action fails
+with `BOUNDED_BLOCKED` (no-charge, ingress-class — §9.4 / §4 gate 1.5).
+
+| # | Action | Why whitelisted |
+|---|---|---|
+| 1 | `failure_mode.emergency_withdraw` | Emergency exit for solvent agents (§10 emergency path); owner-required + §10.4 escalation. |
+| 2 | `failure_mode.exit_bounded` | The dedicated Tier 1 quorum action that flips the flag off (§10.5). |
+| 3 | `oracles.force_update` | Restore oracle feed when the §10.1 oracle trigger fired. |
+| 4 | `oracles.submit_feed` | Allow oracles to keep aggregating during the window. |
+| 5 | `agent.freeze` | Capture-guard counter response (§10.1 third trigger). |
+| 6 | `cal.cancel` | Lets agents withdraw in-flight CALs that became inadmissible. |
+
+**Authoritative location:** `BOUNDED_MODE_WHITELIST` in
+`dsl/src/taxonomy.ts` (and the Rust / Go mirrors in `dsl-rs/src/taxonomy.rs`
+and `dsl-go/taxonomy.go`). Parity-pinned by the validator goldens
+(`bounded_blocked`, `bounded_sig_escalation`,
+`bounded_emergency_invariant_violated`, `bounded_whitelist_pass`).
+
+**Amendability:** Tier 1 amendable (Constitution §VI.6.bis). Any change to
+the set MUST be paired with new golden vectors that exercise the added or
+removed action under bounded mode.
+
+#### D.2 Emergency invariant set (final form, §10.3)
+
+For every CAL admitted in Bounded Mode the runtime injects the three
+invariants below on top of whatever the CAL declares. They are evaluated
+exactly like declared invariants (scope `invariant`, bindings `state.before`
+/ `state.after`); violation → `cal.failed` with `INVARIANT_FALSE`. The set
+is **not** part of `CAL_HASH` (the validator derives it deterministically
+from `is_bounded_mode`) but **is** part of consensus.
+
+```json
+[
+  {
+    "op": "gte",
+    "lhs": {"var": "state.after.treasury.developer_fund_balance"},
+    "rhs": {"var": "state.before.treasury.developer_fund_balance"}
+  },
+  {
+    "op": "gte",
+    "lhs": {"var": "state.after.treasury.nav"},
+    "rhs": {
+      "op": "sub",
+      "lhs": {"var": "state.before.treasury.nav"},
+      "rhs": {"const": 0}
+    }
+  },
+  {
+    "op": "eq",
+    "lhs": {"var": "state.after.failure_mode.is_bounded_mode"},
+    "rhs": {"const": true}
+  }
+]
+```
+
+Read line-by-line: (1) developer-fund balance is non-decreasing across the
+CAL; (2) treasury NAV is non-decreasing (the `sub … 0` form matches DSL
+v1.2 §7.1 verbatim — a no-op subtraction kept for hash stability); (3)
+`is_bounded_mode` is pinned `true` for the duration of the CAL — a CAL
+admitted under Bounded Mode MUST NOT flip the flag off as a side effect,
+the only path out is the dedicated `failure_mode.exit_bounded` action
+(§10.5).
+
+**Authoritative location:** `EMERGENCY_INVARIANTS` in `dsl/src/emergency.ts`
+with the `dsl-rs/src/emergency.rs` and `dsl-go/emergency.go` mirrors.
+Parity-pinned by the validator goldens `bounded_emergency_invariant_violated`
+(invariant 1 violated → INVARIANT_FALSE) and `bounded_whitelist_pass` (all
+three satisfied → FINALIZED).
+
+**Amendability:** Tier 2 amendable (DSL Spec §7.3). Any change MUST bump
+`dsl_version` to `1.3+` because the evaluation behavior of `invariants` is
+observably altered for replay purposes, and MUST extend the CE §7.1
+domain-tag registry with the new `PARADIGM_TERRA_DSL_V1.3` literal.
+
+#### D.3 Trigger conditions (cross-reference)
+
+`is_bounded_mode` is the OR of three deterministic predicates evaluated at
+each tick boundary by the reducer's `recompute_bounded` step
+(Annex B.3 `tick.advanced`): oracle-response-rate < 0.70, NAV drop > X% in
+one tick, capture-guard counters ≥ THRESHOLD. The thresholds X and THRESHOLD
+are Tier 1 amendable (Constitution §VI.6.bis). For the precise expression
+see **§10.1**; the implementations carry the counter-trigger subset, with
+the oracle-rate and NAV-drop predicates wired but their thresholds left at
+their Tier 1 amendable defaults.
+
+#### D.4 Exit conditions (cross-reference)
+
+Exit requires both (a) all §10.1 triggers clear for ≥ 100 consecutive
+ticks **and** (b) a `failure_mode.exit_bounded` CAL signed by a quorum of
+Tier 1 governance slot holders within a single-tick window. The emitted
+event sets `state.failure_mode.is_bounded_mode = false`. See **§10.5** and
+Constitution §VI for the precise quorum + window.
+
+#### D.5 Parity discipline
+
+Both the whitelist (D.1) and the invariant set (D.2) are byte-pinned by
+the validator NORMATIVE goldens. Any implementation that mutates either
+set without amending Annex D + regenerating goldens will diverge on the
+cross-language differential fuzzer (`validator/fuzz/`) — diff-fuzz is the
+trip-wire, Annex D is the contract.
 
 ---
 
