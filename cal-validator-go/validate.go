@@ -252,10 +252,29 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 		return preFail("NONCE_MISMATCH", "nonce mismatch", calgas.FailedNoCharge)
 	}
 
-	// 4. owner-sig (§8.2) — §9.4 spam charge. §10.4: Bounded Mode escalates every
-	//    action to owner-required.
-	if (dsl.IsOwnerRequired(action) || boundedMode) && !trace.OwnerSigPresent {
-		return preFail("CAPABILITY_DENIED", "owner_sig required", calgas.FailedPrecond)
+	// 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2).
+	//    operator_sig is always required; owner_sig is required for
+	//    OWNER_REQUIRED_ACTIONS and (§10.4) for every action in Bounded Mode.
+	//    Real Ed25519 curve verification is deferred: the trace's *SigPresent
+	//    flags carry the node's verifier verdict, and registry pubkeys are
+	//    looked up here so wiring is in place once curve arithmetic lands.
+	//    Each branch is §9.4 spam-charge (CAPABILITY_DENIED).
+	if !trace.OperatorSigPresent {
+		return preFail("CAPABILITY_DENIED", "operator_sig required", calgas.FailedPrecond)
+	}
+	operatorPubkeyV, _ := getIn(snapshot, []string{"registry", "agents", agent, "operator_pubkey"})
+	if asStr(operatorPubkeyV) == "" {
+		return preFail("CAPABILITY_DENIED", "agent has no operator_pubkey in registry", calgas.FailedPrecond)
+	}
+	ownerRequired := dsl.IsOwnerRequired(action) || boundedMode
+	if ownerRequired {
+		if !trace.OwnerSigPresent {
+			return preFail("CAPABILITY_DENIED", "owner_sig required", calgas.FailedPrecond)
+		}
+		ownerPubkeyV, _ := getIn(snapshot, []string{"registry", "agents", agent, "owner_pubkey"})
+		if asStr(ownerPubkeyV) == "" {
+			return preFail("CAPABILITY_DENIED", "agent has no owner_pubkey in registry", calgas.FailedPrecond)
+		}
 	}
 
 	// 5. scope grant (§4.3) — §9.4 spam charge

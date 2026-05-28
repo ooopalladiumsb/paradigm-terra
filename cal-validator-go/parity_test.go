@@ -82,6 +82,7 @@ func buildTrace(j canonical.Value) ExecutionTrace {
 		Steps:               steps,
 		StateBefore:         get("state_before"),
 		StateAfter:          get("state_after"),
+		OperatorSigPresent:  boolOf(get("operator_sig_present")),
 		OwnerSigPresent:     boolOf(get("owner_sig_present")),
 		PinnedMCPSchemaHash: pinned,
 	}

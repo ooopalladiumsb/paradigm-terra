@@ -177,10 +177,24 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
   const expectedNonce = asBig(getIn(snapshot, ["cal", "nonces", agent])) + 1n;
   if (nonce !== expectedNonce) return noChargeFail("NONCE_MISMATCH", `nonce ${nonce} != ${expectedNonce}`);
 
-  // 4. owner co-signature for OWNER_REQUIRED_ACTIONS (§8.2) — §9.4 spam charge.
-  //    §10.4: in Bounded Mode every action is treated as if it were owner-required.
+  // 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2).
+  //    operator_sig is always required; owner_sig is required for
+  //    OWNER_REQUIRED_ACTIONS and (§10.4) for every action in Bounded Mode.
+  //    Real Ed25519 curve verification is deferred: the trace's *SigPresent
+  //    flags carry the node's verifier verdict, and the registry pubkeys are
+  //    looked up here so that wiring is in place once curve arithmetic lands.
+  //    Each branch is §9.4 spam-charge (CAPABILITY_DENIED).
+  if (!trace.operatorSigPresent) return spamFail("CAPABILITY_DENIED", `operator_sig required for ${action}`);
+  if (asStr(getIn(snapshot, ["registry", "agents", agent, "operator_pubkey"])) === "") {
+    return spamFail("CAPABILITY_DENIED", `agent ${agent} has no operator_pubkey in registry`);
+  }
   const ownerRequired = isOwnerRequired(action) || boundedMode;
-  if (ownerRequired && !trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
+  if (ownerRequired) {
+    if (!trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
+    if (asStr(getIn(snapshot, ["registry", "agents", agent, "owner_pubkey"])) === "") {
+      return spamFail("CAPABILITY_DENIED", `agent ${agent} has no owner_pubkey in registry`);
+    }
+  }
 
   // 5. scope grant (§4.3) — §9.4 spam charge
   if (!capabilityGrants(snapshot, agent, action)) return spamFail("CAPABILITY_DENIED", `agent lacks required scope for ${action}`);

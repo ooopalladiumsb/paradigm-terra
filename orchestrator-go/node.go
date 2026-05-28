@@ -171,11 +171,13 @@ func globalMerkleRoot(state canonical.Value, log []canonical.Value) (string, *No
 // tick to dodge expiration); everything else is carried through unchanged.
 func traceAt(src calvalidator.ExecutionTrace, tick *big.Int) calvalidator.ExecutionTrace {
 	return calvalidator.ExecutionTrace{
-		CurrentTick:     new(big.Int).Set(tick),
-		Steps:           src.Steps,
-		StateBefore:     src.StateBefore,
-		StateAfter:      src.StateAfter,
-		OwnerSigPresent: src.OwnerSigPresent,
+		CurrentTick:         new(big.Int).Set(tick),
+		Steps:               src.Steps,
+		StateBefore:         src.StateBefore,
+		StateAfter:          src.StateAfter,
+		OperatorSigPresent:  src.OperatorSigPresent,
+		OwnerSigPresent:     src.OwnerSigPresent,
+		PinnedMCPSchemaHash: src.PinnedMCPSchemaHash,
 	}
 }
 

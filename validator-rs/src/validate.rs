@@ -128,10 +128,29 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "NONCE_MISMATCH", "nonce mismatch", GasOutcome::FailedNoCharge);
     }
 
-    // 4. owner-sig (§8.2) — §9.4 spam charge. §10.4: Bounded Mode escalates every
-    //    action to owner-required.
-    if (is_owner_required(&action) || bounded_mode) && !trace.owner_sig_present {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond);
+    // 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2).
+    //    operator_sig is always required; owner_sig is required for
+    //    OWNER_REQUIRED_ACTIONS and (§10.4) for every action in Bounded Mode.
+    //    Real Ed25519 curve verification is deferred: the trace's *_sig_present
+    //    flags carry the node's verifier verdict, and registry pubkeys are
+    //    looked up here so the wiring is in place once curve arithmetic lands.
+    //    Each branch is §9.4 spam-charge (CAPABILITY_DENIED).
+    if !trace.operator_sig_present {
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "operator_sig required", GasOutcome::FailedPrecond);
+    }
+    let operator_pubkey = get_in(snapshot, &["registry", "agents", &agent, "operator_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
+    if operator_pubkey.is_empty() {
+        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "agent has no operator_pubkey in registry", GasOutcome::FailedPrecond);
+    }
+    let owner_required = is_owner_required(&action) || bounded_mode;
+    if owner_required {
+        if !trace.owner_sig_present {
+            return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond);
+        }
+        let owner_pubkey = get_in(snapshot, &["registry", "agents", &agent, "owner_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
+        if owner_pubkey.is_empty() {
+            return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "agent has no owner_pubkey in registry", GasOutcome::FailedPrecond);
+        }
     }
 
     // 5. scope grant (§4.3) — §9.4 spam charge

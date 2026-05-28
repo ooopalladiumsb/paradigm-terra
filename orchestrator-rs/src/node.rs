@@ -111,6 +111,7 @@ fn trace_at(src: &ExecutionTrace, tick: &U256) -> ExecutionTrace {
             .collect(),
         state_before: src.state_before.clone(),
         state_after: src.state_after.clone(),
+        operator_sig_present: src.operator_sig_present,
         owner_sig_present: src.owner_sig_present,
         pinned_mcp_schema_hash: src.pinned_mcp_schema_hash.clone(),
     }

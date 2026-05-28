@@ -69,11 +69,16 @@ func buildTrace(j canonical.Value) calvalidator.ExecutionTrace {
 	if p, ok := get("pinned_mcp_schema_hash").(string); ok {
 		pinned = p
 	}
+	operatorSig := false
+	if get("operator_sig_present") == true {
+		operatorSig = true
+	}
 	return calvalidator.ExecutionTrace{
 		CurrentTick:         bigOf(get("current_tick")),
 		Steps:               steps,
 		StateBefore:         get("state_before"),
 		StateAfter:          get("state_after"),
+		OperatorSigPresent:  operatorSig,
 		OwnerSigPresent:     ownerSig,
 		PinnedMCPSchemaHash: pinned,
 	}

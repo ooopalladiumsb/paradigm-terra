@@ -20,7 +20,11 @@ function start(...agents: { id: string; balance: bigint; scopes?: string[] }[]):
   };
   for (const a of agents) {
     g.ptra.balances[a.id] = a.balance;
-    g.registry.agents[a.id] = { granted_scopes: a.scopes ?? ["ton_transfer"] };
+    g.registry.agents[a.id] = {
+      granted_scopes: a.scopes ?? ["ton_transfer"],
+      operator_pubkey: "0x" + "11".repeat(32),
+      owner_pubkey: "0x" + "22".repeat(32),
+    };
   }
   return g as unknown as State;
 }
@@ -43,6 +47,7 @@ const okTrace: ExecutionTrace = {
   steps: [{ ok: true, effects: [] }],
   stateBefore: {} as Json,
   stateAfter: {} as Json,
+  operatorSigPresent: true,
   ownerSigPresent: true,
 };
 

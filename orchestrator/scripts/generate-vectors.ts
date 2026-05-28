@@ -23,7 +23,9 @@ const OUTPUT_PATH = resolve(__dirname, "..", "vectors", "golden.json");
 function traceToJcs(t: ExecutionTrace): JcsValue {
   return {
     current_tick: t.currentTick,
+    operator_sig_present: t.operatorSigPresent,
     owner_sig_present: t.ownerSigPresent,
+    pinned_mcp_schema_hash: t.pinnedMcpSchemaHash ?? "",
     state_before: t.stateBefore as JcsValue,
     state_after: t.stateAfter as JcsValue,
     steps: t.steps.map((s): JcsValue => {

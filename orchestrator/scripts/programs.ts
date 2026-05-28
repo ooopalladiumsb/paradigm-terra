@@ -12,6 +12,11 @@ export const A = "0:" + "aa".repeat(32);
 export const B = "0:" + "bb".repeat(32);
 const FUND = 10n ** 18n;
 
+// §8.1 placeholder pubkeys — real Ed25519 deferred; the validator does a
+// structural presence + registry lookup, so any 32-byte hex string suffices.
+const DEFAULT_OPERATOR_PUBKEY = "0x" + "11".repeat(32);
+const DEFAULT_OWNER_PUBKEY = "0x" + "22".repeat(32);
+
 function start(...agents: { id: string; balance: bigint; scopes?: string[] }[]): State {
   const g = genesis() as unknown as {
     ptra: { balances: Record<string, Json> };
@@ -19,7 +24,11 @@ function start(...agents: { id: string; balance: bigint; scopes?: string[] }[]):
   };
   for (const a of agents) {
     g.ptra.balances[a.id] = a.balance;
-    g.registry.agents[a.id] = { granted_scopes: a.scopes ?? ["ton_transfer"] };
+    g.registry.agents[a.id] = {
+      granted_scopes: a.scopes ?? ["ton_transfer"],
+      operator_pubkey: DEFAULT_OPERATOR_PUBKEY,
+      owner_pubkey: DEFAULT_OWNER_PUBKEY,
+    };
   }
   return g as unknown as State;
 }
@@ -42,6 +51,7 @@ const okTrace: ExecutionTrace = {
   steps: [{ ok: true, effects: [] }],
   stateBefore: {} as Json,
   stateAfter: {} as Json,
+  operatorSigPresent: true,
   ownerSigPresent: true,
 };
 

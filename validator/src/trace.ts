@@ -27,6 +27,13 @@ export interface ExecutionTrace {
   readonly stateBefore: Json;
   /** Post-execution state bound to `state.after.*`. */
   readonly stateAfter: Json;
+  /**
+   * Whether a valid `operator_sig` is present over the CAL's canonical-unsigned
+   * payload (§8.1, §8.3). Structural-only at this layer: the trace carries the
+   * node's verifier verdict; real Ed25519 curve arithmetic is performed outside
+   * the validator (deferred).
+   */
+  readonly operatorSigPresent: boolean;
   /** Whether a valid `owner_sig` co-signature is present (§8.2 structural check). */
   readonly ownerSigPresent: boolean;
   /**

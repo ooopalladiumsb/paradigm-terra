@@ -24,6 +24,11 @@ const OUTPUT_PATH = resolve(__dirname, "..", "vectors", "golden.json");
 const A = "0:e8797d197cc0261968ab8072b6abf41085d87803d6d3f3ebdb88c3d1ea9090cf";
 const MISSING = "0:" + "aa".repeat(32); // a valid-shaped address absent from balances
 const SIG = "0x" + "ab".repeat(64);
+// Ed25519 pubkeys are 32 bytes; values here are placeholders pinned by goldens.
+// Real curve verification (deferred) will check the trace's *SigPresent flag was
+// produced by the node verifying signatures.* against these exact pubkey bytes.
+const OPERATOR_PUBKEY = "0x" + "11".repeat(32);
+const OWNER_PUBKEY = "0x" + "22".repeat(32);
 const EFFECT: JcsValue = { ns: "ptra", op: "set", path: ["counters", "x"], value: 1n };
 
 type Obj = Record<string, JcsValue>;
@@ -100,15 +105,34 @@ function calTreasury(extra: Obj = {}): Obj {
   };
 }
 
-function snap(opts: { balance?: bigint; nonce?: bigint; scopes?: string[]; price?: bigint; bounded?: boolean } = {}): Obj {
-  const { balance = 10n ** 18n, nonce = 0n, scopes = ["ton_transfer"], price = 1000n, bounded = false } = opts;
+function snap(opts: {
+  balance?: bigint;
+  nonce?: bigint;
+  scopes?: string[];
+  price?: bigint;
+  bounded?: boolean;
+  operatorPubkey?: string;
+  ownerPubkey?: string;
+} = {}): Obj {
+  const {
+    balance = 10n ** 18n,
+    nonce = 0n,
+    scopes = ["ton_transfer"],
+    price = 1000n,
+    bounded = false,
+    operatorPubkey = OPERATOR_PUBKEY,
+    ownerPubkey = OWNER_PUBKEY,
+  } = opts;
+  const agent: Obj = { granted_scopes: scopes };
+  if (operatorPubkey !== "") agent.operator_pubkey = operatorPubkey;
+  if (ownerPubkey !== "") agent.owner_pubkey = ownerPubkey;
   return {
     cal: { in_flight: {}, nonces: { [A]: nonce } },
     failure_mode: { is_bounded_mode: bounded, capture_guard_counters: {} },
     governance: { gas_price_nano_ptra_per_unit: price, genesis_validator_set: [], params: {} },
     oracles: { feeds: {} },
     ptra: { balances: { [A]: balance } },
-    registry: { agents: { [A]: { granted_scopes: scopes } }, mcp_schema_hash: "0x" + "00".repeat(32) },
+    registry: { agents: { [A]: agent }, mcp_schema_hash: "0x" + "00".repeat(32) },
     tick: { current: 0n },
     treasury: { nav: 0n, developer_fund_balance: 0n, collected_fees_window: 0n },
   };
@@ -137,6 +161,7 @@ function trace(opts: {
   before?: JcsValue;
   after?: JcsValue;
   owner?: boolean;
+  operator?: boolean;
   pinnedMcp?: string;
 }): ExecutionTrace {
   return {
@@ -144,6 +169,9 @@ function trace(opts: {
     steps: opts.steps ?? [step(true)],
     stateBefore: opts.before ?? HAPPY_BEFORE,
     stateAfter: opts.after ?? HAPPY_AFTER,
+    // §8.1: operator_sig is always required, so default true here. Set false
+    // to exercise the missing-operator-sig CAPABILITY_DENIED branch.
+    operatorSigPresent: opts.operator ?? true,
     ownerSigPresent: opts.owner ?? false,
     // Validators always pin in production; default to the snapshot's value so
     // the §4.4 gate is exercised in every vector (matched by default).
@@ -238,11 +266,33 @@ const specs: Spec[] = [
     snapshot: snap(),
     trace: trace({ pinnedMcp: ALT_HASH }),
   },
+  {
+    id: "missing_operator_sig",
+    description: "§8.1 operator_sig absent from trace → CAPABILITY_DENIED (§9.4 spam charge)",
+    cal: calSend(),
+    snapshot: snap(),
+    trace: trace({ operator: false }),
+  },
+  {
+    id: "missing_operator_pubkey",
+    description: "§8.1 agent has no operator_pubkey in registry → CAPABILITY_DENIED (§9.4 spam charge)",
+    cal: calSend(),
+    snapshot: snap({ operatorPubkey: "" }),
+    trace: trace({}),
+  },
+  {
+    id: "missing_owner_pubkey",
+    description: "§8.2 owner-required action, agent has no owner_pubkey in registry → CAPABILITY_DENIED",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], ownerPubkey: "" }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true }),
+  },
 ];
 
 function traceToJcs(t: ExecutionTrace): JcsValue {
   return {
     current_tick: t.currentTick,
+    operator_sig_present: t.operatorSigPresent,
     owner_sig_present: t.ownerSigPresent,
     pinned_mcp_schema_hash: t.pinnedMcpSchemaHash ?? "",
     state_before: t.stateBefore,
@@ -302,10 +352,10 @@ const doc = {
   meta: {
     package: "@paradigm-terra/cal-validator",
     version: "0.1.0",
-    spec_basis: "CAL Execution Specification v0.1.0-draft §3–§10 — lifecycle (§3), validator role (§4), nonce (§6), gas (§9), Bounded Mode (§10). §9.3 upfront escrow (2026-05-27): cal.validated emits escrow_ptra = Flat_Validation_Fee + Max_Expected_Dynamic_Gas; the terminal event carries gas_refunded_ptra so the treasury keeps escrow − refund (= fee + consumed) for every post-VALIDATED outcome. §9.4 Tier-2: pre-VALIDATED PRECOND_FALSE/CAPABILITY_DENIED retain min(fee, balance) on cal.failed; UNKNOWN_ACTION/NONCE_MISMATCH/PRECOND_ERROR retain nothing. §3.5: the §9.3 escrow-admission shortfall reports a dedicated INSUFFICIENT_ESCROW reason code, distinct from the post-VALIDATED OUT_OF_GAS dynamic-gas overrun. §10 (2026-05-28): when state.failure_mode.is_bounded_mode == true, the validator rejects any action absent from BOUNDED_MODE_WHITELIST with BOUNDED_BLOCKED (no-charge), escalates every action to owner-required per §10.4, and appends the DSL §7.1 emergency invariant set to the declared invariants per §10.3. §4.4 (2026-05-28): when the validator has pinned a non-empty mcp_schema_hash (trace.pinned_mcp_schema_hash), a mismatch with state.registry.mcp_schema_hash fails the CAL with SCHEMA_MISMATCH (no-charge, ingress-class).",
+    spec_basis: "CAL Execution Specification v0.1.0-draft §3–§10 — lifecycle (§3), validator role (§4), signatures (§8.1/§8.2), nonce (§6), gas (§9), Bounded Mode (§10). §9.3 upfront escrow (2026-05-27): cal.validated emits escrow_ptra = Flat_Validation_Fee + Max_Expected_Dynamic_Gas; the terminal event carries gas_refunded_ptra so the treasury keeps escrow − refund (= fee + consumed) for every post-VALIDATED outcome. §9.4 Tier-2: pre-VALIDATED PRECOND_FALSE/CAPABILITY_DENIED retain min(fee, balance) on cal.failed; UNKNOWN_ACTION/NONCE_MISMATCH/PRECOND_ERROR retain nothing. §3.5: the §9.3 escrow-admission shortfall reports a dedicated INSUFFICIENT_ESCROW reason code, distinct from the post-VALIDATED OUT_OF_GAS dynamic-gas overrun. §10 (2026-05-28): when state.failure_mode.is_bounded_mode == true, the validator rejects any action absent from BOUNDED_MODE_WHITELIST with BOUNDED_BLOCKED (no-charge), escalates every action to owner-required per §10.4, and appends the DSL §7.1 emergency invariant set to the declared invariants per §10.3. §4.4 (2026-05-28): when the validator has pinned a non-empty mcp_schema_hash (trace.pinned_mcp_schema_hash), a mismatch with state.registry.mcp_schema_hash fails the CAL with SCHEMA_MISMATCH (no-charge, ingress-class). §8.1/§8.2 (2026-05-28): trace.operator_sig_present joins owner_sig_present (the node's verifier verdict; real Ed25519 curve arithmetic is deferred); the agent registry grows operator_pubkey + owner_pubkey, and gate 4 fails CAPABILITY_DENIED when a required *_sig is absent or the corresponding *_pubkey is missing from the registry (§9.4 spam charge).",
     generated_at: new Date().toISOString(),
     status:
-      "NORMATIVE — generated by the TypeScript reference implementation under the §9.3 upfront-escrow model with §10 Bounded Mode admission gate and §4.4 MCP schema-hash pin, and verified byte-for-byte by the Rust (validator-rs) and Go (cal-validator-go) parity implementations on 2026-05-28 (the emitted event sequence, terminal stage, reason code, economic event fields escrow_ptra/terminal_fee_debited_ptra/gas_consumed_ptra/gas_refunded_ptra, and full §9.4 bill). Cross-language differential fuzzing clean (validator 100k+ cases per seed, 0 divergences).",
+      "NORMATIVE — generated by the TypeScript reference implementation under the §9.3 upfront-escrow model with §10 Bounded Mode admission gate, §4.4 MCP schema-hash pin, and §8.1/§8.2 signature presence + pubkey availability gate (real Ed25519 deferred), and verified byte-for-byte by the Rust (validator-rs) and Go (cal-validator-go) parity implementations on 2026-05-28 (the emitted event sequence, terminal stage, reason code, economic event fields escrow_ptra/terminal_fee_debited_ptra/gas_consumed_ptra/gas_refunded_ptra, and full §9.4 bill). Cross-language differential fuzzing clean (validator 100k+ cases per seed, 0 divergences).",
   },
   vectors,
 };
