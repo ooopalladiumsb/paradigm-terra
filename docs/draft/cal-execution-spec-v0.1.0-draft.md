@@ -301,19 +301,21 @@ An agent MAY cancel a SIGNED-but-not-VALIDATED CAL by issuing a `cal.cancel` CAL
 apply : (State, Event) → State
 ```
 
-`apply` is a pure total function (modulo `ERROR` returned as a typed value, not an exception). The body is a `switch` over `event.type`. The full table mapping event type → state mutation is normative and MUST appear in Annex B of this spec at Conformance Freeze. The initial table is sketched below; this list is non-exhaustive and serves as a structural example:
+`apply` is a pure total function (modulo `ERROR` returned as a typed value, not an exception). The body is a `switch` over `event.type`. **The normative table is Annex B (§14), populated DRAFT 2026-05-28.** The summary below is informative; consult Annex B for the precise mutations, field requirements, and error codes:
 
-| `event.type` | State mutation |
+| `event.type` | Summary |
 |--------------|----------------|
-| `cal.created` | append `cal_hash → CREATED` to `state.cal.in_flight` |
-| `cal.signed` | update `state.cal.in_flight[cal_hash].stage = SIGNED` |
-| `cal.validated` | update `stage = VALIDATED`; debit `state.ptra.balances[agent_id] -= Flat_Validation_Fee` |
-| `cal.executed` | apply each step's effect; track `gas_consumed_ptra` |
-| `cal.settled` | finalize `state.after` snapshot for invariant evaluation |
-| `cal.finalized` | remove from `in_flight`; increment `nonces[agent_id]`; append to `state.treasury.collected_fees_window` |
-| `cal.failed` / `cal.expired` | rollback `state.after` to `state.before`; remove from `in_flight`; increment `nonces[agent_id]` |
+| `cal.created` | append `cal_hash → CREATED` to `state.cal.in_flight`; enforce one-CAL-per-agent (§6.1) |
+| `cal.signed` | `stage := SIGNED` |
+| `cal.validated` | debit `state.ptra.balances[agent_id] -= escrow_ptra` (= `Flat_Validation_Fee + Max_Expected_Dynamic_Gas`, §9.3); `stage := VALIDATED` |
+| `cal.executed` | stage step effects + `gas_consumed_ptra` (commit happens at finalize) |
+| `cal.settled` | `stage := SETTLED` |
+| `cal.finalized` | commit staged effects; refund unused gas; add `escrow − refund` to treasury; bump nonce; remove from `in_flight` |
+| `cal.failed` / `cal.expired` | branch on stage: pre-VALIDATED debits §9.4 spam fee, post-VALIDATED settles like finalize but drops effects; bump nonce; remove from `in_flight` |
 | `ptra.transferred` | mirror of TEP-74 transfer (§7.4); update `state.ptra.balances` |
+| `ptra.shadow_init` | idempotent zero-init for an address |
 | `oracle.feed_submitted` | update `state.oracles.feeds[symbol]` after median aggregation |
+| `tick.advanced` | `state.tick.current := new_tick`; recompute `is_bounded_mode` |
 
 ### 7.2. Determinism
 
@@ -728,7 +730,7 @@ Total agent debit on success: `391,000 nano_PTRA`.
 ## 14. Annexes (to be populated at Conformance Freeze)
 
 - **Annex A**: Final registered action taxonomy (`namespace.verb` enum + capability requirement matrix). *Draft populated 2026-05-28; promotes to Conformance-Freeze form on Tier 3 ratification.*
-- **Annex B**: Full `apply(state, event) → state'` reducer table.
+- **Annex B**: Full `apply(state, event) → state'` reducer table. *Draft populated 2026-05-28; supersedes the non-exhaustive §7.1 sketch.*
 - **Annex C**: Gas unit benchmarks across reference implementations (TypeScript, Rust, Go).
 - **Annex D**: Bounded Mode whitelist final form + emergency invariant set.
 
@@ -776,6 +778,105 @@ strings draw from Constitution §V `asset_scope`, `treasury_access_level`, and
 | `failure_mode.enter_bounded` | — | no | Deterministic from §10.1 triggers. |
 | `failure_mode.exit_bounded` | — | no | Tier 1 quorum at the §10.5 governance layer. |
 | `cal.cancel` | — | no | Originating-agent check is structural (§6.3). |
+
+### Annex B (DRAFT) — `apply(state, event) → state'` reducer table
+
+The reducer is the pure total function `apply : (State, Event) → ApplyResult`
+where `ApplyResult = {ok:true, state} | {ok:false, code}`. Illegal events
+yield a typed error code in the result; the public boundary never throws.
+The table below is normative: every event type, the fields the reducer
+reads, the precise state mutation, and the error codes that may be raised.
+Field types follow Canonical Encoding v1.3: `uint256` is a non-negative
+decimal-string-on-wire, `address` is the canonical TON workchain:hex form.
+
+> **Conservation invariant (post-VALIDATED):** for every CAL that escrows at
+> `cal.validated`, the agent's net debit equals `treasury.collected_fees_window`
+> gain at the terminal event: `escrow − refund = Flat_Validation_Fee + gas_consumed`.
+> Pre-VALIDATED failures conserve at `fee_debited_ptra` (§9.4 Tier-2). The
+> reducer realizes this without recomputing: the validator bakes the economic
+> values into the event and `apply` simply moves them.
+
+**Event field conventions.** Every event carries `event_type:string`. CAL
+lifecycle events additionally carry `cal_hash:bytes32`. Field types use the
+v1.3 canonical wire forms; absence of an optional field is treated as the
+identity (0 for `uint256`).
+
+#### B.1 CAL lifecycle (§3.1)
+
+##### `cal.created`
+- **Reads:** `cal_hash`, `agent_id`.
+- **Mutation:** appends `state.cal.in_flight[cal_hash] := {agent_id, stage:CREATED, escrowed_ptra:0, gas_consumed_ptra:0, staged:[]}`.
+- **Errors:** `DUPLICATE_CAL` (already in flight), `AGENT_BUSY` (the agent already has another in-flight CAL — enforces §6.1 one-CAL-per-agent).
+
+##### `cal.signed`
+- **Reads:** `cal_hash`.
+- **Mutation:** `in_flight[cal_hash].stage := SIGNED`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE` (current stage ≠ CREATED).
+
+##### `cal.validated`
+- **Reads:** `cal_hash`, `escrow_ptra:uint256` (= `Flat_Validation_Fee + Max_Expected_Dynamic_Gas`, §9.3).
+- **Mutation:** debits `state.ptra.balances[agent_id] -= escrow_ptra`; sets `in_flight[cal_hash].escrowed_ptra := escrow_ptra`; advances `stage := VALIDATED`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`, `INSUFFICIENT_BALANCE`.
+
+##### `cal.executed`
+- **Reads:** `cal_hash`, `effects:[Delta]` (per-step canonical deltas, §3.2), `gas_consumed_ptra:uint256`.
+- **Mutation:** `in_flight[cal_hash].staged := effects`; `in_flight[cal_hash].gas_consumed_ptra := gas_consumed_ptra`; `stage := EXECUTED`. **Staged effects are NOT committed to namespaces yet** — commit happens at `cal.finalized`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`, `BAD_DELTA` (effects not an array).
+
+##### `cal.settled`
+- **Reads:** `cal_hash`.
+- **Mutation:** `stage := SETTLED`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`.
+
+##### `cal.finalized`
+- **Reads:** `cal_hash`, `gas_refunded_ptra:uint256` (optional, default 0).
+- **Mutation (atomic):**
+  1. Commit `in_flight[cal_hash].staged` deltas to their target namespaces.
+  2. Credit `state.ptra.balances[agent_id] += gas_refunded_ptra`.
+  3. Add `escrowed − gas_refunded_ptra` to `state.treasury.collected_fees_window`.
+  4. `state.cal.nonces[agent_id] += 1`.
+  5. `delete state.cal.in_flight[cal_hash]`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`, `UNDERFLOW` (`gas_refunded_ptra > escrowed_ptra`).
+
+##### `cal.failed` / `cal.expired`
+- **Reads:** `cal_hash`, `fee_debited_ptra:uint256` (pre-VALIDATED only, §9.4 Tier-2), `gas_refunded_ptra:uint256` (post-VALIDATED only).
+- **Mutation (branch on current stage):**
+  - *Pre-VALIDATED* (stage ∈ {CREATED, SIGNED}): debit `balances[agent_id] -= fee_debited_ptra` (which the validator capped at `min(fee, balance)`); add `fee_debited_ptra` to `collected_fees_window`. Staged effects (empty) are discarded.
+  - *Post-VALIDATED* (stage ∈ {VALIDATED, EXECUTED, SETTLED}): refund `balances[agent_id] += gas_refunded_ptra`; add `escrowed − gas_refunded_ptra` to `collected_fees_window`. **Staged effects are dropped, not committed** (§3.5 all-or-nothing).
+  - Either branch: `nonces[agent_id] += 1`; `delete in_flight[cal_hash]`.
+- **Errors:** `UNKNOWN_CAL`, `INSUFFICIENT_BALANCE` (pre-VALIDATED branch only), `UNDERFLOW` (post-VALIDATED branch only).
+
+#### B.2 External event mirroring (§7.4)
+
+##### `ptra.transferred`
+- **Reads:** `from:address`, `to:address`, `amount_nano_ptra:uint256`.
+- **Mutation:** `balances[from] -= amount`; `balances[to] += amount`.
+- **Errors:** `INSUFFICIENT_BALANCE`.
+
+##### `ptra.shadow_init`
+- **Reads:** `addr:address`.
+- **Mutation:** idempotent — if `balances[addr]` is unset, initialize to 0; otherwise no-op.
+- **Errors:** none.
+
+##### `oracle.feed_submitted`
+- **Reads:** `symbol:string`, `value:any` (median-aggregated upstream).
+- **Mutation:** `state.oracles.feeds[symbol] := value`.
+- **Errors:** none.
+
+#### B.3 Tick stream (§3.3)
+
+##### `tick.advanced`
+- **Reads:** `new_tick:uint256`.
+- **Mutation:** `state.tick.current := new_tick`; recompute `state.failure_mode.is_bounded_mode` from `capture_guard_counters` against `governance.params.capture_guard_threshold` (§10.1 counter trigger).
+- **Errors:** `BAD_TICK` (`new_tick ≤ current`).
+
+#### B.4 Closed error enum
+
+The reducer's `ApplyError` carries one of:
+`UNKNOWN_EVENT`, `UNKNOWN_CAL`, `DUPLICATE_CAL`, `AGENT_BUSY`, `BAD_STAGE`,
+`BAD_DELTA`, `BAD_TICK`, `INSUFFICIENT_BALANCE`, `UNDERFLOW`, `OVERFLOW`.
+`OVERFLOW` is reserved for future arithmetic guards (no current path raises it).
+`UNKNOWN_EVENT` covers any `event_type` outside §B.1–§B.3.
 
 ---
 
