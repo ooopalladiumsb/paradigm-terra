@@ -420,7 +420,12 @@ Sponsor signatures (§11.3) are validated separately and do not contribute to ca
 | EXECUTED → SETTLED | Agent | **PTRA** | State rent (proportional to state mutation size) | If state rent insufficient, rollback; gas burned. |
 | SETTLED → FINALIZED | — | — | Free | — |
 
-### 9.2. Gas unit pricing (placeholder; finalized after benchmarking)
+### 9.2. Gas unit pricing
+
+The table below pins the gas-unit weights normatively (informative copy; the
+authoritative composition + invariants live in Annex C, §14). Wall-clock
+calibration across the three reference implementations is deferred to
+Conformance Freeze (Annex C.3).
 
 | Operation class | Gas units |
 |-----------------|-----------|
@@ -428,8 +433,9 @@ Sponsor signatures (§11.3) are validated separately and do not contribute to ca
 | DSL `contains_key` | 10 |
 | DSL `size` | 20 |
 | DSL path resolution (per segment) | 2 |
-| MCP read-only call (`get_*`) | 50 |
-| MCP write call (`send_*`) | 200 |
+| DSL gate op (`requires_scope`, `is_owner_required`) | 5 |
+| MCP read-only call (verb starting with `get_`) | 50 |
+| MCP write call (any other verb) | 200 |
 | Invariant evaluation (per expression) | base 5 + DSL cost |
 | State rent | 1 per byte written |
 
@@ -731,7 +737,7 @@ Total agent debit on success: `391,000 nano_PTRA`.
 
 - **Annex A**: Final registered action taxonomy (`namespace.verb` enum + capability requirement matrix). *Draft populated 2026-05-28; promotes to Conformance-Freeze form on Tier 3 ratification.*
 - **Annex B**: Full `apply(state, event) → state'` reducer table. *Draft populated 2026-05-28; supersedes the non-exhaustive §7.1 sketch.*
-- **Annex C**: Gas unit benchmarks across reference implementations (TypeScript, Rust, Go).
+- **Annex C**: Gas unit benchmarks across reference implementations (TypeScript, Rust, Go). *Draft populated 2026-05-28 (model pinned; wall-clock columns deferred to Conformance Freeze).*
 - **Annex D**: Bounded Mode whitelist final form + emergency invariant set.
 
 ### Annex A (DRAFT) — Action taxonomy + capability requirement matrix
@@ -877,6 +883,98 @@ The reducer's `ApplyError` carries one of:
 `BAD_DELTA`, `BAD_TICK`, `INSUFFICIENT_BALANCE`, `UNDERFLOW`, `OVERFLOW`.
 `OVERFLOW` is reserved for future arithmetic guards (no current path raises it).
 `UNKNOWN_EVENT` covers any `event_type` outside §B.1–§B.3.
+
+### Annex C (DRAFT) — Gas-unit model + cross-language benchmarks
+
+Gas units are **deterministic counters** computed by a pure function over the
+canonical CAL bytes and the canonical committed effects; they are not measured
+at runtime. The total for a CAL is:
+
+```
+gas_units(cal, bytes_written) = static_gas_units(cal)
+                              + bytes_written * STATE_RENT_PER_BYTE
+```
+
+`bytes_written` is the byte length of the canonical serialization of the
+committed effects array (§3.2 Deltas). Conversion to nano-PTRA uses the Tier 1
+amendable `state.governance.gas_price_nano_ptra_per_unit` parameter (genesis
+default `1000` = 1 µPTRA per unit, §9.2):
+
+```
+gas_nano_ptra = gas_units * gas_price_nano_ptra_per_unit
+```
+
+#### C.1 Operation-class weights (normative)
+
+The three reference implementations (`@paradigm-terra/cal-gas`, `cal-gas-rs`,
+`cal-gas-go`) carry the same constants. Parity is pinned byte-for-byte by the
+NORMATIVE goldens (`cal-gas/vectors/golden.json`, 135 checks per language).
+
+| Class | Symbol | Units | Source of truth |
+|---|---|---|---|
+| DSL binary op (`eq`, `lt`, `add`, `sub`, `mul`, `gte`, `lte`, `gt`, `and`, `or`, `not`) | `COST.binary` | 1 | DSL v1.2 §5 parser cost table |
+| DSL `contains_key` | `COST.contains_key` | 10 | DSL v1.2 §5 parser cost table |
+| DSL `size` | `COST.size` | 20 | DSL v1.2 §5 parser cost table |
+| DSL path segment (per `.x` in a `var` reference) | `COST.path_segment` | 2 | DSL v1.2 §5 parser cost table |
+| DSL gate op (`requires_scope`, `is_owner_required`) | `COST.gate_op` | 5 | DSL v1.2 §5 parser cost table |
+| MCP read call (verb whose unqualified name starts with `get_`) | `MCP_READ` | 50 | §9.2 |
+| MCP write call (any other verb) | `MCP_WRITE` | 200 | §9.2 |
+| Invariant evaluation (per invariant expression) | `INVARIANT_BASE` | base 5 + DSL cost | §9.2 |
+| State rent | `STATE_RENT_PER_BYTE` | 1 / byte of committed effects | §9.2 |
+
+The DSL portion delegates entirely to `expressionCost` (`@paradigm-terra/dsl`,
+the same function the parser uses for the `MAX_AST_COST` admission check), so
+the validator never recomputes DSL gas: it consults the DSL layer and the
+above MCP / invariant / rent constants in cal-gas.
+
+#### C.2 Composition
+
+`static_gas_units(cal)` = DSL cost of `preconditions`
++ Σ over steps of (`MCP_READ`/`MCP_WRITE` for `step.verb` + Σ post-conditions DSL cost)
++ Σ over `invariants` of (`INVARIANT_BASE` + DSL cost).
+
+`gas_units(cal, bytes_written)` adds `bytes_written * STATE_RENT_PER_BYTE`.
+
+The `Max_Expected_Dynamic_Gas` budget the agent escrows at `cal.validated`
+(§9.3) is computed identically; the validator pins it into the
+`escrow_ptra` field on `cal.validated` so the reducer never recomputes.
+
+#### C.3 Wall-clock benchmarks (DEFERRED to Conformance Freeze)
+
+The abstract unit weights above must be calibrated against measured CPU cost
+across the three reference languages before the spec leaves draft. The
+benchmark harness is not yet built; the rows below establish the *shape*
+Annex C will take at Conformance Freeze. Each cell pairs a median wall-clock
+time (ns/op) with the cost ratio relative to a single DSL binary op (the
+unit `1` peg).
+
+| Class | TS (ns / ratio) | Rust (ns / ratio) | Go (ns / ratio) |
+|---|---|---|---|
+| DSL binary op (peg) | TBD / 1.00 | TBD / 1.00 | TBD / 1.00 |
+| DSL `contains_key` | TBD | TBD | TBD |
+| DSL `size` | TBD | TBD | TBD |
+| DSL path segment | TBD | TBD | TBD |
+| DSL gate op | TBD | TBD | TBD |
+| MCP read (synthetic) | TBD | TBD | TBD |
+| MCP write (synthetic) | TBD | TBD | TBD |
+| Invariant base (eval + JCS bind) | TBD | TBD | TBD |
+| State-rent encode (1 KiB committed) | TBD | TBD | TBD |
+
+**Acceptance gate at Conformance Freeze.** Each language column's ratio MUST
+fall inside `[0.5 × unit, 2.0 × unit]` of the abstract weight; any ratio
+outside that band requires a Tier 2 amendment to either the unit weight or
+the implementation. The harness will exercise the operation class in
+isolation (no IO, no canonicalization cost folded in) and report the median
+over ≥1k iterations after a warmup of ≥100; the protocol matches the
+diff-fuzzer harness convention (one case per line, hex of canonical-JSON).
+
+#### C.4 Parity discipline
+
+Cross-language drift in the unit *counts* (not the wall-clock) is forbidden:
+the `cal-gas/vectors/golden.json` parity vectors pin every count, and any
+implementation that diverges fails the cross-language differential fuzzer.
+The wall-clock columns of §C.3 are advisory inputs to the Tier 2 amendment
+process; they do not affect consensus.
 
 ---
 
