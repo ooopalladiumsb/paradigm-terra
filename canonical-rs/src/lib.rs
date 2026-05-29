@@ -24,6 +24,7 @@ pub mod framing;
 pub mod hash;
 pub mod integers;
 pub mod jcs;
+pub mod mcp;
 pub mod merkle;
 pub mod sha256;
 pub mod strings;

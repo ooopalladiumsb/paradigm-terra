@@ -11,6 +11,7 @@
  *   - framing:   [type_tag:u16][version:u16][length:u32][payload]
  *   - merkle:    binary balanced Merkle (CE §6, CAL Spec §7.3)
  *   - domains:   tag registry (CE §7.1 + v0.10.0-draft)
+ *   - mcp:       MCP schema-hash construction (CAL Spec §4.4.1)
  */
 
 export * from "./domains.js";
@@ -22,3 +23,4 @@ export * from "./jcs.js";
 export * from "./hash.js";
 export * from "./framing.js";
 export * from "./merkle.js";
+export * from "./mcp.js";

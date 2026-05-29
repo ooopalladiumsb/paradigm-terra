@@ -1,0 +1,210 @@
+{
+  "meta": {
+    "package": "@paradigm-terra/canonical",
+    "function": "computeMcpSchemaHash",
+    "spec_basis": "CAL Execution Spec §4.4.1 / §4.4.2",
+    "pinned_upstream": "@ton/mcp@0.1.15-alpha.16",
+    "generated_at": "2026-05-29T06:06:43.740Z",
+    "status": "NORMATIVE — Rust + Go parity verified 2026-05-29 (canonical-rs tests/mcp.rs, canonical-go mcp_test.go); all 11 vectors byte-identical across TS / Rust / Go"
+  },
+  "vectors": [
+    {
+      "id": "minimal_sorted",
+      "description": "two ASCII tool names, already sorted — baseline",
+      "input": {
+        "tool_names": [
+          "a_tool",
+          "b_tool"
+        ]
+      },
+      "expect": {
+        "kind": "ok",
+        "canonical_bytes_utf8": "[\"a_tool\",\"b_tool\"]",
+        "canonical_bytes_sha256_hex": "6b7bc4055a745edaa41f207a2e3db9f335476f4da05649142d40cf25b974110a",
+        "mcp_schema_hash_hex": "2cefc1cd5a216c10c366376a91b6432fa9a8421cd16ccafe191bfc75891177a0"
+      }
+    },
+    {
+      "id": "minimal_reversed",
+      "description": "same set as minimal_sorted but input is reverse-sorted — hash MUST match minimal_sorted",
+      "input": {
+        "tool_names": [
+          "b_tool",
+          "a_tool"
+        ]
+      },
+      "expect": {
+        "kind": "ok",
+        "canonical_bytes_utf8": "[\"a_tool\",\"b_tool\"]",
+        "canonical_bytes_sha256_hex": "6b7bc4055a745edaa41f207a2e3db9f335476f4da05649142d40cf25b974110a",
+        "mcp_schema_hash_hex": "2cefc1cd5a216c10c366376a91b6432fa9a8421cd16ccafe191bfc75891177a0"
+      }
+    },
+    {
+      "id": "minimal_renamed",
+      "description": "one tool renamed (a_tool → c_tool) — hash MUST differ from minimal_sorted",
+      "input": {
+        "tool_names": [
+          "c_tool",
+          "b_tool"
+        ]
+      },
+      "expect": {
+        "kind": "ok",
+        "canonical_bytes_utf8": "[\"b_tool\",\"c_tool\"]",
+        "canonical_bytes_sha256_hex": "f99c285eff0f5825327bb1ed6f5c978b5b4cb60cf77d8ff5b0d79f87f28684d5",
+        "mcp_schema_hash_hex": "170e1294a3af92736e50e1b823eb6074d9bc1c3e2b5bd94672e2260107fc7b55"
+      }
+    },
+    {
+      "id": "minimal_added",
+      "description": "one tool added on top of minimal_sorted — hash MUST differ from minimal_sorted",
+      "input": {
+        "tool_names": [
+          "a_tool",
+          "b_tool",
+          "c_tool"
+        ]
+      },
+      "expect": {
+        "kind": "ok",
+        "canonical_bytes_utf8": "[\"a_tool\",\"b_tool\",\"c_tool\"]",
+        "canonical_bytes_sha256_hex": "52ede07582ca4efa122495f5b38c57e2b123604523dd4349ca61b45890a098b5",
+        "mcp_schema_hash_hex": "8c4353175f662c794a66ec59811ea313b1c2e732a873ab3960ba6b149afdb674"
+      }
+    },
+    {
+      "id": "reject_nonascii_cyrillic",
+      "description": "tool name contains a non-ASCII codepoint (Cyrillic) — MUST reject",
+      "input": {
+        "tool_names": [
+          "get_кошелёк"
+        ]
+      },
+      "expect": {
+        "kind": "error",
+        "error_code": "MCP_TOOL_NAME_NONCANONICAL"
+      }
+    },
+    {
+      "id": "reject_nonascii_emoji",
+      "description": "tool name contains an emoji — MUST reject",
+      "input": {
+        "tool_names": [
+          "get_🔥"
+        ]
+      },
+      "expect": {
+        "kind": "error",
+        "error_code": "MCP_TOOL_NAME_NONCANONICAL"
+      }
+    },
+    {
+      "id": "reject_hyphen",
+      "description": "tool name uses '-' (allowed in some identifier styles but NOT in [A-Za-z0-9_]) — MUST reject",
+      "input": {
+        "tool_names": [
+          "get-wallet"
+        ]
+      },
+      "expect": {
+        "kind": "error",
+        "error_code": "MCP_TOOL_NAME_NONCANONICAL"
+      }
+    },
+    {
+      "id": "reject_empty_name",
+      "description": "tool name is the empty string — MUST reject",
+      "input": {
+        "tool_names": [
+          "valid_tool",
+          ""
+        ]
+      },
+      "expect": {
+        "kind": "error",
+        "error_code": "MCP_TOOL_NAME_EMPTY"
+      }
+    },
+    {
+      "id": "reject_duplicate",
+      "description": "tool name appears twice in the input — MUST reject",
+      "input": {
+        "tool_names": [
+          "get_balance",
+          "get_wallet",
+          "get_balance"
+        ]
+      },
+      "expect": {
+        "kind": "error",
+        "error_code": "MCP_TOOL_NAME_DUPLICATE"
+      }
+    },
+    {
+      "id": "reject_empty_set",
+      "description": "empty toolset — MUST reject (degenerate SCHEMA_MISMATCH case)",
+      "input": {
+        "tool_names": []
+      },
+      "expect": {
+        "kind": "error",
+        "error_code": "MCP_TOOLSET_EMPTY"
+      }
+    },
+    {
+      "id": "pinned_ton_mcp_alpha_16",
+      "description": "live @ton/mcp@0.1.15-alpha.16 toolset (40 tools) — protocol-pinned vector",
+      "input": {
+        "tool_names": [
+          "agentic_cancel_root_wallet_setup",
+          "agentic_cancel_rotate_operator_key",
+          "agentic_complete_root_wallet_setup",
+          "agentic_complete_rotate_operator_key",
+          "agentic_deploy_subwallet",
+          "agentic_get_pending_operator_key_rotation",
+          "agentic_get_root_wallet_setup",
+          "agentic_import_wallet",
+          "agentic_list_pending_operator_key_rotations",
+          "agentic_list_pending_root_wallet_setups",
+          "agentic_list_wallets_by_owner",
+          "agentic_rotate_operator_key",
+          "agentic_start_root_wallet_setup",
+          "agentic_validate_wallet",
+          "back_resolve_dns",
+          "emulate_transaction",
+          "generate_ton_proof",
+          "get_balance",
+          "get_balance_by_address",
+          "get_current_wallet",
+          "get_jetton_balance",
+          "get_jetton_info",
+          "get_jettons",
+          "get_jettons_by_address",
+          "get_known_jettons",
+          "get_nft",
+          "get_nfts",
+          "get_nfts_by_address",
+          "get_swap_quote",
+          "get_transaction_status",
+          "get_transactions",
+          "get_wallet",
+          "list_wallets",
+          "remove_wallet",
+          "resolve_dns",
+          "send_jetton",
+          "send_nft",
+          "send_raw_transaction",
+          "send_ton",
+          "set_active_wallet"
+        ]
+      },
+      "expect": {
+        "kind": "ok",
+        "canonical_bytes_utf8": "[\"agentic_cancel_root_wallet_setup\",\"agentic_cancel_rotate_operator_key\",\"agentic_complete_root_wallet_setup\",\"agentic_complete_rotate_operator_key\",\"agentic_deploy_subwallet\",\"agentic_get_pending_operator_key_rotation\",\"agentic_get_root_wallet_setup\",\"agentic_import_wallet\",\"agentic_list_pending_operator_key_rotations\",\"agentic_list_pending_root_wallet_setups\",\"agentic_list_wallets_by_owner\",\"agentic_rotate_operator_key\",\"agentic_start_root_wallet_setup\",\"agentic_validate_wallet\",\"back_resolve_dns\",\"emulate_transaction\",\"generate_ton_proof\",\"get_balance\",\"get_balance_by_address\",\"get_current_wallet\",\"get_jetton_balance\",\"get_jetton_info\",\"get_jettons\",\"get_jettons_by_address\",\"get_known_jettons\",\"get_nft\",\"get_nfts\",\"get_nfts_by_address\",\"get_swap_quote\",\"get_transaction_status\",\"get_transactions\",\"get_wallet\",\"list_wallets\",\"remove_wallet\",\"resolve_dns\",\"send_jetton\",\"send_nft\",\"send_raw_transaction\",\"send_ton\",\"set_active_wallet\"]",
+        "canonical_bytes_sha256_hex": "d717b2d723e6e7820723057b7c0e6056c218d8d84f8aae0a6d48fb743a6c517b",
+        "mcp_schema_hash_hex": "cb133fa73023b330edc20801adea7a8eb2c9396dd99bb8ab06122936129fba34"
+      }
+    }
+  ]
+}

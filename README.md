@@ -7,6 +7,8 @@ verified reference implementations** of the canonical encoding in three language
 
 ## Status
 
+> **Protocol Freeze Candidate — PFC-1 (2026-05-29).** The normative core is structurally complete: canonical encoding, DSL, CAL (skeleton + reducer + gas + validator), orchestrator, MCP schema-hash pin (TS / Rust / Go parity), TON Connect owner-sig ingress, and a TON mainnet economic anchor are all in place with NORMATIVE golden vectors. New protocol changes are now expected to go through compatibility review rather than free editing; implementation pressure is the primary source of remaining truth. Criteria for promotion to actual Consensus Freeze are listed under **PFC-1 → Freeze gates** below.
+
 - **Canonical Encoding Specification v1.3** — *Consensus-Freeze* (frozen normative).
 - **Conformance gate: CLEAN** (2026-05-24) — 0 divergences across TS / Rust / Go on
   170k random cases + full single-codepoint and pair-sweep Unicode coverage.
@@ -56,6 +58,37 @@ verified reference implementations** of the canonical encoding in three language
   [`docs/notes/orchestrator-design.md`](docs/notes/orchestrator-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
+
+## PFC-1 contents
+
+Declared **2026-05-29**. The following surfaces are inside the freeze candidate
+and are not expected to change before promotion except via the gates below:
+
+- **Identity model** — Wallet V5 ↔ CAL isomorphism (`cal-validator-design.md` §10), `operator_pubkey` MUST byte-match V5 `ContractState.public_key`.
+- **Transport** — TON Connect v2 `signMessage` + `ton_proof` for owner-sig ingress (Execution Spec §8.3, `ton-connect-ingress-design.md`).
+- **MCP surface** — `MCP_SCHEMA_HASH = cb133fa73023b330edc20801adea7a8eb2c9396dd99bb8ab06122936129fba34` over `@ton/mcp@0.1.15-alpha.16` (40 tools, lex-sorted names-only). Reproducible artifact at [`tools/mcp/`](tools/mcp/), parity NORMATIVE across TS / Rust / Go (11 vectors + 1000-shuffle stress).
+- **Gas model** — `gas_units` parity-locked; TON mainnet economic anchor pinned at 2026-05-29 (CAL Spec Annex §C.5, ConfigParam 18 / 20 / 21 / 24 / 25 snapshot from Tonviewer).
+- **Governance anchor** — Constitution §6.bis references CAL Spec §4.4 for the MCP pin; re-pinning policy explicit.
+- **Validator semantics** — `validate(cal, snapshot, trace) → events` pure function, NORMATIVE goldens across TS / Rust / Go, §10 Bounded Mode, §4.4 MCP schema-hash gate, §8.1/§8.2 sig + pubkey gate.
+- **Canonical encoding** — CE v1.3 in Consensus-Freeze since 2026-05-24.
+- **Orchestrator** — Track B node, NORMATIVE goldens, replay-clean.
+
+## PFC-1 → Freeze gates
+
+Promotion from PFC-1 to actual Consensus Freeze requires **all** of:
+
+1. **Real Ed25519** wired into the validator (currently `*_sig_present` is a stub verdict from the trace; the actual curve arithmetic is deferred).
+2. **§C.3 ns/op CPU benchmarks** built and every cell within `[0.5×, 2.0×]` of its abstract unit weight.
+3. **Staged validator** lifting the single-tick model — `EXPIRED_POST` and `AGENT_BUSY` become reachable (the two states the current orchestrator cannot induce).
+4. **End-to-end smoke flow** — at least one signed CAL transits `signMessage` (owner) → `validate()` → `cal.finalized` end-to-end against a TON testnet wallet, even if final on-chain `sendTransaction` publication is stubbed.
+5. **30-day quiet period** — no new normative changes to PFC-1 contents during the gating period.
+
+Out of PFC-1 scope (intentionally — addressed post-Freeze):
+
+- W5 external publication (`sendTransaction`) + on-chain Registry contract + Annex F `canonical_to_inner` codec.
+- TEP for Agentic Wallet SBT (standardization comes after a battle-tested reference, not before).
+- Tolk normative on-chain artifacts.
+- Multi-owner (Multisig v2.1) wallet flows.
 
 ## Layout
 
