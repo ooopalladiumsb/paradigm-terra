@@ -1003,6 +1003,134 @@ implementation that diverges fails the cross-language differential fuzzer.
 The wall-clock columns of §C.3 are advisory inputs to the Tier 2 amendment
 process; they do not affect consensus.
 
+#### C.5 TON mainnet economic anchor (calibration reference)
+
+**Status:** Calibration reference. Establishes the off-chain economic peg
+between cal-gas units and on-chain TON cost. cal-gas remains self-contained
+and consensus-deterministic; this section does **not** introduce a runtime
+dependency on TON config. It documents the ratios used to set
+`gas_price_nano_ptra_per_unit` (Constitution §XV PTRA, Tier 1 amendable) and
+`Flat_Validation_Fee` (§9.2, Tier 1 amendable).
+
+##### C.5.1 Pinned TON mainnet config snapshot
+
+Snapshot taken from [Tonviewer](https://tonviewer.com/config) on **2026-05-29**.
+Workchain (chain `0`, where Agentic Wallet SBT executes) values are the anchor;
+masterchain values are recorded for completeness.
+
+| Param | Source | Workchain (chain 0) | Masterchain |
+|---|---|---|---|
+| `gas_price` | ConfigParam 20 / 21 | 4 369 067 nanoTON / 2¹⁶ gas units | 655 360 000 nanoTON / 2¹⁶ |
+| `flat_gas_limit` | ConfigParam 20 / 21 | 100 gas units | 100 |
+| `flat_gas_price` | ConfigParam 20 / 21 | 6 667 nanoTON | 1 000 000 nanoTON |
+| `gas_limit` (per tx) | ConfigParam 20 / 21 | 1 000 000 gas units | 1 000 000 |
+| `lump_price` | ConfigParam 24 / 25 | 66 667 nanoTON | 10 000 000 nanoTON |
+| `bit_price` (fwd) | ConfigParam 24 / 25 | 4 369 067 nanoTON / 2¹⁶ bit | 655 360 000 / 2¹⁶ |
+| `cell_price` (fwd) | ConfigParam 24 / 25 | 436 906 667 nanoTON / 2¹⁶ cell | 65 536 000 000 / 2¹⁶ |
+| `first_frac` | ConfigParam 24 / 25 | 21 845 / 2¹⁶ ≈ 33.33% | 21 845 / 2¹⁶ |
+| `bit_price_ps` (storage, post-`utime 1 777 500 000`) | ConfigParam 18 | 0 nanoTON / bit / s | 1 000 |
+| `cell_price_ps` (storage, post-`utime 1 777 500 000`) | ConfigParam 18 | 135 nanoTON / cell / s | 500 000 |
+
+Workchain per-unit derived rates (the numbers cal-gas calibrates against):
+
+```
+WC_GAS_PER_UNIT_NANO_TON = 4 369 067 / 65 536 ≈ 66.67 nanoTON / gas unit
+WC_FWD_PER_BIT_NANO_TON  = 4 369 067 / 65 536 ≈ 66.67 nanoTON / bit
+WC_FWD_PER_CELL_NANO_TON = 436 906 667 / 65 536 ≈ 6 666.67 nanoTON / cell
+```
+
+##### C.5.2 cal-gas → TON cost mapping
+
+For the hypothetical on-chain projection of a CAL (W5 external publication,
+deferred per Execution Spec §8.3 future work), the cal-gas → TON equivalence is:
+
+| cal-gas class | cal-gas units (§C.1) | TON-equivalent (workchain, at WC_GAS_PER_UNIT) |
+|---|---|---|
+| DSL binary op | 1 | folded into flat threshold |
+| DSL `contains_key` | 10 | folded into flat threshold |
+| DSL `size` | 20 | folded into flat threshold |
+| MCP read (`get_*`) | 50 | folded into flat threshold |
+| Invariant base | 5 + DSL cost | folded into flat threshold |
+| MCP write | 200 | 200 × 66.67 ≈ 13 334 nanoTON ≈ 13.3 µTON |
+| State rent | 1 / byte | workchain `bit_price_ps = 0` post-2026-04-29 ⇒ ≈ 0 nanoTON / byte / s on-chain |
+
+The cal-gas unit is **abstract** and parity-locked (Annex C.1 / golden vectors);
+the table above is a calibration **target**, not a runtime conversion. The
+reference implementations never query TON config; the values flow into the
+spec via this Annex and then into `gas_price_nano_ptra_per_unit` and
+`Flat_Validation_Fee` defaults.
+
+##### C.5.3 Recommended `gas_price_nano_ptra_per_unit`
+
+Assuming 1 PTRA ≡ 1 TON (Constitution §XV decimal alignment), the TON-anchored
+rate at the 2026-05-29 snapshot is:
+
+```
+gas_price_nano_ptra_per_unit  ≈ round(WC_GAS_PER_UNIT_NANO_TON)  =  67 nano-PTRA / unit
+```
+
+**Current genesis default:** `1000` (§9.2). The 15× margin over the
+TON-anchored rate is reserved for off-chain orchestrator + validator + indexer
+compute that has no on-chain counterpart and is paid by the agent regardless
+of whether the CAL is on-chain-published.
+
+**Amendment recommendation:** Tier 1 amendment to align with the TON workchain
+rate is appropriate **only after**:
+1. TON mainnet `gas_price` has held steady for ≥ 4 consecutive validator
+   config votes, **and**
+2. paradigm_terra adopts on-chain CAL publication
+   (Execution Spec §8.3 future work — W5 external `sendTransaction` path).
+
+Until both hold, the 1000-default is conservative and correct.
+
+##### C.5.4 Recommended `Flat_Validation_Fee`
+
+CAL Spec §9.1 row 2 (`SIGNED → VALIDATED`) charges a flat PTRA fee. The TON
+analogue at the 2026-05-29 snapshot is `flat_gas_price = 6 667 nanoTON` over
+`flat_gas_limit = 100 gas units`. Recommended PTRA-anchored value:
+
+```
+Flat_Validation_Fee  ≈  6 667 nano-PTRA  (= 6.667 µPTRA)
+```
+
+Same amendment policy as §C.5.3 — pending on-chain publication path.
+
+##### C.5.5 Storage rent comparability
+
+`STATE_RENT_PER_BYTE = 1 cal-gas unit / byte` (§C.1) is a **one-shot** charge
+at SETTLED, not per-second. The TON analogue is per-byte-per-second; for a
+notional 1-year retention horizon (≈ 31.557 M s) workchain storage of a 1-byte
+contribution costs:
+
+```
+TON_1Y_BYTE_NANO_TON  =  (135 nanoTON / cell / s) × (1 cell / ~127 bytes) × 31.557 M s
+                      ≈  33.6 µTON per byte per year
+```
+
+(Workchain `bit_price_ps = 0` since 2026-04-29; only `cell_price_ps` survives.)
+The cal-gas rate is intentionally conservative: it charges once for perpetual
+off-chain retention, whereas TON re-charges every storage epoch and eviction
+is possible. No PTRA-anchored amendment is recommended for state rent — the
+two cost models are structurally different.
+
+##### C.5.6 Re-pinning policy
+
+This snapshot is point-in-time. When TON validators amend the relevant config
+parameters:
+
+- The snapshot table (§C.5.1) is updated under a new date stamp; prior
+  snapshots are retained for replay-determinism review.
+- Re-anchoring is a governance act, not an automated sync — paradigm_terra
+  consensus never reads TON config at runtime, so a TON config change is not
+  itself a state transition.
+- If the workchain `gas_price` drifts by `>2×` from the latest pinned
+  snapshot, the orchestrator emits an informative `gas_anchor_drift_warning`
+  (off-consensus, advisory).
+
+Re-pinning does **not** flow through CAL Spec changelog as a Tier 2 amendment
+unless it changes `gas_price_nano_ptra_per_unit` or `Flat_Validation_Fee`;
+snapshot refreshes alone are doc-only.
+
 ### Annex D (DRAFT) — Bounded Mode whitelist + emergency invariant set
 
 Pins the §10 Bounded Mode configuration as it stands at draft date. The

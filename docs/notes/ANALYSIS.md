@@ -218,6 +218,25 @@ Cocoon предоставляет:
 **Отложено в этом patchset'е** (намеренно):
 - `sendTransaction(W5 external)` для финальной on-chain публикации валидированного CAL — требует on-chain Registry-контракта и кодека `canonical_to_inner` (Annex F CAL Spec). Описано в §6 design note как future work, привязано к Registry roadmap.
 
+### 3.6. cal-gas TON-mainnet economic anchor — ✅ зафиксировано (2026-05-29)
+
+Memory отмечала «CAL spec §14 Annex C populated 2026-05-28 (model pinned, wall-clock TBD)». В §C.3 wall-clock'и означают ns/op CPU benchmarks для cross-language acceptance gate; отдельной дырой был **экономический якорь** — без него `gas_price_nano_ptra_per_unit` и `Flat_Validation_Fee` оставались governance-числами без real-world reference.
+
+**Закрытие (Patchset C):**
+- **CAL Spec Annex §C.5** — пятисекционный TON mainnet economic anchor:
+  - §C.5.1 — pinned snapshot из Tonviewer 2026-05-29: ConfigParam 18/20/21/24/25, workchain + masterchain;
+  - §C.5.2 — таблица соответствия cal-gas → TON-nanoTON (workchain rate ≈ 66.67 nanoTON / unit);
+  - §C.5.3 — recommended `gas_price_nano_ptra_per_unit ≈ 67` (TON-anchored), genesis 1000 объяснён 15× margin'ом на off-chain compute, amendment условен on-chain publication path'ом;
+  - §C.5.4 — recommended `Flat_Validation_Fee ≈ 6 667 nano-PTRA`;
+  - §C.5.5 — state rent comparability (one-shot vs per-second TON storage, ≈ 33.6 µTON/byte/year эквивалент);
+  - §C.5.6 — re-pinning policy: governance-act, не runtime-sync; off-consensus `gas_anchor_drift_warning` при дрейфе >2×.
+
+**Ключевое архитектурное решение:** cal-gas остаётся consensus-deterministic и **никогда не читает TON config во время валидации**. Якорь — это калибровочная reference для governance-решений о PTRA defaults, не runtime dependency. Это отделяет «протокольный газ» (нормативный, parity-locked) от «экономической цены» (Tier 1 amendable, периодически re-anchored).
+
+**Что НЕ сделано** (намеренно):
+- §C.3 wall-clock ns/op benchmarks остаются TBD — это отдельный harness работы (cross-language CPU performance), не закрывается TON-anchor'ом.
+- Genesis `gas_price_nano_ptra_per_unit = 1000` не изменён — это governance-решение, в §C.5.3 явно описаны условия amendment'а.
+
 ---
 
 ## 4. Мелкие технические замечания
@@ -243,6 +262,7 @@ Cocoon предоставляет:
 | P1 (критично) | Зафиксировать MCP schema hash в конституции | ✅ Закрыто нормативно (2026-05-29, Patchset A1): CAL Spec §4.4.1/§4.4.2 — formula names-only/lex-sorted + pinned `@ton/mcp@0.1.15-alpha.16`; Constitution §6.bis ссылается на §4.4 |
 | Architectural | Wallet V5 ↔ CAL isomorphism (структурное соответствие, не аналогия) | ✅ Закрыто нормативно (2026-05-29, Patchset A2): `cal-validator-design.md` §10 — mapping table + MUST-level операторный pubkey byte-match + Bounded Mode ≡ `is_signature_allowed=0` |
 | Architectural | TON Connect ingress для owner-подписей (entire trust ingress) | ✅ Закрыто нормативно (2026-05-29, Patchset B): Execution Spec §8.3 + CAL Spec §8.5 + design note `ton-connect-ingress-design.md`. `sendTransaction` (W5 external publication) отложен до on-chain Registry. |
+| Calibration | cal-gas economic anchor к TON mainnet (`gas_price_nano_ptra_per_unit`, `Flat_Validation_Fee`) | ✅ Закрыто нормативно (2026-05-29, Patchset C): CAL Spec Annex §C.5 — pinned ConfigParam 18/20/21/24/25 snapshot, recommended PTRA-anchored defaults, re-pinning policy. cal-gas не читает TON config в runtime. §C.3 ns/op benchmarks остаются отдельной TBD'шкой. |
 | P1 (критично) | Определить процедуру выхода из CONSENSUS_UNCERTAINTY | ✅ Добавлена таблица условий восстановления для всех failure states |
 | P1 (критично) | Добавить `prev_receipt_hash` в receipt schema | ✅ Добавлено поле + genesis-значение (32 нулевых байта) |
 | P2 (важно) | Формально определить «тик» (Модель времени) | ✅ Новая Глава XII (5 с = 1 тик, источник: TON lt) |
