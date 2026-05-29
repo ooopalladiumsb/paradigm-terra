@@ -433,6 +433,16 @@ The signed payload is the canonical bytes of the CAL **with** `signatures` field
 
 Sponsor signatures (§11.3) are validated separately and do not contribute to capability authorization; they only affect gas accounting.
 
+### 8.5. Signature ingress channels (normative pointer)
+
+This section defines **what** is signed (§8.3) and **which** signatures gate which actions (§8.1, §8.2). It does **not** define the transport channel by which signatures are obtained from their respective holders. Channel governance lives in the Execution Spec:
+
+- **`operator_sig`** — produced by the agent runtime locally; no external ingress channel. Key custody and signing tooling (e.g. `@ton/mcp`) are runtime-implementation choices, not consensus.
+- **`owner_sig`** — obtained via TON Connect v2 `signMessage` per **Execution Spec v1 §8.3** (Ingress подписей владельца). Domain binding via `ton_proof`, replay-model unification (`valid_until` ↔ `expiration_tick`), and wallet-compatibility constraints are normatively fixed in Execution Spec §8.3.
+- **`sponsor_sig`** (§11.3, §8.4) — ingress channel is implementation-defined; consensus-relevant only for gas accounting.
+
+The canonical bytes that are actually signed are identical across channels (§8.3 omit-on-null rule); only the transport differs. A validator MUST NOT distinguish a signature by its ingress channel — it MUST verify only the Ed25519 pair `(pubkey, bytes(cal_without_signatures))`.
+
 ---
 
 ## 9. Gas Model

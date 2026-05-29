@@ -203,6 +203,21 @@ Cocoon предоставляет:
 
 Следствие: будущий TON Connect transport (Execution §8) укладывается на этот изоморфизм без новых сущностей — owner-signed CAL ↦ `signMessage`, validated CAL ↦ W5 external body.
 
+### 3.5. TON Connect ingress для owner-подписей — ✅ зафиксировано (2026-05-29)
+
+Дыра в Execution Spec §8: запрет на «прямые вызовы TON API» (§8.2) не объяснял, как owner-подпись попадает в CAL. Без явного канала ingress'а split-key модель из Agentic Wallets была дырявой с точки зрения транспорта.
+
+**Закрытие (Patchset B):**
+- **Execution Spec §8.3** — `signMessage` TON Connect v2 как единственный нормативный канал для `owner_sig`; carve-out в §8.2 (TON Connect — это wallet-side signing-protocol, не TON API call).
+- **Execution Spec §8.3 / `ton_proof`** — domain-binding кошелька к origin'у (по умолчанию `agents.ton.org`, Tier 1 amendable); сохраняется в `state.registry.agents[id].owner_proof_domain`. Валидатор проверяет `signatures.owner_sig.pubkey == owner_proof_domain.pubkey` byte-match.
+- **Execution Spec §8.3 / replay model** — `TC.valid_until` ↔ CAL `expiration_tick` (привязано); TC `id` ↔ CAL `nonce` (независимы по назначению); никакая часть TC replay-state не входит в `STATE_ROOT`.
+- **Execution Spec §8.3 / bridge** — HTTP bridge с NaCl `crypto_box` явно out of consensus.
+- **CAL Spec §8.5** — нормативный pointer на Execution §8.3 для owner-channel; operator-sig остаётся runtime-internal; sponsor-sig — implementation-defined.
+- **Design note `ton-connect-ingress-design.md`** — полный technical depth (sequence, `ton_proof` flow, payload format, replay alignment table, multi-owner/HW-кошельки, out-of-scope).
+
+**Отложено в этом patchset'е** (намеренно):
+- `sendTransaction(W5 external)` для финальной on-chain публикации валидированного CAL — требует on-chain Registry-контракта и кодека `canonical_to_inner` (Annex F CAL Spec). Описано в §6 design note как future work, привязано к Registry roadmap.
+
 ---
 
 ## 4. Мелкие технические замечания
@@ -227,6 +242,7 @@ Cocoon предоставляет:
 | P0 (блокер) | Вычислить реальные golden vectors (убрать заглушки) | ✅ Реализован `@paradigm-terra/canonical`; golden.json — NORMATIVE, паритет TS/Rust/Go подтверждён (diff-fuzz clean) |
 | P1 (критично) | Зафиксировать MCP schema hash в конституции | ✅ Закрыто нормативно (2026-05-29, Patchset A1): CAL Spec §4.4.1/§4.4.2 — formula names-only/lex-sorted + pinned `@ton/mcp@0.1.15-alpha.16`; Constitution §6.bis ссылается на §4.4 |
 | Architectural | Wallet V5 ↔ CAL isomorphism (структурное соответствие, не аналогия) | ✅ Закрыто нормативно (2026-05-29, Patchset A2): `cal-validator-design.md` §10 — mapping table + MUST-level операторный pubkey byte-match + Bounded Mode ≡ `is_signature_allowed=0` |
+| Architectural | TON Connect ingress для owner-подписей (entire trust ingress) | ✅ Закрыто нормативно (2026-05-29, Patchset B): Execution Spec §8.3 + CAL Spec §8.5 + design note `ton-connect-ingress-design.md`. `sendTransaction` (W5 external publication) отложен до on-chain Registry. |
 | P1 (критично) | Определить процедуру выхода из CONSENSUS_UNCERTAINTY | ✅ Добавлена таблица условий восстановления для всех failure states |
 | P1 (критично) | Добавить `prev_receipt_hash` в receipt schema | ✅ Добавлено поле + genesis-значение (32 нулевых байта) |
 | P2 (важно) | Формально определить «тик» (Модель времени) | ✅ Новая Глава XII (5 с = 1 тик, источник: TON lt) |

@@ -297,6 +297,44 @@ Receipt также подписывается executor'ом (MCP gateway) для
 - Прямые вызовы TON API в обход MCP gateway (кроме emergency, но emergency запрещён конституцией). Все вызовы — через [`@ton/mcp`](https://docs.ton.org/overview/ai/mcp).
 - Любая форма неканонической сериализации, изменяющей хеш.
 
+**Не запрещено (carve-out):** [TON Connect v2](https://docs.ton.org/applications/ton-connect/core-concepts) RPC (`signMessage`, `signData`, `ton_proof`, `sendTransaction`) — это **wallet-side signing-protocol**, а не TON API call. Нормативное использование — ниже в §8.3.
+
+### 8.3. Ingress подписей владельца (TON Connect)
+
+`owner_sig` для CAL `action ∈ OWNER_REQUIRED_ACTIONS` (CAL Execution Spec §8.2) получается через **TON Connect v2** как единственный нормативный канал взаимодействия с владелец-кошельком.
+
+**Канал.**
+
+- `signMessage` — owner-подпись над каноническими байтами CAL (CAL Spec §8.3). `payload.type = "binary"`, `payload.data = canonical_bytes(cal_without_signatures)`. Обвязка TON Connect (`payload.network`, `payload.from`) **не входит** в `CAL_HASH` и не влияет на консенсус — она только для UI-подтверждения кошельком.
+- `ton_proof` — domain-binding кошелька к origin'у при подключении. Polled orchestrator'ом и сохраняется в `state.registry.agents[agent_id].owner_proof_domain` (Constitution §XVII State Layout).
+
+**Replay model — unified с CAL.**
+
+```
+TON Connect ↔ CAL:
+  valid_until = unix_ts_at_tick(cal.expiration_tick)
+  id          = strictly increasing per-session monotonic (не CAL nonce)
+  ─────────────────────────────────────────────────────────
+  CAL nonce и CAL expiration_tick — authoritative;
+  никакая часть TON Connect replay-state не входит в STATE_ROOT.
+```
+
+Если кошелёк отклонил request по `valid_until` (TON Connect замкнул окно раньше, чем `expiration_tick` дошёл), orchestrator должен сгенерировать новый CAL с актуальным `expiration_tick` (новый `CAL_HASH`, тот же `nonce` если CAL ещё не дошёл до SIGNED).
+
+**Domain binding.** При каждой CAL `action ∈ OWNER_REQUIRED_ACTIONS` валидатор сверяет `signatures.owner_sig.pubkey` с `state.registry.agents[agent_id].owner_proof_domain.pubkey` (byte-match raw 32). Origin domain-allowlist (по умолчанию: `agents.ton.org`) — Tier 1 amendable.
+
+**Bridge transport — out of consensus.** HTTP bridge с NaCl `crypto_box` сессией (per TON Connect spec) — implementation-level. Сессионные ключи, nonce'ы bridge-сообщений, TTL'ы и сам выбор bridge-провайдера **не часть консенсуса** и не подлежат golden-test покрытию.
+
+**Совместимость кошельков.** Любой TON Connect v2-совместимый кошелёк, чей on-chain контракт — Wallet V5 (`v5r1`) или Agentic Wallet SBT на основе W5 (Constitution §XI). Структурный изоморфизм W5 ↔ CAL зафиксирован в `cal-validator-design.md §10`.
+
+**Operator-подпись** в этой секции не описывается: она производится агент-runtime'ом локально (через `@ton/mcp` или эквивалент) и не требует ingress-канала со стороны пользователя. См. CAL Execution Spec §8.5.
+
+**Out of scope для §8.3.** Финальная публикация валидированного CAL как `sendTransaction(W5 external)` — отдельный канал, требующий on-chain Registry-контракта. Эта часть pipeline'а отложена до соответствующего roadmap'а; см. design note `notes/ton-connect-ingress-design.md` §6 «Future work».
+
+### 8.4. Compatibility window для signature ingress
+
+Изменения нормативного набора RPC-методов или формата `signMessage.payload` подлежат Tier 2 amendment с 1000-тиковым compatibility window (§10), так как затрагивают совместимость с уже подключёнными кошельками.
+
 ---
 
 ## 9. Многоязычность на уровне исполнения
