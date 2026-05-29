@@ -210,3 +210,62 @@ re-checks are defensive only, exercised under multi-tick orchestration.)
    are collapsed to the final after-state (revisit if a CAL needs staged reads).
 3. **Escrow-gate reason** — `INSUFFICIENT_ESCROW` (CLOSED 2026-05-26; the §3.5
    enum now carries the dedicated code, distinct from `OUT_OF_GAS`).
+
+## 10. W5 ↔ CAL isomorphism (normative)
+
+Wallet V5 `ContractState` is the canonical on-chain projection of CAL
+authorization state. The correspondence is **structural**, not analogical, and
+the validator SHALL enforce its key invariant byte-for-byte.
+
+### 10.1. Field mapping
+
+| Wallet V5 (TL-B `ContractState`)           | CAL (`SIGNED` payload)                              |
+|--------------------------------------------|-----------------------------------------------------|
+| `wallet_id : ## 32`                        | `agent_id`                                          |
+| external body `valid_until : ## 32`        | `expiration_tick`                                   |
+| `seqno : ## 32`, body `msg_seqno : ## 32`  | `nonce`                                             |
+| `public_key : ## 256`                      | `operator_pubkey`                                   |
+| `is_signature_allowed : ## 1`              | root-signature enable bit                           |
+| `extensions_dict : HashmapE 256 int1`      | Bounded Mode action whitelist (CAL Spec §10.2)      |
+
+### 10.2. Operator key invariant (MUST)
+
+```
+validator.operator_pubkey
+  MUST byte-match
+Wallet V5 ContractState.public_key
+  of the agent's deployed agentic-wallet SBT (Constitution §XI).
+```
+
+- **Encoding:** raw 32-byte Ed25519 public key. User-friendly (base64/bouncable)
+  encodings are non-normative and MUST NOT appear in any field hashed under
+  `CAL_HASH` or `RECEIPT_HASH`.
+- **Verification chain:** the validator's configured `operator_pubkey` for
+  `agent_id` is byte-equal to `state.registry.agents[agent_id].operator_pubkey`,
+  which itself is byte-equal to the on-chain `ContractState.public_key`.
+- **Rotation:** the `agentic_rotate_operator_key` flow (@ton/mcp, Constitution
+  §XI) MUST update on-chain `ContractState.public_key` and the registry mirror
+  in the same CAL. The validator only enforces equality at validation time;
+  preventing split-brain rotation is the orchestrator's responsibility.
+
+### 10.3. Bounded Mode as extension-gated execution
+
+```
+CAL Bounded Mode (CAL Spec §10) SHALL be interpreted as the off-chain analogue
+of Wallet V5 extension-gated execution with is_signature_allowed = 0.
+```
+
+In W5, `is_signature_allowed = 0` rejects raw signed externals; the only
+admissible path is an `internal_extension` from a pre-registered address, i.e.
+a closed governance-managed whitelist. Bounded Mode realises the same constraint
+off-chain: only `BOUNDED_MODE_WHITELIST` actions are admissible (§10.2), every
+admitted action is escalated to require `owner_sig` (§10.4), and emergency
+invariants are runtime-injected (§10.3). The `extensions_dict` and the bounded
+whitelist are the same object viewed from two sides.
+
+### 10.4. Future work (non-normative)
+
+`canonical_to_cell(state)` MAY be introduced for TVM-native anchoring of
+`STATE_ROOT` once on-chain Registry contracts exist. Until that roadmap is real,
+the JSON canonical encoding (Canonical Encoding v1.3 §4-§6) remains the single
+normative form for CAL-side hashing — BoC parity is deliberately out of scope.

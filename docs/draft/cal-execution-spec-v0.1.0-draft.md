@@ -235,6 +235,33 @@ For each `verb` in `steps[*].verb`, the validator computes the set of required `
 
 If `state.registry.mcp_schema_hash` does not match the validator's locally pinned hash, validation fails with `SCHEMA_MISMATCH` and the system enters `MCP_DEGRADED_MODE` per Constitution §VI.
 
+#### 4.4.1. Schema hash construction (normative)
+
+The MCP schema hash is derived from the **lexicographically sorted set of MCP tool names**, and **only the names**. Tool descriptions, parameter schemas, and behavioural metadata are explicitly excluded so that documentation churn in the upstream `@ton/mcp` package cannot invalidate the hash; only addition or removal of a tool does.
+
+```
+MCP_SCHEMA_V1_TOOLSET := canonical_json(sorted_lex(tool_names))
+MCP_SCHEMA_HASH       := SHA256("PARADIGM_TERRA_MCP_V1" || MCP_SCHEMA_V1_TOOLSET)
+```
+
+where:
+
+- `tool_names` is the set of `name` strings exported by the pinned `@ton/mcp` runtime;
+- `sorted_lex` is byte-wise ascending sort of the UTF-8-encoded names (same order rule used for canonical JSON object keys, Canonical Encoding v1.3 §4);
+- `canonical_json` is the Restricted JCS profile defined in Canonical Encoding v1.3 §4 (no whitespace, lex-sorted keys, no surrogate pairs, NFC string contents);
+- `"PARADIGM_TERRA_MCP_V1"` is the §7.1 domain tag, UTF-8 bytes, no terminator;
+- `||` is byte concatenation.
+
+The validator carries `MCP_SCHEMA_HASH` as a pinned constant; `state.registry.mcp_schema_hash` carries the on-chain quorum-acknowledged value (set via Tier 1/2 amendments per Constitution §6.bis); §4.4 compares the two byte-for-byte.
+
+#### 4.4.2. Pinned toolchain
+
+```
+@ton/mcp@0.1.15-alpha.16
+```
+
+This is the pinned runtime against which `MCP_SCHEMA_V1_TOOLSET` is computed for the v0.1.0-draft profile. The concrete byte value of `MCP_SCHEMA_HASH(0.1.15-alpha.16)` is recorded by the validator's first reference run, frozen into the validator handshake, and included in the validator golden vectors as the `mcp_schema_hash` field. Patch/minor/major bump policy is governed by Constitution §6.bis "Pinning стратегия MCP схемы".
+
 ---
 
 ## 5. Receipts

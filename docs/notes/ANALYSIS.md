@@ -61,15 +61,18 @@
 
 ---
 
-### 1.4. MCP schema hash не задан
+### 1.4. MCP schema hash не задан — ✅ закрыто нормативно (2026-05-29)
 
-**Проблема:** Конституция (Глава XI) говорит: «ожидаемый хеш схемы MCP зафиксирован в конституции», но нигде его не указывает. `MCP_DEGRADED_MODE` проверяет этот хеш — без него триггер деградации неопределён.
+**Было:** Конституция (Глава XI) говорила: «ожидаемый хеш схемы MCP зафиксирован в конституции», но нигде его не указывала. `MCP_DEGRADED_MODE` проверял этот хеш — без него триггер деградации был неопределён.
 
-**Исправление:** Добавить в Конституцию Главу XI или в Registry:
-```
-MCP_SCHEMA_HASH = SHA256("PARADIGM_TERRA_MCP_V1" || canonical_json(@ton/mcp schema))
-```
-Конкретное значение — после финализации версии `@ton/mcp`. Использовать `npx @ton/mcp@alpha` из [mcp.ton.org](https://mcp.ton.org/) для получения схемы.
+**Закрытие (Patchset A1):**
+- **CAL Execution Spec §4.4.1** — нормативная формула: хеш считается **только от лексикографически отсортированного множества имён инструментов** (без descriptions/params, чтобы документационные правки upstream не инвалидировали хеш).
+  ```
+  MCP_SCHEMA_V1_TOOLSET := canonical_json(sorted_lex(tool_names))
+  MCP_SCHEMA_HASH       := SHA256("PARADIGM_TERRA_MCP_V1" || MCP_SCHEMA_V1_TOOLSET)
+  ```
+- **CAL Execution Spec §4.4.2** — pinned toolchain: `@ton/mcp@0.1.15-alpha.16`. Конкретный байтовый хеш фиксируется первым прогоном референсного валидатора и входит в его golden vectors.
+- **Constitution §6.bis** — ссылается на CAL Spec §4.4.1/§4.4.2 как нормативный источник формулы и pin'а; pin/patch/minor/major политика остаётся в §6.bis.
 
 ---
 
@@ -180,6 +183,26 @@ Cocoon предоставляет:
 
 **Рекомендация:** добавить в Конституцию Главу II явную ссылку на TEP (если он будет принят) для стандарта Agentic Wallet SBT.
 
+### 3.4. Wallet V5 ↔ CAL isomorphism — ✅ зафиксировано (2026-05-29)
+
+После анализа `/blockchain-basics/standard/wallets/v5` обнаружено, что Wallet V5 `ContractState` — это **строго изоморфная on-chain проекция** CAL authorization state, а не «похожая» структура:
+
+| Wallet V5                                  | CAL                                  |
+|--------------------------------------------|--------------------------------------|
+| `wallet_id`                                | `agent_id`                           |
+| `valid_until`                              | `expiration_tick`                    |
+| `seqno` / `msg_seqno`                      | `nonce`                              |
+| `public_key`                               | `operator_pubkey`                    |
+| `is_signature_allowed`                     | root-signature enable bit            |
+| `extensions_dict`                          | Bounded Mode whitelist (CAL §10.2)   |
+
+**Закрытие (Patchset A2):** введено как нормативный §10 в `cal-validator-design.md`:
+- `validator.operator_pubkey` **MUST** byte-match `Wallet V5 ContractState.public_key` (raw 32-byte Ed25519, user-friendly формы запрещены в любых hashed-полях);
+- ротация ключа (`agentic_rotate_operator_key`) обязана обновлять on-chain и registry mirror в одном CAL;
+- CAL Bounded Mode формально объявлен off-chain аналогом `is_signature_allowed = 0` + extension-gated execution.
+
+Следствие: будущий TON Connect transport (Execution §8) укладывается на этот изоморфизм без новых сущностей — owner-signed CAL ↦ `signMessage`, validated CAL ↦ W5 external body.
+
 ---
 
 ## 4. Мелкие технические замечания
@@ -202,7 +225,8 @@ Cocoon предоставляет:
 | P0 (блокер) | Исправить адрес Developer Fund → canonical raw format | ✅ Исправлено: `0:e8797d197cc0261968ab8072b6abf41085d87803d6d3f3ebdb88c3d1ea9090cf` |
 | P0 (блокер) | Исправить CAL preconditions → использовать DSL JSON AST | ✅ Исправлено: полная DSL-схема с `op`/`lhs`/`rhs` вместо строк |
 | P0 (блокер) | Вычислить реальные golden vectors (убрать заглушки) | ✅ Реализован `@paradigm-terra/canonical`; golden.json — NORMATIVE, паритет TS/Rust/Go подтверждён (diff-fuzz clean) |
-| P1 (критично) | Зафиксировать MCP schema hash в конституции | ✅ Добавлен формат и примечание; значение — после финализации @ton/mcp |
+| P1 (критично) | Зафиксировать MCP schema hash в конституции | ✅ Закрыто нормативно (2026-05-29, Patchset A1): CAL Spec §4.4.1/§4.4.2 — formula names-only/lex-sorted + pinned `@ton/mcp@0.1.15-alpha.16`; Constitution §6.bis ссылается на §4.4 |
+| Architectural | Wallet V5 ↔ CAL isomorphism (структурное соответствие, не аналогия) | ✅ Закрыто нормативно (2026-05-29, Patchset A2): `cal-validator-design.md` §10 — mapping table + MUST-level операторный pubkey byte-match + Bounded Mode ≡ `is_signature_allowed=0` |
 | P1 (критично) | Определить процедуру выхода из CONSENSUS_UNCERTAINTY | ✅ Добавлена таблица условий восстановления для всех failure states |
 | P1 (критично) | Добавить `prev_receipt_hash` в receipt schema | ✅ Добавлено поле + genesis-значение (32 нулевых байта) |
 | P2 (важно) | Формально определить «тик» (Модель времени) | ✅ Новая Глава XII (5 с = 1 тик, источник: TON lt) |
