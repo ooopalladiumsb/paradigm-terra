@@ -7,7 +7,7 @@ contract (`docs/spec/execution-spec-v1.md` §8.3 + `docs/notes/ton-connect-ingre
 **Observation sessions logged:**
 - `2026-05-30` — Tonkeeper 4.7.0 (Chrome extension, testnet `-3`). Partial:
   phases 2/3/4a/5/10 captured, 6 closed by SDK, 7/8/9/11/12 deferred. Four
-  divergences recorded (D1–D4, see §10). Notes: `interop/observations/2026-05-30-session-notes.md`.
+  divergences recorded (D1–D4, see §10). Notes: `interop/observations/2026-05-30-tonkeeper.md`.
 
 **Purpose.** Convert PFC-1's *specification-level* transport assumptions into
 *observed* behavior across real TON Connect v2 wallets, before any semantic
@@ -227,13 +227,48 @@ nonces, TTLs are wallet-provider implementation. Re-connect requires fresh
 | D3 | Exec-spec §8.3; `ton-connect-ingress-design.md` | TC v2 `SignDataPayload` uses per-type field names: `text` / `bytes` / `cell`. Spec references generic `payload.data`. | Wording fix: explicit per-type field names in §8.3. | **Open — Observable.** dApp `index.html` already patched to emit the correct shape; spec wording PR deferred to post-quiet. |
 | D4 | Exec-spec §8.3 | `SignDataPayload` for `type:"cell"` requires a TL-B `schema` field (mandatory, SDK-side rejection: `'schema' is required`). | None — confirms PFC-1's implicit ranking of `binary` over `cell` for the owner-sig channel. Revisit only if a `cell` channel is ever wanted (needs a TL-B schema for the CAL variant). | **Closed — wallet-quirk row only.** No spec change. |
 
-**Repro for all rows:** Tonkeeper 4.7.0 (Chrome extension, testnet `-3`), `interop/dapp/index.html` served over ssh reverse tunnel, session `2026-05-30`. Full captures + signatures: `interop/observations/2026-05-30-session-notes.md`. Branch `post-pfc1/interop-smoke`.
+**Repro for all rows:** Tonkeeper 4.7.0 (Chrome extension, testnet `-3`), `interop/dapp/index.html` served over ssh reverse tunnel, session `2026-05-30`. Full captures + signatures: `interop/observations/2026-05-30-tonkeeper.md`. Branch `post-pfc1/interop-smoke`.
 
 Row legend (for future rows):
 - **Wallet:** specific build / version
 - **Repro:** test script + commit hash on `post-pfc1/interop-smoke`
 - **Severity:** Cosmetic / Observable / Consensus-affecting
 - **Action:** spec PR draft (post-quiet) or wallet-quirk row only
+
+### 10.1 D1 classification slot
+
+**Open question (highest-ROI next fact):** is D1 a property of the **TON Connect v2
+signing model** (every TC v2 wallet does it) or **Tonkeeper-specific** behavior? One
+observation cannot answer this. The slot below is filled per wallet; classification is
+assigned only after ≥1 independent TC v2 implementation is observed.
+
+**Current D1 status:** `UNCLASSIFIED — awaiting 2nd wallet` (first pass: MyTonWallet).
+
+**Comparison axes** (one column per wallet build; Tonkeeper column from
+`interop/observations/2026-05-30-tonkeeper.md`):
+
+| Axis | Tonkeeper 4.7.0 | MyTonWallet | OpenMask | … |
+|---|---|---|---|---|
+| commit format | `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(bytes))` | PENDING | PENDING | |
+| domain binding | yes — domain inside commit + echoed top-level | PENDING | PENDING | |
+| timestamp inclusion | yes — inside commit + echoed top-level | PENDING | PENDING | |
+| payload hashing | `sha256(payload.bytes)` — NOT raw bytes | PENDING | PENDING | |
+| returned signature object | base64 64-byte Ed25519 + top-level `timestamp` / `domain` | PENDING | PENDING | |
+
+**Classification enum** (assign once a 2nd wallet column is filled):
+
+- **A — `TC_V2_COMMIT_MODEL`** — all wallets produce the same structured commit. → D1 becomes
+  a serious **post-freeze clarification candidate** for Exec-spec §8.3 (validator must adopt the
+  TC v2 SignData hash schema as the canonical owner-sig verify routine).
+- **B — `TONKEEPER_SPECIFIC`** — only Tonkeeper does this; others sign raw `payload.bytes`. → D1
+  is an **interoperability note**, not protocol pressure; validator needs a per-wallet branch.
+- **C — `WALLET_CLASS_VARIANCE`** — some wallets do, some don't, no clean TC-version line. → most
+  consequential outcome: the owner-sig channel cannot assume a single verify routine; the spec
+  must enumerate accepted commit schemas (or constrain the supported wallet set).
+
+**Decision rule:** do not assign A/B/C — and do not draft any §8.3 spec PR — until the
+MyTonWallet column (minimum) is captured. Quiet period: spec wins regardless; this slot only
+records evidence.
 
 ---
 
