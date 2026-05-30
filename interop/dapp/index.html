@@ -114,13 +114,13 @@ WyJhZ2VudGljX2NhbmNlbF9yb290X3dhbGxldF9zZXR1cCJd</textarea>
 
   <script type="module">
     // @tonconnect/ui via CDN. Pin minor for reproducibility in observations.
-    import { TonConnectUI } from "https://esm.sh/@tonconnect/ui@2.1.0";
+    import { TonConnectUI } from "https://esm.sh/@tonconnect/ui@2.4.4";
 
     // ─── Observation log ────────────────────────────────────────────────
     const observation = {
       session_id: crypto.randomUUID(),
       started_at: new Date().toISOString(),
-      tc_lib: "@tonconnect/ui@2.1.0",
+      tc_lib: "@tonconnect/ui@2.4.4",
       wallet: null,
       features: { signData_supported: null, signMessage_supported: null, sendTransaction_supported: null, ton_proof_supported: null },
       events: [],
@@ -260,12 +260,14 @@ WyJhZ2VudGljX2NhbmNlbF9yb290X3dhbGxldF9zZXR1cCJd</textarea>
       log("sign_request", { method, payload: { type: payloadType, data: rawData } });
       try {
         let resp;
+        // TC v2 SignDataPayload uses per-type field names (text/bytes/cell), not a generic "data".
+        const fieldKey = payloadType === "text" ? "text" : payloadType === "binary" ? "bytes" : "cell";
+        const tcPayload = { type: payloadType, [fieldKey]: rawData };
         if (method === "signData") {
-          // Per TC v2 docs: signData with payload.type
-          resp = await tc.signData({ type: payloadType, data: rawData });
+          resp = await tc.signData(tcPayload);
         } else {
           // signMessage path — many wallets DO NOT implement this; the failure mode is itself an observation.
-          resp = await tc.signMessage({ payload: { type: payloadType, data: rawData } });
+          resp = await tc.signMessage({ payload: tcPayload });
         }
         const latency = Math.round(performance.now() - t0);
         document.getElementById("sign-status").textContent = "signed";

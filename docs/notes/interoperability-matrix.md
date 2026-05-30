@@ -4,6 +4,11 @@
 results from real-wallet integration smoke testing of the PFC-1 transport
 contract (`docs/spec/execution-spec-v1.md` §8.3 + `docs/notes/ton-connect-ingress-design.md`).
 
+**Observation sessions logged:**
+- `2026-05-30` — Tonkeeper 4.7.0 (Chrome extension, testnet `-3`). Partial:
+  phases 2/3/4a/5/10 captured, 6 closed by SDK, 7/8/9/11/12 deferred. Four
+  divergences recorded (D1–D4, see §10). Notes: `interop/observations/2026-05-30-session-notes.md`.
+
 **Purpose.** Convert PFC-1's *specification-level* transport assumptions into
 *observed* behavior across real TON Connect v2 wallets, before any semantic
 expansion. The matrix is the artifact; everything else (test scripts, dApp
@@ -33,7 +38,7 @@ is empirical, not aspirational.
 
 | Wallet | Form factor | Contract version | TC v2 | Testnet | Status |
 |---|---|---|---|---|---|
-| Tonkeeper | mobile + browser ext | W5 (`v5r1`) | ✓ | ✓ | not yet tested |
+| Tonkeeper | mobile + browser ext | W5 (`v5r1`) | ✓ | ✓ | **2026-05-30: 4.7.0 browser ext, testnet — partial (5/12 phases, D1–D4 captured)** |
 | MyTonWallet | browser ext + mobile | W4 default, W5 supported | ✓ | ✓ | not yet tested |
 | Tonhub | mobile | W4 default | ✓ | ✓ | not yet tested |
 | OpenMask | browser ext | W4 default | ✓ | ✓ | not yet tested |
@@ -57,11 +62,11 @@ Ed25519 signature over `payload.data` bytes.
 
 | Question | Expected | Observed (per wallet) |
 |---|---|---|
-| Does the wallet sign the raw `data` bytes verbatim, or prepend a wallet-domain prefix internally? | Raw per TC v2 §6 for `binary` | TBD |
-| Does the wallet render a human-readable preview of the CAL JSON when `type=binary`? | "Unknown binary" or hex | TBD |
-| Max accepted `payload.data` size? | ≥ 4 KiB (informal) | TBD |
-| Does refusing → cancel surface as an RPC error or silent timeout? | Error per TC §3.2 | TBD |
-| Returned signature encoding — hex vs base64? | base64 per TC §6 | TBD |
+| Does the wallet sign the raw `data` bytes verbatim, or prepend a wallet-domain prefix internally? | Raw per TC v2 §6 for `binary` | **Tonkeeper 4.7.0: NO — see D1.** Signs a structured commit `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(payload.bytes))`; `timestamp` + `domain` echoed top-level in response so validator can rebuild. |
+| Does the wallet render a human-readable preview of the CAL JSON when `type=binary`? | "Unknown binary" or hex | TBD (Tonkeeper 4.7.0: approval-UI rendering not recorded in 2026-05-30 session) |
+| Max accepted `payload.data` size? | ≥ 4 KiB (informal) | TBD (Tonkeeper 4.7.0: Phase 7 size probe interrupted by tunnel drop) |
+| Does refusing → cancel surface as an RPC error or silent timeout? | Error per TC §3.2 | TBD (Tonkeeper 4.7.0: Phase 8 reject path not run) |
+| Returned signature encoding — hex vs base64? | base64 per TC §6 | **Tonkeeper 4.7.0: ✓ base64** (88-char padded = 64-byte Ed25519 raw) |
 
 **Test harness.** A minimal Node script (`interop/sign-message.mjs`, not yet
 written) that opens a TC session, sends a canonical CAL with known
@@ -81,11 +86,11 @@ timestamp || payload, signed with wallet's pubkey.
 
 | Question | Expected | Observed |
 |---|---|---|
-| `domain.lengthBytes` correctness on multi-byte domains (e.g. IDN)? | Bytes, not chars | TBD |
+| `domain.lengthBytes` correctness on multi-byte domains (e.g. IDN)? | Bytes, not chars | TBD (Tonkeeper 4.7.0: ASCII-only tested across 4 captures on 3 domains; `lengthBytes` always equals char count. IDN case still open.) |
 | `timestamp` clock skew tolerance accepted by wallets? | ±300 s informal | TBD |
-| Does the wallet refresh `ton_proof` automatically on reconnect, or require a new request? | Per TC: new request | TBD |
-| What does the wallet return for `payload` echo — verbatim base64, or decoded? | Verbatim | TBD |
-| Does `ton_proof` returned `address` use raw `0:<hex>` or user-friendly form? | User-friendly per TC | TBD |
+| Does the wallet refresh `ton_proof` automatically on reconnect, or require a new request? | Per TC: new request | **Tonkeeper 4.7.0: ✓ fresh proof on every modal-flow Connect** (verified across 4 captures). Auto-restore from `localStorage` on page reload does NOT issue new proof — `connectItems.tonProof` is `undefined`. Behavior matches TC SDK design (proof only when `setConnectRequestParameters` is set before `openModal`). |
+| What does the wallet return for `payload` echo — verbatim base64, or decoded? | Verbatim | **Tonkeeper 4.7.0: ✓ verbatim** base64 of the dApp-supplied 32-byte random nonce. |
+| Does `ton_proof` returned `address` use raw `0:<hex>` or user-friendly form? | User-friendly per TC | Tonkeeper 4.7.0: proof object itself does **not** echo `address` (only `timestamp`/`domain`/`payload`/`signature`). Account address surfaces separately via `wallet.account.address` as raw `0:<hex>` (workchain `0`). User-friendly form not observed in this transport. |
 
 **Validator-side invariant** (PFC-1 §10.2 of `cal-validator-design.md`): the
 pubkey extracted from `ton_proof` MUST byte-match
@@ -207,7 +212,7 @@ nonces, TTLs are wallet-provider implementation. Re-connect requires fresh
 |---|---|---|
 | On unexpected bridge disconnect mid-`signMessage`, does the wallet remember the request? | Per TC §3.2: no | TBD |
 | Re-connect within session TTL — same session key, or new keypair? | Implementation-defined | TBD |
-| `ton_proof` re-issuance on every reconnect, or only on session TTL expiry? | Spec silent | TBD |
+| `ton_proof` re-issuance on every reconnect, or only on session TTL expiry? | Spec silent | **Tonkeeper 4.7.0: per fresh modal-flow Connect.** Auto-restore from `localStorage` returns to a connected state without issuing a new proof. Matches §3 row above. |
 | Does the wallet expire `ton_proof` independently of TC session TTL? | Possibly | TBD |
 | If orchestrator drops bridge mid-session, can it resume with same `client_id`? | Per TC: yes | TBD |
 
@@ -217,9 +222,14 @@ nonces, TTLs are wallet-provider implementation. Re-connect requires fresh
 
 | # | Section | Observed deviation | Spec clarification candidate | Status |
 |---|---|---|---|---|
-| — | (none yet) | — | — | — |
+| D1 | Exec-spec §8.3; `ton-connect-ingress-design.md` §3; `cal-validator-design.md` §8.1 + §10.2 | Wallet does NOT sign raw `payload.bytes`. `signData` signs a **structured commit** `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(payload.bytes))`; `timestamp` + `domain` echoed top-level so validator can rebuild. | Update §8.3 to reference the TC v2 SignData hash schema; validator §8.1 needs an alternative verify routine for the SignData channel (cannot call `ed25519_verify(payload_bytes, sig, pubkey)` directly). | **Open — Consensus-affecting.** Spec wins during quiet period; logged as wallet-behavior row. Spec PR deferred to post-quiet. Blocks Freeze gates #1 (real Ed25519) + #4 (e2e smoke). |
+| D2 | Exec-spec §8.3 | `@tonconnect/ui` (2.1.0, 2.4.4) does not export `signMessage`; the TC v2 JS SDK renamed the RPC to `signData`. Calling `tc.signMessage(...)` throws `TypeError`. | Wording fix: clarify "signMessage" is the historical (TC v1) RPC name; modern TC v2 JS SDK exposes it as `signData`. No semantic change. | **Open — Cosmetic.** Spec PR (wording) deferred to post-quiet. |
+| D3 | Exec-spec §8.3; `ton-connect-ingress-design.md` | TC v2 `SignDataPayload` uses per-type field names: `text` / `bytes` / `cell`. Spec references generic `payload.data`. | Wording fix: explicit per-type field names in §8.3. | **Open — Observable.** dApp `index.html` already patched to emit the correct shape; spec wording PR deferred to post-quiet. |
+| D4 | Exec-spec §8.3 | `SignDataPayload` for `type:"cell"` requires a TL-B `schema` field (mandatory, SDK-side rejection: `'schema' is required`). | None — confirms PFC-1's implicit ranking of `binary` over `cell` for the owner-sig channel. Revisit only if a `cell` channel is ever wanted (needs a TL-B schema for the CAL variant). | **Closed — wallet-quirk row only.** No spec change. |
 
-When a row is added here, it gets:
+**Repro for all rows:** Tonkeeper 4.7.0 (Chrome extension, testnet `-3`), `interop/dapp/index.html` served over ssh reverse tunnel, session `2026-05-30`. Full captures + signatures: `interop/observations/2026-05-30-session-notes.md`. Branch `post-pfc1/interop-smoke`.
+
+Row legend (for future rows):
 - **Wallet:** specific build / version
 - **Repro:** test script + commit hash on `post-pfc1/interop-smoke`
 - **Severity:** Cosmetic / Observable / Consensus-affecting
