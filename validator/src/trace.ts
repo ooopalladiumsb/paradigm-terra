@@ -29,9 +29,10 @@ export interface ExecutionTrace {
   readonly stateAfter: Json;
   /**
    * Whether a valid `operator_sig` is present over the CAL's canonical-unsigned
-   * payload (§8.1, §8.3). Structural-only at this layer: the trace carries the
-   * node's verifier verdict; real Ed25519 curve arithmetic is performed outside
-   * the validator (deferred).
+   * payload (§8.1, §8.3). The trace carries the node's verifier verdict; `validate()`
+   * stays pure over this boolean. Real Ed25519 curve arithmetic now lands in
+   * `owner-sig.ts` (`operatorSigPresent(env, operator_pubkey)` via Contract A,
+   * `TC_V2_SIGNDATA_VERIFY_V1`), computed BEFORE the trace is built — not inside `validate()`.
    */
   readonly operatorSigPresent: boolean;
   /** Whether a valid `owner_sig` co-signature is present (§8.2 structural check). */

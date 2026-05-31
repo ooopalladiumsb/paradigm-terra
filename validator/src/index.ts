@@ -9,7 +9,12 @@
  * arrive as an execution trace (§4.1).
  *
  * Design note: ../docs/notes/cal-validator-design.md.
+ *
+ * `owner-sig.ts` is the node-side Ed25519 verifier that produces the trace's
+ * signature-presence booleans (TC_V2_SIGNDATA_VERIFY_V1 / TC_V2_TONPROOF_VERIFY_V1);
+ * it runs before `validate()` and is not part of the pure verdict function.
  */
 
 export * from "./trace.js";
 export * from "./validate.js";
+export * from "./owner-sig.js";
