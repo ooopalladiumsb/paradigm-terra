@@ -1,6 +1,6 @@
 # Session notes — 2026-05-31 — MyTonWallet testnet observation
 
-**Status:** Phases 2, 4a, 5 captured. **D1 classified → A (`TC_V2_COMMIT_MODEL`).** New divergence D5 (address encoding). Phases 3, 6–12 deferred/optional.
+**Status:** Phases 2, 3, 4a, 5 captured + **D1 classified → A (`TC_V2_COMMIT_MODEL`)** [committed `c7493e4`]. Phase 9: attempt 1 → **D6** (SDK address-form asymmetry; harness fixed, gh-pages `d5cf2e1`); attempt 2 → **SUCCESS, deploys WalletV5R1** (seqno 0, pubkey-bound, self-send). Divergences: D5 (address encoding), D6. Phases 6–8, 10–12 deferred.
 
 **Primary objective (highest-ROI):** capture the **D1 classification column** for MyTonWallet
 (matrix §10.1). One `signData`/`binary` trial yields all five comparison axes and decides
@@ -89,14 +89,26 @@ Captured. See wallet table above. MyTonWallet 4.10.1 browser, `SignData` adverti
 `types:["text","binary","cell"]`. Only feature delta vs Tonkeeper: no `extraCurrencySupported`.
 
 ### Phase 3 — ton_proof
-PENDING. Capture ≥1 fresh modal-flow connect. Record per attempt:
+Captured (from connect log, session 07:09:24Z). `max_protocol_version: 2`.
 
 | # | Domain | `lengthBytes` | timestamp (UTC) | Notes |
 |---|---|---|---|---|
-| 1 | ooopalladiumsb.github.io | (expect 24) | PENDING | initial |
+| 1 | ooopalladiumsb.github.io | **24** | 2026-05-31T (ts 1780211353) | initial connect |
 
-- Verify: fresh nonce / fresh sig / fresh timestamp on every modal-flow Connect?
-- Verify: payload echo == verbatim base64 of the 32-byte dApp nonce?
+```json
+"proof": {
+  "timestamp": 1780211353,
+  "domain": { "lengthBytes": 24, "value": "ooopalladiumsb.github.io" },
+  "payload": "botvmjojzz/bIb2NCGASOzY6xxr/uQFOG9459WVUJmc=",
+  "signature": "RrL/RA76ks6UYMKv0ZpxDiiiLj11FnGq16ecX4loCrKjJSnd1pUQMLacJ2PYYXyT3IMOJ911AtDmmA4rketTBw=="
+}
+```
+
+- `signature`: base64 → **64 bytes** Ed25519. ✓
+- `domain.lengthBytes` = 24 = byte count of `ooopalladiumsb.github.io` (ASCII). Matches Tonkeeper's
+  ASCII-domain behavior. IDN byte≠char case still untestable from Pages.
+- `payload`: 32 bytes (the dApp-generated nonce, echoed verbatim base64). ✓
+- Single connect captured; freshness-across-reconnect not re-probed (already established on Tonkeeper).
 
 ### Phase 4a — `signData` / `binary`  ← drives D1
 Captured. Full response:
@@ -183,8 +195,59 @@ Record: accepted? truncated? wallet warning?
 PENDING. Cancel at wallet approval popup. Record exact SDK error + shape.
 
 ### Phase 9 — `sendTransaction` (testnet self-send, 1 nanoTON)
-PENDING. Safe once `network:"-3"` confirmed in Phase 4a. Record BOC / external message shape,
-`maxMessages`, any `extraCurrency` handling.
+**ATTEMPT 1 — blocked at SDK client-side validation (did NOT reach wallet). → D6.**
+
+Two attempts (07:09:37Z, 11:59:07Z), both identical:
+
+```
+send_request  tx.messages[0].address = "0:fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268"  (raw 0:hex)
+send_error    [TON_CONNECT_SDK_ERROR] SendTransactionRequest validation failed:
+              Wrong 'address' format in message at index 0    (latency 4–12 ms → pre-wallet)
+```
+
+Root cause (read from `@tonconnect/sdk@3.4.1` source, the dep of `@tonconnect/ui@2.4.4`):
+```js
+if (!isValidString(message.address)) { return `'address' is required in message at index ${i}`; }
+if (!isValidUserFriendlyAddress(message.address)) { return `Wrong 'address' format in message at index ${i}`; }
+```
+`sendTransaction` requires a **user-friendly base64url** address. TON Connect `connect` provides
+`account.address` in **raw `0:hex`**. The harness passed raw verbatim → client-side reject.
+
+- The raw address is itself valid (workchain 0, 32-byte hex) — rejection is purely the format
+  the validator accepts, not a bad address.
+- **This is NOT MyTonWallet behavior** — it's a TonConnect SDK contract asymmetry + a harness
+  defect. Reproduces on any wallet. Logged as D6 (transport/tooling), not a wallet-divergence.
+- The wallet was never invoked → Phase 9's real targets (BOC / contract version / approval UX /
+  dust threshold) remain **uncaptured**. Needs ATTEMPT 2 with the fixed harness.
+
+**Harness fix applied** (`interop/dapp/index.html` source + gh-pages `d5cf2e1`, **live on Pages**):
+normalize raw→friendly via the SDK's own `toUserFriendlyAddress(rawAddr, testOnly)`
+(`testOnly = account.chain === CHAIN.TESTNET`); `send_request` now logs raw + friendly + testOnly.
+Produces non-bounceable testnet form (`0Q…`) — matches the D5 form MyTonWallet itself returns.
+
+**ATTEMPT 2 — SUCCESS (happy-path).** Fixed harness (friendly addr) passed SDK validation,
+wallet approved, returned a BOC. Response:
+
+```json
+{ "boc": "te6cckECGQEAA2MAA+eIAfWJ/1++E3B3Vyvx+K8vV6oot4hkHAXcg8RYtav25+TQEY5tLO3P…" }
+```
+
+Decoded (local BOC parser, `/tmp/bochash.py`): external-in message, **25 cells → carries StateInit
+⇒ this tx DEPLOYS the wallet**. Findings:
+- **Contract = WalletV5R1.** Code-cell hash = `20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f` (canonical W5R1).
+- Data cell (322 bits, W5 layout): `is_signature_allowed=1`, **`seqno=0`** (fresh → first deploy),
+  `wallet_id=0x7ffffffd`, `pubkey=330eba04…cce5411` (**matches connected account** ✓), trailing
+  empty-extensions-dict bit `0`.
+- Internal transfer (cell #24): dest hash `fac4ffaf…f268` = **self** ✓; **bounce bit = 0**
+  (non-bounceable — consistent with the friendly `0Q…` form); value = 1 nanoTON.
+
+**Significance (Gate #4):** first real end-to-end transport happy-path — dApp → SDK → wallet →
+signed external message. MyTonWallet 4.10.1 (testnet) provisions **W5R1 directly**, not the W4
+the matrix candidate row assumed. seqno=0 confirms the account was undeployed before this tx.
+
+**Soft observations still open (user did not report):** approval-popup rendering, on-chain
+confirmation, round-trip latency, dust-threshold behavior at 1 nanoTON (the wallet accepted 1 nTON
+into the BOC → no client-side dust floor, at least pre-broadcast).
 
 ### Phase 10 — reconnect
 PENDING. disconnect → reconnect same origin; hard-reload auto-restore from localStorage.
@@ -213,6 +276,16 @@ D2/D3/D4 unless MTW behaves differently.)
   base64url (`0Q…`, testnet non-bounceable) by MyTonWallet vs raw `0:hex` by Tonkeeper.
   `payload.from` is raw `0:hex` in both. Resolution path: validator must accept both `address`
   representations OR key identity strictly off `payload.from`. Spec PR deferred (quiet period).
+- **D6 — NEW (SDK/transport, tooling-level, non-consensus):** TonConnect SDK contract is
+  internally **asymmetric about address form** — `connect` returns `account.address` as raw
+  `0:hex`, but `sendTransaction`'s validator requires **user-friendly base64url**
+  (`isValidUserFriendlyAddress`, `@tonconnect/sdk@3.4.1`). A dApp/relayer feeding the connect
+  address straight into a message is rejected client-side. **Not wallet-specific** (SDK-level;
+  reproduces on any wallet). **Low PFC-1 impact** — §8.3 concerns the owner-sig (signData)
+  channel, not the W5 external-message (sendTransaction) channel — but the eventual relayer that
+  submits external messages MUST normalize raw→friendly (`toUserFriendlyAddress`). Cross-links
+  D5: the friendly form D5 flags as MyTonWallet's quirk is in fact the form `sendTransaction`
+  demands. Resolution: tooling/relayer normalization note; no spec change.
 
 ## Open questions (carry-over)
 

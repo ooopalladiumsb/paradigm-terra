@@ -115,6 +115,9 @@ WyJhZ2VudGljX2NhbmNlbF9yb290X3dhbGxldF9zZXR1cCJd</textarea>
   <script type="module">
     // @tonconnect/ui via CDN. Pin minor for reproducibility in observations.
     import { TonConnectUI } from "https://esm.sh/@tonconnect/ui@2.4.4";
+    // SDK helpers (pinned to ui@2.4.4's dep). sendTransaction validator requires a
+    // user-friendly address; connect provides raw 0:hex. See observation 2026-05-31 (D6).
+    import { toUserFriendlyAddress, CHAIN } from "https://esm.sh/@tonconnect/sdk@3.4.1";
 
     // ─── Observation log ────────────────────────────────────────────────
     const observation = {
@@ -287,12 +290,16 @@ WyJhZ2VudGljX2NhbmNlbF9yb290X3dhbGxldF9zZXR1cCJd</textarea>
     btnSend.addEventListener("click", async () => {
       const wallet = tc.wallet;
       if (!wallet) return;
+      // connect gives raw 0:hex; sendTransaction's SDK validator wants user-friendly.
+      const rawAddr = wallet.account.address;
+      const testOnly = wallet.account.chain === CHAIN.TESTNET;
+      const friendlyAddr = toUserFriendlyAddress(rawAddr, testOnly);
       const tx = {
         validUntil: Math.floor(Date.now() / 1000) + 300,
-        messages: [{ address: wallet.account.address, amount: "1" }],
+        messages: [{ address: friendlyAddr, amount: "1" }],
       };
       const t0 = performance.now();
-      log("send_request", { tx });
+      log("send_request", { tx, raw_address: rawAddr, friendly_address: friendlyAddr, test_only: testOnly });
       try {
         const resp = await tc.sendTransaction(tx);
         const latency = Math.round(performance.now() - t0);

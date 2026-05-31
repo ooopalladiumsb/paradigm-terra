@@ -39,7 +39,7 @@ is empirical, not aspirational.
 | Wallet | Form factor | Contract version | TC v2 | Testnet | Status |
 |---|---|---|---|---|---|
 | Tonkeeper | mobile + browser ext | W5 (`v5r1`) | ✓ | ✓ | **2026-05-30: 4.7.0 browser ext, testnet — partial (5/12 phases, D1–D4 captured)** |
-| MyTonWallet | browser ext + mobile | W4 default, W5 supported | ✓ | ✓ | **2026-05-31: 4.10.1 browser, testnet — Phases 2/4a/5; D1→A, D5 (address encoding)** |
+| MyTonWallet | browser ext + mobile | **W5R1 observed** (deploy seqno 0, testnet) | ✓ | ✓ | **2026-05-31: 4.10.1 browser, testnet — Phases 2/3/4a/5/9; D1→A; D5 (addr encoding), D6 (SDK addr-form); sendTransaction deploys WalletV5R1** |
 | Tonhub | mobile | W4 default | ✓ | ✓ | not yet tested |
 | OpenMask | browser ext | W4 default | ✓ | ✓ | not yet tested |
 | Wallet (Telegram) | in-app | proprietary on-chain | ✓ | ? | not yet tested |
@@ -227,6 +227,7 @@ nonces, TTLs are wallet-provider implementation. Re-connect requires fresh
 | D3 | Exec-spec §8.3; `ton-connect-ingress-design.md` | TC v2 `SignDataPayload` uses per-type field names: `text` / `bytes` / `cell`. Spec references generic `payload.data`. | Wording fix: explicit per-type field names in §8.3. | **Open — Observable.** dApp `index.html` already patched to emit the correct shape; spec wording PR deferred to post-quiet. |
 | D4 | Exec-spec §8.3 | `SignDataPayload` for `type:"cell"` requires a TL-B `schema` field (mandatory, SDK-side rejection: `'schema' is required`). | None — confirms PFC-1's implicit ranking of `binary` over `cell` for the owner-sig channel. Revisit only if a `cell` channel is ever wanted (needs a TL-B schema for the CAL variant). | **Closed — wallet-quirk row only.** No spec change. |
 | D5 | Exec-spec §8.3; `cal-validator-design.md` §10.2 | Top-level `address` returned in **user-friendly base64url** by MyTonWallet 4.10.1 (`0Q…`, testnet non-bounceable) vs raw `0:hex` by Tonkeeper. `payload.from` is raw `0:hex` in BOTH; decoded hashparts match the account. | Validator must accept both `address` representations, OR key owner identity strictly off `payload.from` (raw in both wallets). | **Open — Observable, non-consensus.** First seen MyTonWallet 4.10.1, 2026-05-31. Spec wording PR deferred to post-quiet. |
+| D6 | TonConnect SDK (`@tonconnect/sdk@3.4.1` via `ui@2.4.4`); relayer/tooling | SDK is **internally asymmetric about address form**: `connect` returns `account.address` raw `0:hex`, but `sendTransaction`'s validator requires **user-friendly base64url** (`isValidUserFriendlyAddress`). Feeding the connect address straight into a message → client-side `Wrong 'address' format in message at index 0` (pre-wallet). | Tooling/relayer must normalize raw→friendly (`toUserFriendlyAddress(addr, testOnly)`) before building messages. Harness fixed (gh-pages `d5cf2e1`). | **Open — Tooling, non-consensus, low PFC-1 impact** (§8.3 = signData/owner-sig channel, not the sendTransaction/W5-external channel). Not wallet-specific (SDK-level; reproduces on any wallet). Cross-links D5. |
 
 **Repro for all rows:** Tonkeeper 4.7.0 (Chrome extension, testnet `-3`), `interop/dapp/index.html` served over ssh reverse tunnel, session `2026-05-30`. Full captures + signatures: `interop/observations/2026-05-30-tonkeeper.md`. Branch `post-pfc1/interop-smoke`.
 
