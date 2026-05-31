@@ -13,9 +13,10 @@
     "proof_payload": "botvmjojzz/bIb2NCGASOzY6xxr/uQFOG9459WVUJmc="
   },
   "signature_b64": "RrL/RA76ks6UYMKv0ZpxDiiiLj11FnGq16ecX4loCrKjJSnd1pUQMLacJ2PYYXyT3IMOJ911AtDmmA4rketTBw==",
+  "digest_from_input": true,
   "expect": {
     "digest_sha256_hex": "e579b5abfbd8c37f20fb09a0e358e48f6847b84ebc83759ee8599fa9abcf5fd3",
-    "verify": true
+    "verdict": true
   },
   "source": "interop/observations/2026-05-31-mytonwallet.md Phase 3"
 }

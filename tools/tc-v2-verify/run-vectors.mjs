@@ -15,7 +15,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { signDataDigest } from './sign-data.mjs';
 import { tonProofDigest } from './ton-proof.mjs';
-import { verifyUnderContract } from './index.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -31,37 +30,40 @@ const verifyRaw = (digestHex, sigB64, pubHex) =>
     crypto.createPublicKey({ key: Buffer.concat([SPKI, Buffer.from(pubHex, 'hex')]), format: 'der', type: 'spki' }),
     Buffer.from(sigB64, 'base64'));
 
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, digestChecked = 0;
 const digestFor = (contract, input) => (contract === 'TC_V2_TONPROOF_VERIFY_V1' ? tonProofDigest(input) : signDataDigest(input));
 
+// Two independent axes, exactly as the package splits them:
+//   (1) DIGEST parity  — recompute the contract digest from the input (when digest_from_input)
+//                        and assert byte-identical to the committed digest_sha256_hex. This is
+//                        the part Rust must reproduce WITHOUT ed25519.
+//   (2) VERDICT        — ed25519_verify(committed digest, signature, pubkey) == expected verdict.
+//                        Needs a crypto backend (TS here; Go later). Rust may skip this axis.
 for (const rel of all) {
   const v = JSON.parse(fs.readFileSync(path.join(PKG, rel), 'utf8'));
-  let ok;
-  if (v.signed_digest_override_hex) {
-    // construction-level negative: verify the signature against the explicitly-wrong digest bytes
-    ok = verifyRaw(v.signed_digest_override_hex, v.signature_b64, v.operator_pubkey_hex);
-  } else {
-    ok = verifyUnderContract(v.contract, v.input, v.signature_b64, v.operator_pubkey_hex).ok;
+  const stored = v.expect.digest_sha256_hex;
+  const errs = [];
+
+  // axis 1 — digest parity
+  if (v.digest_from_input) {
+    const computed = digestFor(v.contract, v.input).toString('hex');
+    digestChecked++;
+    if (computed !== stored) errs.push(`DIGEST MISMATCH (computed ${computed.slice(0, 16)}… vs ${stored.slice(0, 16)}…)`);
   }
 
-  const verdictOk = ok === v.expect.verify;
-  // digest parity check (positives carry the anchored digest)
-  let digestOk = true;
-  if (v.expect.digest_sha256_hex) {
-    digestOk = digestFor(v.contract, v.input).toString('hex') === v.expect.digest_sha256_hex;
-  }
+  // axis 2 — verdict via ed25519 over the committed digest
+  const verdict = verifyRaw(stored, v.signature_b64, v.operator_pubkey_hex);
+  if (verdict !== v.expect.verdict) errs.push(`verdict ${verdict} (expected ${v.expect.verdict})`);
 
-  if (verdictOk && digestOk) { pass++; }
-  else {
-    fail++;
-    console.log(`❌ ${v.id}: verdict ${ok} (expected ${v.expect.verify})${digestOk ? '' : ', DIGEST MISMATCH'}`);
-  }
+  if (errs.length === 0) pass++;
+  else { fail++; console.log(`❌ ${v.id}: ${errs.join('; ')}`); }
 }
 
 console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass}/${all.length} vectors pass `
   + `(${manifest.vectors.positive.length} positive, ${manifest.vectors.negative.length} negative, ${manifest.vectors['cross-channel'].length} cross-channel).`);
+console.log(`   digest-parity axis exercised on ${digestChecked}/${all.length} vectors (rest are construction-override negatives).`);
 if (fail === 0) {
-  console.log('   TS reference leg green. Parity target for Rust/Go: reproduce every digest_sha256_hex bit-identically.');
+  console.log('   TS reference leg green. Rust target: recompute every digest_from_input digest bit-identically (no ed25519 needed).');
   process.exit(0);
 }
 process.exit(1);

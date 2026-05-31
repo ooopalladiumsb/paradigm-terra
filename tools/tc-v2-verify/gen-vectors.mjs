@@ -69,7 +69,8 @@ for (const p of positives) {
     id: `positive/${p.id}`, contract: p.contract, channel: p.cap.channel, kind: 'positive',
     description: `Real ${p.cap.wallet.name} ${p.cap.wallet.version} capture; ed25519 verifies against the reconstructed commit.`,
     operator_pubkey_hex: p.cap.operator_pubkey_hex, input: p.input, signature_b64: p.cap.signature_b64,
-    expect: { digest_sha256_hex: r.digestHex, verify: true },
+    digest_from_input: true,
+    expect: { digest_sha256_hex: r.digestHex, verdict: true },
     source: p.cap.source,
   });
 }
@@ -104,7 +105,8 @@ for (const n of negatives) {
     id: `negative/${n.id}`, contract: n.contract, channel: 'signData', kind: 'negative', mutation: n.mutation,
     description: `Mutated copy of ${baseCap.capture_id}; ${n.mutation}. MUST fail.`,
     operator_pubkey_hex: n.pub, input: n.input, signature_b64: n.sig,
-    expect: { verify: false },
+    digest_from_input: true,
+    expect: { digest_sha256_hex: r.digestHex, verdict: false },
     source: baseCap.source,
   });
 }
@@ -120,10 +122,10 @@ for (const n of negatives) {
   write('negative', 'wrong-hash-layer', {
     id: 'negative/wrong-hash-layer', contract: 'TC_V2_SIGNDATA_VERIFY_V1', channel: 'signData', kind: 'negative',
     mutation: 'ed25519 fed sha256(signDataDigest) — one extra hash layer',
-    description: 'Tests that the SINGLE-sha256 envelope is required; an extra layer must fail.',
+    description: 'Tests that the SINGLE-sha256 envelope is required; an extra layer must fail. digest_from_input=false: the signed digest is an external (wrong) construction, NOT derivable from the contract over the input — so digest-parity impls do not recompute it.',
     operator_pubkey_hex: baseCap.operator_pubkey_hex, input: baseInput, signature_b64: baseCap.signature_b64,
-    signed_digest_override_hex: override,
-    expect: { verify: false },
+    digest_from_input: false,
+    expect: { digest_sha256_hex: override, verdict: false },
     source: baseCap.source,
   });
 }
@@ -139,7 +141,8 @@ for (const n of negatives) {
     id: 'cross-channel/signdata-under-tonproof-verifier', contract: 'TC_V2_TONPROOF_VERIFY_V1', channel: 'signData', kind: 'cross-channel',
     description: 'A genuine signData capture (real sig) verified with the ton_proof routine. MUST fail — proves the two routines are NOT interchangeable (different endianness + nested vs single hash).',
     operator_pubkey_hex: C.mtwBin.operator_pubkey_hex, input, signature_b64: C.mtwBin.signature_b64,
-    expect: { verify: false },
+    digest_from_input: true,
+    expect: { digest_sha256_hex: r.digestHex, verdict: false },
     source: C.mtwBin.source,
   });
 }
@@ -152,7 +155,8 @@ for (const n of negatives) {
     id: 'cross-channel/tonproof-under-signdata-verifier', contract: 'TC_V2_SIGNDATA_VERIFY_V1', channel: 'tonProof', kind: 'cross-channel',
     description: 'A genuine ton_proof capture (real sig) verified with the signData routine. MUST fail — same non-interchangeability in the other direction.',
     operator_pubkey_hex: C.proof.operator_pubkey_hex, input, signature_b64: C.proof.signature_b64,
-    expect: { verify: false },
+    digest_from_input: true,
+    expect: { digest_sha256_hex: r.digestHex, verdict: false },
     source: C.proof.source,
   });
 }

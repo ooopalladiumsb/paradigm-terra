@@ -16,8 +16,10 @@
     "payload_text": null
   },
   "signature_b64": "F31Se0AAztZR3JkbWYwxUvbNKTsDdf3ZbyhGo3IzL2t9kxkpV/Q1WzTJO+ciiSHrT9SL9hjI8Ym9fdKQldQmDw==",
+  "digest_from_input": true,
   "expect": {
-    "verify": false
+    "digest_sha256_hex": "728dda1ab2efff4a7b56b15d8c65b21f13ead79284e4abca42102cf6fecf4e8f",
+    "verdict": false
   },
   "source": "interop/observations/2026-05-31-mytonwallet.md Phase 4a"
 }

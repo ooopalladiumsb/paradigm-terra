@@ -15,9 +15,10 @@
     "payload_text": "WyJhZ2VudGljX2NhbmNlbF9yb290X3dhbGxldF9zZXR1cCJd"
   },
   "signature_b64": "8yeuVrxkkTp/XzNr2voynl6qJhIdEkPiPSwyO4q46q+QfJFbvceutfgGvhVv7OBRHc+w5KdXYRCi7gsbRlAdBg==",
+  "digest_from_input": true,
   "expect": {
     "digest_sha256_hex": "31c274b95ec4e8bb5dba134fe0271a7a946cac5e97d85edb1b46c13b26dc0063",
-    "verify": true
+    "verdict": true
   },
   "source": "interop/observations/2026-05-30-tonkeeper.md Phase 5"
 }

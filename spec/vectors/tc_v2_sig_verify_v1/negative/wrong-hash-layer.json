@@ -4,7 +4,7 @@
   "channel": "signData",
   "kind": "negative",
   "mutation": "ed25519 fed sha256(signDataDigest) — one extra hash layer",
-  "description": "Tests that the SINGLE-sha256 envelope is required; an extra layer must fail.",
+  "description": "Tests that the SINGLE-sha256 envelope is required; an extra layer must fail. digest_from_input=false: the signed digest is an external (wrong) construction, NOT derivable from the contract over the input — so digest-parity impls do not recompute it.",
   "operator_pubkey_hex": "330eba04a55777e3e14d4080092e5d31540b924b23d8d5a7c025be097cce5411",
   "input": {
     "workchain": 0,
@@ -16,9 +16,10 @@
     "payload_text": null
   },
   "signature_b64": "F31Se0AAztZR3JkbWYwxUvbNKTsDdf3ZbyhGo3IzL2t9kxkpV/Q1WzTJO+ciiSHrT9SL9hjI8Ym9fdKQldQmDw==",
-  "signed_digest_override_hex": "4fdd6691f434fffe3e0b8b419d7926b515eb63694c14aeb825e12dc3ca487434",
+  "digest_from_input": false,
   "expect": {
-    "verify": false
+    "digest_sha256_hex": "4fdd6691f434fffe3e0b8b419d7926b515eb63694c14aeb825e12dc3ca487434",
+    "verdict": false
   },
   "source": "interop/observations/2026-05-31-mytonwallet.md Phase 4a"
 }

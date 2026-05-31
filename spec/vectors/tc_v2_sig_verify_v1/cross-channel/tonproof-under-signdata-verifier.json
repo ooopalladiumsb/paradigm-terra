@@ -15,8 +15,10 @@
     "payload_text": "botvmjojzz/bIb2NCGASOzY6xxr/uQFOG9459WVUJmc="
   },
   "signature_b64": "RrL/RA76ks6UYMKv0ZpxDiiiLj11FnGq16ecX4loCrKjJSnd1pUQMLacJ2PYYXyT3IMOJ911AtDmmA4rketTBw==",
+  "digest_from_input": true,
   "expect": {
-    "verify": false
+    "digest_sha256_hex": "7da45ce5211502d319fd0f4c6314df76feee0994802ce6b632df2eea51532c06",
+    "verdict": false
   },
   "source": "interop/observations/2026-05-31-mytonwallet.md Phase 3"
 }
