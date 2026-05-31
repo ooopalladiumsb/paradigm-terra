@@ -102,7 +102,7 @@ spec MUST state BE explicitly and cite that authority. Full framing:
       trace booleans; `validate()` stays pure. TS (`validator/src/owner-sig.ts`) + Go
       (`cal-validator-go/owner_sig.go`); Rust validator deferred-by-constraint (no Ed25519). Two
       distinct entry points; no universal facade.
-- [ ] Formalize the CAL co-signature ingress envelope type (carries sig + wallet-echoed address/domain/timestamp)
+- [x] Formalize the CAL co-signature ingress envelope type (`docs/draft/cal-co-signature-envelope-draft.md`) — decisions 1A–5A; Decision≠Reconstruction inputs; consensus surface = one new invariant
 - [ ] Exec-spec §8.3 wiring; remove the stale `ed25519_verify(payload_bytes, …)` assumption (D1)
 - [x] **Contract B corroboration** — 2nd `ton_proof` capture landed (Tonkeeper 4.7.0, ed25519-verified); Contract B now at 2 captures / 2 wallets, meeting the same ≥2-wallet bar used for D1
 - [ ] Promote vectors PRE-NORMATIVE → NORMATIVE; move this doc to `docs/spec/`
