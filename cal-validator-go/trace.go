@@ -29,8 +29,10 @@ type ExecutionTrace struct {
 	StateBefore canonical.Value
 	StateAfter  canonical.Value
 	// OperatorSigPresent: whether a valid operator_sig is present over the CAL's
-	// canonical-unsigned payload (§8.1, §8.3). Structural-only here: the trace
-	// carries the node's verifier verdict; real Ed25519 is deferred.
+	// canonical-unsigned payload (§8.1, §8.3). The trace carries the node's verifier
+	// verdict; validate() stays pure over this boolean. Real Ed25519 now lands in
+	// owner_sig.go (OperatorSigPresent(env, operator_pubkey) via Contract A,
+	// TC_V2_SIGNDATA_VERIFY_V1), computed BEFORE the trace is built — not in validate().
 	OperatorSigPresent  bool
 	OwnerSigPresent     bool
 	// PinnedMCPSchemaHash is the validator-local pinned MCP schema hash (§4.4).
