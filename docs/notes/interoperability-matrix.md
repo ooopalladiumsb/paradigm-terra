@@ -89,13 +89,54 @@ timestamp || payload, signed with wallet's pubkey.
 | `domain.lengthBytes` correctness on multi-byte domains (e.g. IDN)? | Bytes, not chars | TBD (Tonkeeper 4.7.0: ASCII-only tested across 4 captures on 3 domains; `lengthBytes` always equals char count. IDN case still open.) |
 | `timestamp` clock skew tolerance accepted by wallets? | ±300 s informal | TBD |
 | Does the wallet refresh `ton_proof` automatically on reconnect, or require a new request? | Per TC: new request | **Tonkeeper 4.7.0: ✓ fresh proof on every modal-flow Connect** (verified across 4 captures). Auto-restore from `localStorage` on page reload does NOT issue new proof — `connectItems.tonProof` is `undefined`. Behavior matches TC SDK design (proof only when `setConnectRequestParameters` is set before `openModal`). |
-| What does the wallet return for `payload` echo — verbatim base64, or decoded? | Verbatim | **Tonkeeper 4.7.0: ✓ verbatim** base64 of the dApp-supplied 32-byte random nonce. |
+| What does the wallet return for `payload` echo — verbatim base64, or decoded? | Verbatim | **Tonkeeper 4.7.0: ✓ verbatim** base64 of the dApp-supplied 32-byte random nonce. **MyTonWallet 4.10.1: ✓ verbatim, AND the literal base64 string (not the decoded 32 bytes) is what enters the signed commit** — confirmed by ed25519 verify, §3.1. |
 | Does `ton_proof` returned `address` use raw `0:<hex>` or user-friendly form? | User-friendly per TC | Tonkeeper 4.7.0: proof object itself does **not** echo `address` (only `timestamp`/`domain`/`payload`/`signature`). Account address surfaces separately via `wallet.account.address` as raw `0:<hex>` (workchain `0`). User-friendly form not observed in this transport. |
 
 **Validator-side invariant** (PFC-1 §10.2 of `cal-validator-design.md`): the
 pubkey extracted from `ton_proof` MUST byte-match
 `state.registry.agents[id].operator_pubkey` raw 32 bytes. User-friendly forms
 in the TC envelope are stripped before comparison.
+
+### 3.1 ton-proof-item-v2 byte layout — VERIFIED
+
+Companion to §10.2. The MyTonWallet 4.10.1 Phase 3 `ton_proof` capture (signature +
+pubkey + domain + timestamp + nonce) was fed to `interop/ton-proof-verify.mjs`;
+`ed25519_verify` holds against the reconstructed commit and rejects four negative
+controls (corrupted sig, ts off-by-one, domain mismatch, tampered nonce). A single
+capture suffices: ed25519 verification passes only if the reconstructed bytes are
+byte-identical to what the wallet signed, so the layout is cryptographically pinned
+among candidates.
+
+```
+inner   = utf8("ton-proof-item-v2/")
+        ‖ int32_be(workchain) ‖ address_hash[32]
+        ‖ uint32_le(domain_len) ‖ utf8(domain)
+        ‖ uint64_le(timestamp)
+        ‖ payload                       # the dApp nonce, signed as its literal
+                                        # (base64) string bytes — NOT base64-decoded
+verify  = ed25519_verify( sha256( 0xFFFF ‖ "ton-connect" ‖ sha256(inner) ),
+                          signature, operator_pubkey )
+```
+
+**Key finding — the two TC v2 channels do NOT share byte conventions:**
+
+| | signData (§10.2) | ton_proof (§3.1) |
+|---|---|---|
+| schema prefix | `ton-connect/sign-data/` | `ton-proof-item-v2/` |
+| `domain_len` | **uint32 BE** | **uint32 LE** |
+| `timestamp` | **uint64 BE** | **uint64 LE** |
+| type prefix | `"txt"`/`"bin"` | none |
+| outer hashing | `sha256(message)` | `sha256(0xFFFF ‖ "ton-connect" ‖ sha256(inner))` |
+
+A validator implementing both owner-sig verification routines **must not** share
+endianness/hashing logic across them — they are genuinely different commit schemes.
+This is exactly the kind of byte-level detail the eventual §8.3/§10.2 normative
+package must state per-channel (see `docs/notes/tc-v2-signdata-verify-v1.md`).
+
+**Caveat:** both this capture and all §10.2 captures are workchain `0`, so workchain
+endianness is unconstrained here (int32 BE/LE both `0x00000000`). domain_len and
+timestamp endianness ARE pinned empirically by this capture (both non-zero). Repro:
+`node interop/ton-proof-verify.mjs`.
 
 ---
 
@@ -310,10 +351,14 @@ controls (corrupted sig, ts off-by-one, domain mismatch, wrong pubkey). The 3-by
 prefix between `timestamp` and `payload_len` was the missing piece — a 6144-layout brute-force
 without it found zero matches, including the otherwise-canonical guess.
 
-**Honest caveat:** all captures are workchain `0`, so `int32` BE/LE of the workchain field are
-the identical `0x00000000`; this corpus cannot distinguish workchain endianness. The reference
-impl (`ton-connect/demo-dapp-with-react-ui` → `src/server/services/sign-data-service.ts`) uses
-BE, which the verifier pins. A future non-zero-workchain capture would close this.
+**Honest caveat (documented residual, not a blocker):** all captures are workchain `0`, so
+`int32` BE/LE of the workchain field are the identical `0x00000000`; this corpus cannot
+distinguish workchain endianness. This is likely **un-testable via normal wallets** (standard
+TON user wallets deploy only in workchain 0; masterchain `-1` has no штатный dApp path), so it
+is treated as a residual backed by canonical SDK source rather than chased: the reference impl
+(`ton-connect/demo-dapp-with-react-ui` → `src/server/services/sign-data-service.ts`) uses
+`writeInt32BE`, which the verifier pins. Full framing + the post-quiet normative package this
+feeds: `docs/notes/tc-v2-signdata-verify-v1.md`.
 
 **Consequence (unchanged, deferred):** the validator's owner-sig verify (cal-validator-design
 §8.1) must adopt THIS commit as the canonical routine; it cannot call
