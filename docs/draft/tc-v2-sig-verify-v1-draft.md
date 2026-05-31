@@ -94,10 +94,11 @@ spec MUST state BE explicitly and cite that authority. Full framing:
 - [x] Byte layouts reconstructed + ed25519-verified (both contracts)
 - [x] PRE-NORMATIVE corpus frozen (`interop/conformance/`)
 - [x] Golden vectors: positive + negative + cross-channel (`spec/vectors/tc_v2_sig_verify_v1/`)
-- [x] TS reference implementation (`tools/tc-v2-verify/`)
-- [ ] Rust implementation
-- [ ] Go implementation
-- [ ] Cross-language parity harness (bit-identical digests) — `tools/parity/`
+- [x] TS reference implementation (`tools/tc-v2-verify/`) — digest 14/14 + verdict 15/15
+- [x] Rust implementation (`tc-v2-verify-rs/`) — digest 14/14 (digest-only by design)
+- [x] Go implementation (`tc-v2-verify-go/`) — digest 14/14 + verdict 15/15 (2nd ed25519 oracle)
+- [x] Cross-language parity harness (`tools/parity/tc-v2/run.sh`) — TS == Rust == Go digests; TS & Go verdicts
 - [ ] Validator integration (`cal-validator-design.md` §8.1) — two distinct entry points
 - [ ] Exec-spec §8.3 wiring; remove the stale `ed25519_verify(payload_bytes, …)` assumption (D1)
+- [ ] **Contract B corroboration** — a 2nd `ton_proof` capture from a different wallet (currently 1 capture / 1 wallet vs Contract A's 4 captures / 2 wallets); apply the same ≥2-wallet bar used for D1 before promotion
 - [ ] Promote vectors PRE-NORMATIVE → NORMATIVE; move this doc to `docs/spec/`
