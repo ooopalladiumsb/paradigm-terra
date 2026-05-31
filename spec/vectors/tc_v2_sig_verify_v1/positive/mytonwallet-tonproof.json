@@ -1,0 +1,21 @@
+{
+  "id": "positive/mytonwallet-tonproof",
+  "contract": "TC_V2_TONPROOF_VERIFY_V1",
+  "channel": "tonProof",
+  "kind": "positive",
+  "description": "Real mytonwallet 4.10.1 capture; ed25519 verifies against the reconstructed commit.",
+  "operator_pubkey_hex": "330eba04a55777e3e14d4080092e5d31540b924b23d8d5a7c025be097cce5411",
+  "input": {
+    "workchain": 0,
+    "address_hash_hex": "fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+    "domain": "ooopalladiumsb.github.io",
+    "timestamp": 1780211353,
+    "proof_payload": "botvmjojzz/bIb2NCGASOzY6xxr/uQFOG9459WVUJmc="
+  },
+  "signature_b64": "RrL/RA76ks6UYMKv0ZpxDiiiLj11FnGq16ecX4loCrKjJSnd1pUQMLacJ2PYYXyT3IMOJ911AtDmmA4rketTBw==",
+  "expect": {
+    "digest_sha256_hex": "e579b5abfbd8c37f20fb09a0e358e48f6847b84ebc83759ee8599fa9abcf5fd3",
+    "verify": true
+  },
+  "source": "interop/observations/2026-05-31-mytonwallet.md Phase 3"
+}

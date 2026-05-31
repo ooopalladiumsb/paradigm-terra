@@ -1,0 +1,40 @@
+{
+  "package": "TC_V2_SIGNDATA_VERIFY_V1",
+  "version": "0.1.0",
+  "status": "PRE-NORMATIVE",
+  "description": "Golden conformance vectors for the two TC v2 owner-signature contracts. Promotion to NORMATIVE is gated on TS/Rust/Go cross-language parity (see docs/draft/tc-v2-sig-verify-v1-draft.md).",
+  "contracts": {
+    "TC_V2_SIGNDATA_VERIFY_V1": "Contract A — owner signature (signData); BE; txt/bin discriminator; single sha256.",
+    "TC_V2_TONPROOF_VERIFY_V1": "Contract B — owner authentication (ton-proof-item-v2); LE; nested sha256."
+  },
+  "reference_impl": "tools/tc-v2-verify/ (TypeScript/JS)",
+  "corpus": "interop/conformance/",
+  "counts": {
+    "positive": 5,
+    "negative": 8,
+    "cross-channel": 2
+  },
+  "vectors": {
+    "positive": [
+      "positive/tonkeeper-binary.json",
+      "positive/tonkeeper-text.json",
+      "positive/mytonwallet-binary.json",
+      "positive/mytonwallet-text.json",
+      "positive/mytonwallet-tonproof.json"
+    ],
+    "negative": [
+      "negative/signature-bit-flip.json",
+      "negative/timestamp-plus-one.json",
+      "negative/timestamp-minus-one.json",
+      "negative/wrong-domain.json",
+      "negative/wrong-pubkey.json",
+      "negative/wrong-payload.json",
+      "negative/wrong-discriminator.json",
+      "negative/wrong-hash-layer.json"
+    ],
+    "cross-channel": [
+      "cross-channel/signdata-under-tonproof-verifier.json",
+      "cross-channel/tonproof-under-signdata-verifier.json"
+    ]
+  }
+}

@@ -1,9 +1,11 @@
 # `TC_V2_SIGNDATA_VERIFY_V1` — post-quiet normative work package (DRAFT scope note)
 
-**Status:** Work-item scope note. **NOT normative. NOT a spec PR.** Created during the
-PFC-1 quiet period to durably capture a candidate normative artifact whose byte layout is
-now empirically reconstructed, so the eventual integration is a complete package rather than
-a partial normative lock-in. Spec wins during quiet period; nothing here changes consensus.
+**Status:** Work-item scope note. Originally created during the PFC-1 quiet period. **Quiet
+period consciously ended 2026-05-31** — the package is now open and under active development.
+Foundation landed (Stages 1–4·TS): PRE-NORMATIVE corpus + golden vectors + TS reference, all
+ed25519-verified (15/15). Remaining: Rust + Go + parity + validator integration + §8.3 wiring.
+Normative contract description: `docs/draft/tc-v2-sig-verify-v1-draft.md` (authoritative
+promotion checklist there).
 
 **Anchor `z3h0ix`:** interop OBSERVES, PFC-1 DEFINES. This note records *what must be built
 post-quiet* and *what evidence already exists* — it does not build it.
