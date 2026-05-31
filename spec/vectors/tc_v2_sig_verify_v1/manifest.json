@@ -10,7 +10,7 @@
   "reference_impl": "tools/tc-v2-verify/ (TypeScript/JS)",
   "corpus": "interop/conformance/",
   "counts": {
-    "positive": 5,
+    "positive": 6,
     "negative": 8,
     "cross-channel": 2
   },
@@ -20,7 +20,8 @@
       "positive/tonkeeper-text.json",
       "positive/mytonwallet-binary.json",
       "positive/mytonwallet-text.json",
-      "positive/mytonwallet-tonproof.json"
+      "positive/mytonwallet-tonproof.json",
+      "positive/tonkeeper-tonproof.json"
     ],
     "negative": [
       "negative/signature-bit-flip.json",

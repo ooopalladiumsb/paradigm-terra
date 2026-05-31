@@ -18,6 +18,7 @@ const VECTORS: &[&str] = &[
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/vectors/tc_v2_sig_verify_v1/positive/mytonwallet-binary.json")),
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/vectors/tc_v2_sig_verify_v1/positive/mytonwallet-text.json")),
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/vectors/tc_v2_sig_verify_v1/positive/mytonwallet-tonproof.json")),
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/vectors/tc_v2_sig_verify_v1/positive/tonkeeper-tonproof.json")),
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/vectors/tc_v2_sig_verify_v1/negative/signature-bit-flip.json")),
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/vectors/tc_v2_sig_verify_v1/negative/timestamp-plus-one.json")),
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/vectors/tc_v2_sig_verify_v1/negative/timestamp-minus-one.json")),
@@ -80,6 +81,6 @@ fn digest_parity_with_typescript_golden_vectors() {
         assert_eq!(to_hex(&digest), expected, "digest mismatch for {id}");
         checked += 1;
     }
-    assert_eq!(checked, 14, "expected 14 digest_from_input vectors");
-    println!("Rust digest parity: {checked}/14 vectors match the TypeScript reference byte-for-byte.");
+    assert_eq!(checked, 15, "expected 15 digest_from_input vectors");
+    println!("Rust digest parity: {checked}/15 vectors match the TypeScript reference byte-for-byte.");
 }

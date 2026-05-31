@@ -127,14 +127,14 @@ func TestParityWithTypeScriptGoldenVectors(t *testing.T) {
 		verdictChecked++
 	}
 
-	if digestChecked != 14 {
-		t.Errorf("digest axis: checked %d, want 14", digestChecked)
+	if digestChecked != 15 {
+		t.Errorf("digest axis: checked %d, want 15", digestChecked)
 	}
-	if verdictChecked != 15 {
-		t.Errorf("verdict axis: checked %d, want 15", verdictChecked)
+	if verdictChecked != 16 {
+		t.Errorf("verdict axis: checked %d, want 16", verdictChecked)
 	}
-	if countA != 13 || countB != 2 {
-		t.Errorf("per-verifier counts: A=%d (want 13), B=%d (want 2)", countA, countB)
+	if countA != 13 || countB != 3 {
+		t.Errorf("per-verifier counts: A=%d (want 13), B=%d (want 3)", countA, countB)
 	}
 	t.Logf("Go parity: digest %d/14, verdict %d/15; signData-verifier %d, tonProof-verifier %d", digestChecked, verdictChecked, countA, countB)
 }

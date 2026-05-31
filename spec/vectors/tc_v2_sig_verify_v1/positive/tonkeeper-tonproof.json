@@ -1,0 +1,22 @@
+{
+  "id": "positive/tonkeeper-tonproof",
+  "contract": "TC_V2_TONPROOF_VERIFY_V1",
+  "channel": "tonProof",
+  "kind": "positive",
+  "description": "Real tonkeeper 4.7.0 capture; ed25519 verifies against the reconstructed commit.",
+  "operator_pubkey_hex": "e4bd70ac7328e5cb46b79227ca972a421ff5261e1a0068ca16cd8e7c8768c48a",
+  "input": {
+    "workchain": 0,
+    "address_hash_hex": "28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+    "domain": "ooopalladiumsb.github.io",
+    "timestamp": 1780255041,
+    "proof_payload": "zj/ZLU5gV1qu6dY0koYXT8ZE9i8E5hKbjS0tcTQ0TDw="
+  },
+  "signature_b64": "McDorUfGbB3hye3IPxYhSaD8J1ly/IGHmZnZRSEMwJYMmVCZL6ZIyLpAdhTeJ3wl+4NUywQC5xwwG+rIae5/BQ==",
+  "digest_from_input": true,
+  "expect": {
+    "digest_sha256_hex": "cddc5792aff398ffc08d9920aebd621349611164f2dddc8ab82d516ddbd0b66b",
+    "verdict": true
+  },
+  "source": "interop/observations/2026-05-31-tonkeeper-tonproof.md"
+}

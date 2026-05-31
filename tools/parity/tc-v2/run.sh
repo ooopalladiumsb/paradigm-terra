@@ -27,9 +27,9 @@ run() { # label, command...
   echo
 }
 
-run "TS  (digest 14/14 + verdict 15/15)" node tools/tc-v2-verify/run-vectors.mjs
-run "Rust (digest 14/14, no ed25519)"    bash -c 'cd tc-v2-verify-rs && cargo test --offline -q'
-run "Go  (digest 14/14 + verdict 15/15)" bash -c 'cd tc-v2-verify-go && go test ./...'
+run "TS   (digest + verdict)"      node tools/tc-v2-verify/run-vectors.mjs
+run "Rust (digest-only)"           bash -c 'cd tc-v2-verify-rs && cargo test --offline -q'
+run "Go   (digest + verdict)"      bash -c 'cd tc-v2-verify-go && go test ./...'
 
 if [ "$fail" -eq 0 ]; then
   echo "✅ CROSS-LANGUAGE PARITY GREEN — TS == Rust == Go on every digest; TS & Go agree on every verdict."

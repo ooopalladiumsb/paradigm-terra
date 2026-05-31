@@ -29,6 +29,7 @@ const C = {
   mtwBin: readCap('signData/mytonwallet-binary.json'),
   mtwTxt: readCap('signData/mytonwallet-text.json'),
   proof: readCap('tonProof/mytonwallet-proof.json'),
+  tkProof: readCap('tonProof/tonkeeper-proof.json'),
 };
 
 const signDataInput = (c) => ({
@@ -61,6 +62,7 @@ const positives = [
   { id: 'mytonwallet-binary', cap: C.mtwBin, contract: 'TC_V2_SIGNDATA_VERIFY_V1', input: signDataInput(C.mtwBin), digest: signDataDigest },
   { id: 'mytonwallet-text', cap: C.mtwTxt, contract: 'TC_V2_SIGNDATA_VERIFY_V1', input: signDataInput(C.mtwTxt), digest: signDataDigest },
   { id: 'mytonwallet-tonproof', cap: C.proof, contract: 'TC_V2_TONPROOF_VERIFY_V1', input: tonProofInput(C.proof), digest: tonProofDigest },
+  { id: 'tonkeeper-tonproof', cap: C.tkProof, contract: 'TC_V2_TONPROOF_VERIFY_V1', input: tonProofInput(C.tkProof), digest: tonProofDigest },
 ];
 for (const p of positives) {
   const r = verifyUnderContract(p.contract, p.input, p.cap.signature_b64, p.cap.operator_pubkey_hex);

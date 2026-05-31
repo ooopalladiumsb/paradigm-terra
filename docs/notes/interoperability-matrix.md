@@ -99,13 +99,14 @@ in the TC envelope are stripped before comparison.
 
 ### 3.1 ton-proof-item-v2 byte layout — VERIFIED
 
-Companion to §10.2. The MyTonWallet 4.10.1 Phase 3 `ton_proof` capture (signature +
-pubkey + domain + timestamp + nonce) was fed to `interop/ton-proof-verify.mjs`;
-`ed25519_verify` holds against the reconstructed commit and rejects four negative
-controls (corrupted sig, ts off-by-one, domain mismatch, tampered nonce). A single
-capture suffices: ed25519 verification passes only if the reconstructed bytes are
-byte-identical to what the wallet signed, so the layout is cryptographically pinned
-among candidates.
+Companion to §10.2. **Two independent captures, two wallets** — MyTonWallet 4.10.1 and
+Tonkeeper 4.7.0 (`interop/conformance/tonProof/*.json`) — both `ed25519_verify` against the
+reconstructed `ton-proof-item-v2` commit (`node interop/verify-tonproof-capture.mjs`), and
+the MyTonWallet vector additionally rejects four negative controls. Both wallets produce the
+**same** Contract B commit (LE length/timestamp, nested hash) → like Contract A, this is a
+property of the TON Connect v2 signing model, not wallet-specific. The ≥2-wallet bar (the same
+applied to D1) is met. (ed25519 verification passes only if the reconstructed bytes are
+byte-identical to what the wallet signed, so each capture cryptographically pins the layout.)
 
 ```
 inner   = utf8("ton-proof-item-v2/")

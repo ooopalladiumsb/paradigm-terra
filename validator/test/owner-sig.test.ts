@@ -81,8 +81,8 @@ test("owner-sig verifier matches TC_V2_SIGNDATA_VERIFY_V1 golden vectors", () =>
     verdictChecked++;
   }
 
-  assert.equal(digestChecked, 14, "digest axis count");
-  assert.equal(verdictChecked, 15, "verdict axis count");
+  assert.equal(digestChecked, 15, "digest axis count");
+  assert.equal(verdictChecked, 16, "verdict axis count");
   assert.equal(countA, 13, "signData-verifier vector count");
-  assert.equal(countB, 2, "tonProof-verifier vector count");
+  assert.equal(countB, 3, "tonProof-verifier vector count");
 });
