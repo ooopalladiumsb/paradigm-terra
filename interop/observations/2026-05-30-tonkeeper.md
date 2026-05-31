@@ -129,6 +129,8 @@ Observed: TC v2 `signData` returns a signature over a **structured commit** incl
 
 **Resolution path (post-quiet-period):** update PFC-1 §8.3 to reference the TC v2 SignData hash schema. Validator §8.1 needs an alternative verify routine for the SignData channel.
 
+**Byte-exact layout VERIFIED (2026-05-31, Gate #1).** This session's binary (Phase 4a) + text (Phase 5) captures were fed to `interop/tc-v2-commit-reconstruct.mjs`; `ed25519_verify` passes against both (and against MyTonWallet 4.10.1's pair), and rejects four negative controls. The signed commit is exactly: `sha256(0xFFFF ‖ "ton-connect/sign-data/" ‖ int32_be(workchain) ‖ addr_hash[32] ‖ uint32_be(domain_len) ‖ domain ‖ uint64_be(timestamp) ‖ "txt"/"bin" ‖ uint32_be(payload_len) ‖ payload)`. The Phase 4a/Phase 5 signature difference at identical content is fully explained: `type` enters via the 3-byte `"txt"`/`"bin"` prefix and `timestamp` via `uint64_be`. Full record: matrix §10.2.
+
 ### MATRIX-D2 — SDK method is `signData`, not `signMessage`
 
 `@tonconnect/ui` (verified versions 2.1.0 and 2.4.4) does not export `signMessage`. PFC-1 §8.3 text says "signMessage" — historically correct RPC name in TC v1, but the v2 JS SDK has renamed it to `signData`.

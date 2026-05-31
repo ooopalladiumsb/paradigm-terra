@@ -77,8 +77,15 @@ D1 is a property of the **TON Connect v2 signing model**, not Tonkeeper-specific
 Exec-spec §8.3 — the validator must adopt the TC v2 SignData hash schema as the canonical
 owner-sig verify routine (cannot `ed25519_verify(payload_bytes, sig, pubkey)` directly).
 Strengthens Freeze gates #1 (real Ed25519) + #4 (e2e smoke). **Spec PR still deferred — quiet
-period; this slot records evidence only.** Remaining hardening: byte-exact commit-layout
-reconstruction + ed25519 verify (un-done in both sessions).
+period; this slot records evidence only.**
+
+**Hardening RESOLVED (2026-05-31, Gate #1):** byte-exact commit-layout reconstruction +
+ed25519 verify is now DONE — `interop/tc-v2-commit-reconstruct.mjs`. `ed25519_verify` holds
+on 4/4 captures (this wallet's binary+text + Tonkeeper's binary+text) and rejects four
+negative controls. Verified layout: `sha256(0xFFFF ‖ "ton-connect/sign-data/" ‖ int32_be(wc)
+‖ addr_hash[32] ‖ uint32_be(domain_len) ‖ domain ‖ uint64_be(timestamp) ‖ "txt"/"bin" ‖
+uint32_be(payload_len) ‖ payload)`. Full record + caveat (workchain-0 endianness degeneracy):
+matrix §10.2.
 
 ---
 
@@ -180,8 +187,13 @@ bytes) while `text` signs the literal 36-char string, the two trials do not isol
 single variable. The cleanest possible proof (same type + same content, timestamp-only delta)
 was not isolated this session. However, classification does not depend on it: raw-byte signing
 cannot explain the top-level `domain`+`timestamp` echo present in BOTH responses, so the
-structured commit is unambiguous. Byte-exact commit layout remains un-verified in both wallet
-sessions — that is a Freeze-gate-#1 hardening step, not a classification blocker.
+structured commit is unambiguous.
+
+**Byte-exact commit layout — now VERIFIED (2026-05-31, Gate #1):** the deferred hardening is
+done. `interop/tc-v2-commit-reconstruct.mjs` reconstructs the exact signed bytes and
+`ed25519_verify` passes on this wallet's binary+text captures (and Tonkeeper's). The
+binary-vs-text "single variable not isolated" concern above is now moot: the verifier confirms
+`type` enters the commit via the 3-byte `"txt"`/`"bin"` prefix directly. See matrix §10.2.
 
 ### Phase 6 — `signData` / `cell`
 Pre-known (D4): SDK rejects without TL-B `schema` (`'schema' is required`). Confirm MTW path

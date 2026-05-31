@@ -62,7 +62,7 @@ Ed25519 signature over `payload.data` bytes.
 
 | Question | Expected | Observed (per wallet) |
 |---|---|---|
-| Does the wallet sign the raw `data` bytes verbatim, or prepend a wallet-domain prefix internally? | Raw per TC v2 §6 for `binary` | **Tonkeeper 4.7.0: NO — see D1.** Signs a structured commit `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(payload.bytes))`; `timestamp` + `domain` echoed top-level in response so validator can rebuild. |
+| Does the wallet sign the raw `data` bytes verbatim, or prepend a wallet-domain prefix internally? | Raw per TC v2 §6 for `binary` | **NO — see D1 / §10.2 (byte-exact, ed25519-VERIFIED).** Signs `sha256(0xFFFF ‖ "ton-connect/sign-data/" ‖ workchain ‖ addr_hash ‖ domain_len ‖ domain ‖ timestamp ‖ "txt"/"bin" ‖ payload_len ‖ payload)`; `timestamp` + `domain` echoed top-level so validator can rebuild. Confirmed Tonkeeper 4.7.0 + MyTonWallet 4.10.1. |
 | Does the wallet render a human-readable preview of the CAL JSON when `type=binary`? | "Unknown binary" or hex | TBD (Tonkeeper 4.7.0: approval-UI rendering not recorded in 2026-05-30 session) |
 | Max accepted `payload.data` size? | ≥ 4 KiB (informal) | TBD (Tonkeeper 4.7.0: Phase 7 size probe interrupted by tunnel drop) |
 | Does refusing → cancel surface as an RPC error or silent timeout? | Error per TC §3.2 | TBD (Tonkeeper 4.7.0: Phase 8 reject path not run) |
@@ -225,7 +225,7 @@ nonces, TTLs are wallet-provider implementation. Re-connect requires fresh
 
 | # | Section | Observed deviation | Spec clarification candidate | Status |
 |---|---|---|---|---|
-| D1 | Exec-spec §8.3; `ton-connect-ingress-design.md` §3; `cal-validator-design.md` §8.1 + §10.2 | Wallet does NOT sign raw `payload.bytes`. `signData` signs a **structured commit** `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(payload.bytes))`; `timestamp` + `domain` echoed top-level so validator can rebuild. | Update §8.3 to reference the TC v2 SignData hash schema; validator §8.1 needs an alternative verify routine for the SignData channel (cannot call `ed25519_verify(payload_bytes, sig, pubkey)` directly). | **Open — Consensus-affecting. Classified `A — TC_V2_COMMIT_MODEL` 2026-05-31** (confirmed on MyTonWallet 4.10.1, 2nd independent TC v2 wallet — see §10.1). Spec wins during quiet period; PR deferred to post-quiet. Blocks Freeze gates #1 (real Ed25519) + #4 (e2e smoke). |
+| D1 | Exec-spec §8.3; `ton-connect-ingress-design.md` §3; `cal-validator-design.md` §8.1 + §10.2 | Wallet does NOT sign raw `payload.bytes`. `signData` signs a **structured commit** — **byte-exact layout VERIFIED** in §10.2: `sha256(0xFFFF ‖ "ton-connect/sign-data/" ‖ workchain ‖ addr_hash ‖ domain_len ‖ domain ‖ timestamp ‖ "txt"/"bin" ‖ payload_len ‖ payload)`; `timestamp` + `domain` echoed top-level so validator can rebuild. | Update §8.3 to reference the TC v2 SignData hash schema; validator §8.1 needs an alternative verify routine for the SignData channel (cannot call `ed25519_verify(payload_bytes, sig, pubkey)` directly). | **Open — Consensus-affecting. Classified `A — TC_V2_COMMIT_MODEL` 2026-05-31; byte-exact layout ed25519-VERIFIED 2026-05-31** (4/4 captures, 2 wallets — see §10.2, repro `interop/tc-v2-commit-reconstruct.mjs`). Spec wins during quiet period; PR deferred to post-quiet. Gate #1 (real Ed25519) evidence now in hand; Gate #4 (e2e smoke) still open. |
 | D2 | Exec-spec §8.3 | `@tonconnect/ui` (2.1.0, 2.4.4) does not export `signMessage`; the TC v2 JS SDK renamed the RPC to `signData`. Calling `tc.signMessage(...)` throws `TypeError`. | Wording fix: clarify "signMessage" is the historical (TC v1) RPC name; modern TC v2 JS SDK exposes it as `signData`. No semantic change. | **Open — Cosmetic.** Spec PR (wording) deferred to post-quiet. |
 | D3 | Exec-spec §8.3; `ton-connect-ingress-design.md` | TC v2 `SignDataPayload` uses per-type field names: `text` / `bytes` / `cell`. Spec references generic `payload.data`. | Wording fix: explicit per-type field names in §8.3. | **Open — Observable.** dApp `index.html` already patched to emit the correct shape; spec wording PR deferred to post-quiet. |
 | D4 | Exec-spec §8.3 | `SignDataPayload` for `type:"cell"` requires a TL-B `schema` field (mandatory, SDK-side rejection: `'schema' is required`). | None — confirms PFC-1's implicit ranking of `binary` over `cell` for the owner-sig channel. Revisit only if a `cell` channel is ever wanted (needs a TL-B schema for the CAL variant). | **Closed — wallet-quirk row only.** No spec change. |
@@ -259,10 +259,10 @@ deferred (quiet period). Source: `interop/observations/2026-05-31-mytonwallet.md
 
 | Axis | Tonkeeper 4.7.0 | MyTonWallet 4.10.1 | OpenMask | … |
 |---|---|---|---|---|
-| commit format | `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(bytes))` | structured commit — domain+timestamp bound (byte-layout not independently verified) | PENDING | |
-| domain binding | yes — domain inside commit + echoed top-level | yes — `ooopalladiumsb.github.io` (24B) echoed top-level | PENDING | |
-| timestamp inclusion | yes — inside commit + echoed top-level | yes — echoed top-level | PENDING | |
-| payload hashing | `sha256(payload.bytes)` — NOT raw bytes | NOT raw — sig varies w/ type+timestamp at identical content (Phase 5) | PENDING | |
+| commit format | **VERIFIED** — see §10.2 (ed25519 holds) | **VERIFIED** — same layout, ed25519 holds | PENDING | |
+| domain binding | yes — `domain_len` (u32be) + utf8(domain) inside commit + echoed top-level | yes — `ooopalladiumsb.github.io` (24B) inside commit + echoed top-level | PENDING | |
+| timestamp inclusion | yes — `uint64_be(timestamp)` inside commit + echoed top-level | yes — inside commit + echoed top-level | PENDING | |
+| payload hashing | sha256 over the structured commit — NOT raw bytes; `type` bound via `"txt"`/`"bin"` prefix | same — NOT raw; verified byte-exact | PENDING | |
 | returned signature object | base64 64-byte Ed25519 + top-level `timestamp` / `domain` | base64 64-byte Ed25519 + top-level `timestamp`/`domain`; `address` in user-friendly base64url (D5) | PENDING | |
 
 **Classification enum** (assign once a 2nd wallet column is filled):
@@ -279,6 +279,46 @@ deferred (quiet period). Source: `interop/observations/2026-05-31-mytonwallet.md
 **Decision rule:** do not assign A/B/C — and do not draft any §8.3 spec PR — until the
 MyTonWallet column (minimum) is captured. Quiet period: spec wins regardless; this slot only
 records evidence.
+
+### 10.2 D1 byte-exact commit layout — VERIFIED (Gate #1)
+
+The structural tells (top-level `domain`/`timestamp` echo, type-dependent signature) gave the
+**classification** (D1 → A). This section records the **byte-exact** layout, proven by
+`ed25519_verify` passing against the real captures — the Freeze-gate-#1 hardening the two
+observation sessions left undone. Reproduction: `interop/tc-v2-commit-reconstruct.mjs`
+(Node built-in `crypto`, no deps, deterministic, offline).
+
+The wallet signs, for `signData` of type `text`/`binary`:
+
+```
+message = 0xFFFF
+        ‖ utf8("ton-connect/sign-data/")
+        ‖ int32_be(workchain)
+        ‖ address_hash[32]
+        ‖ uint32_be(domain_len) ‖ utf8(domain)
+        ‖ uint64_be(timestamp)
+        ‖ ("txt" | "bin")                 # 3-byte per-type prefix
+        ‖ uint32_be(payload_len) ‖ payload
+verify  = ed25519_verify( sha256(message), signature, operator_pubkey )
+```
+- `text`  → prefix `"txt"`, `payload = utf8(text)`
+- `binary`→ prefix `"bin"`, `payload = base64_decode(bytes)`
+
+**Evidence:** `ed25519_verify` holds on **4/4 captures across 2 independent wallets**
+(Tonkeeper 4.7.0 binary+text, MyTonWallet 4.10.1 binary+text) and **rejects** four negative
+controls (corrupted sig, ts off-by-one, domain mismatch, wrong pubkey). The 3-byte `"txt"`/`"bin"`
+prefix between `timestamp` and `payload_len` was the missing piece — a 6144-layout brute-force
+without it found zero matches, including the otherwise-canonical guess.
+
+**Honest caveat:** all captures are workchain `0`, so `int32` BE/LE of the workchain field are
+the identical `0x00000000`; this corpus cannot distinguish workchain endianness. The reference
+impl (`ton-connect/demo-dapp-with-react-ui` → `src/server/services/sign-data-service.ts`) uses
+BE, which the verifier pins. A future non-zero-workchain capture would close this.
+
+**Consequence (unchanged, deferred):** the validator's owner-sig verify (cal-validator-design
+§8.1) must adopt THIS commit as the canonical routine; it cannot call
+`ed25519_verify(payload_bytes, sig, pubkey)`. Spec PR for §8.3 still deferred (quiet period) —
+this section is observation evidence, not a spec amendment.
 
 ---
 
@@ -298,8 +338,10 @@ Each shim writes an observation log under `interop/observations/<wallet>/<date>.
 Aggregation script (TBD) collates these into the per-section "Observed" columns
 of this matrix.
 
-None of this exists yet — this section is the scaffold for what gets built next
-on `post-pfc1/interop-smoke`.
+The live-session shims (1–5) do not exist yet — this section is the scaffold for what gets
+built next on `post-pfc1/interop-smoke`. **Landed so far:** `interop/tc-v2-commit-reconstruct.mjs`
+— offline ed25519 verification of captured `signData` responses; reconstructs the §10.2
+commit layout from existing observation captures (not a live-session shim).
 
 ---
 
