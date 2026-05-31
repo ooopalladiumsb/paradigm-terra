@@ -1,6 +1,6 @@
 # Session notes — 2026-05-31 — MyTonWallet testnet observation
 
-**Status:** Phases 2, 3, 4a, 5, 8, 9, 10(partial), 12 captured. **D1 → A** [`c7493e4`]; transport node [`3e7e5ea`]. Phase 9: deploy = WalletV5R1 seqno 0; steady-state tx seqno 2 (opcode `0x7369676e`). Phase 8: two reject classes (`n` user-cancel / `e` not-sent). Phase 12: export works. Phase 11 (Unicode) DONE: multi-script verbatim echo (35B) + NFD probe → **wallet does NOT NFC-normalize** (`Cafe%CC%81` echoed verbatim) ⇒ text must be NFC-normalized upstream; reinforces PFC-1 binary-over-text. Empty-text SDK reject noted. Phase 6 (cell), 7 (size) deferred. Divergences: D5, D6.
+**Status:** Phases 2, 3, 4a, 5, 8, 9, 10(partial), 12 captured. **D1 → A** [`c7493e4`]; transport node [`3e7e5ea`]. Phase 9: deploy = WalletV5R1 seqno 0; steady-state tx seqno 2 (opcode `0x7369676e`). Phase 8: two reject classes (`n` user-cancel / `e` not-sent). Phase 12: export works. Phase 11 (Unicode) DONE: multi-script verbatim echo (35B) + NFD probe → **wallet does NOT NFC-normalize** (`Cafe%CC%81` echoed verbatim) ⇒ text must be NFC-normalized upstream; reinforces PFC-1 binary-over-text. Empty-text SDK reject noted. Phase 7 (size): 4/8/16 KiB binary all accepted, no ceiling ≤16 KiB. Phase 6 (cell) skipped (predictable from D4). Divergences: D5, D6.
 
 **Primary objective (highest-ROI):** capture the **D1 classification column** for MyTonWallet
 (matrix §10.1). One `signData`/`binary` trial yields all five comparison axes and decides
@@ -187,9 +187,27 @@ sessions — that is a Freeze-gate-#1 hardening step, not a classification block
 Pre-known (D4): SDK rejects without TL-B `schema` (`'schema' is required`). Confirm MTW path
 errors the same way, or record divergence.
 
-### Phase 7 — size probe (4 KiB binary)
-PENDING (deferred on Tonkeeper — tunnel died). Stable Pages host makes this runnable now.
-Record: accepted? truncated? wallet warning?
+### Phase 7 — size probe (binary)
+**DONE (session 2eaccc25, 14:07–14:13).** `signData/binary`, payload `btoa('A'.repeat(N))`:
+
+| N | signData/binary | latency | result |
+|---|---|---|---|
+| **4096 B (4 KiB)** | signature returned | 13.2 s | ✅ accepted |
+| **8192 B (8 KiB)** | signature returned | 9.1 s | ✅ accepted |
+| **16384 B (16 KiB)** | signature returned | 21.2 s | ✅ accepted |
+
+- **No size ceiling hit up to 16 KiB.** No SDK-validation reject, no TON Connect bridge error, no
+  wallet truncation/warning at any tested size. (Breaking point not found — could probe higher,
+  but 16 KiB already dwarfs any realistic CAL payload.)
+- Latency does **not** scale with payload size (9–21 s, non-monotonic) → dominated by human
+  approval time, not byte count or bridge transfer.
+- Wallet **echoes the full payload back** in every response, verbatim, even at 16 KiB.
+- One `sendTransaction` after the 4 KiB sign also succeeded (BOC returned) — but that's the
+  address-transfer channel, unrelated to signData payload size.
+
+**Relevance:** the matrix-flagged open ambiguity "CAL Spec has no max `payload.data` ceiling" is
+**not constrained by the wallet/SDK/bridge** in the ≤16 KiB range — any practical ceiling is a
+CAL design choice, not a transport limit. Comfortable headroom for the owner-sig binary channel.
 
 ### Phase 8 — reject path
 Captured (session 12:38, export). **Two distinct SDK error classes** observed across repeated

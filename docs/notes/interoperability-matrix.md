@@ -39,7 +39,7 @@ is empirical, not aspirational.
 | Wallet | Form factor | Contract version | TC v2 | Testnet | Status |
 |---|---|---|---|---|---|
 | Tonkeeper | mobile + browser ext | W5 (`v5r1`) | ✓ | ✓ | **2026-05-30: 4.7.0 browser ext, testnet — partial (5/12 phases, D1–D4 captured)** |
-| MyTonWallet | browser ext + mobile | **W5R1 observed** (deploy seqno 0→2→3, testnet) | ✓ | ✓ | **2026-05-31: 4.10.1 browser, testnet — Phases 2/3/4a/5/8/9/10p/11p/12; D1→A; D5/D6; deploys WalletV5R1; reject classes n/e; Unicode verbatim, no wallet NFC-normalization** |
+| MyTonWallet | browser ext + mobile | **W5R1 observed** (deploy seqno 0→2→3, testnet) | ✓ | ✓ | **2026-05-31: 4.10.1 browser, testnet — Phases 2/3/4a/5/8/9/10p/11p/12; D1→A; D5/D6; deploys WalletV5R1; reject classes n/e; Unicode verbatim, no wallet NFC-normalization; signData/binary ≤16 KiB OK** |
 | Tonhub | mobile | W4 default | ✓ | ✓ | not yet tested |
 | OpenMask | browser ext | W4 default | ✓ | ✓ | not yet tested |
 | Wallet (Telegram) | in-app | proprietary on-chain | ✓ | ? | not yet tested |
@@ -154,9 +154,9 @@ many `steps[]` could exceed reasonable wallet display.
 |---|---|---|
 | Max `payload.data` size Tonkeeper accepts? | TBD | TBD |
 | Max `payload.data` size Tonhub accepts? | TBD | TBD |
-| Behavior at exactly 4 KiB / 8 KiB / 16 KiB? | Three boundary tests | TBD |
-| Does the wallet truncate signing input silently? | Hopefully not | TBD |
-| Does W5 external body have its own size cap before TC throws? | TC bridge limit ~64 KiB informal | TBD |
+| Behavior at exactly 4 KiB / 8 KiB / 16 KiB? | Three boundary tests | **MyTonWallet 4.10.1: all three signData/binary ACCEPTED, no error/truncation; latency human-paced (9–21 s), not size-bound. No ceiling ≤16 KiB.** 2026-05-31 |
+| Does the wallet truncate signing input silently? | Hopefully not | **No** — full payload echoed back verbatim at 16 KiB (MyTonWallet 4.10.1) |
+| Does W5 external body have its own size cap before TC throws? | TC bridge limit ~64 KiB informal | signData/binary ≤16 KiB passes SDK+bridge+wallet (MyTonWallet); breaking point not reached |
 
 **Spec ambiguity flagged:** CAL Spec doesn't pin a max `payload.data` size.
 Likely candidate for a §2.x ceiling at Conformance Freeze, not during quiet
