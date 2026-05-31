@@ -39,7 +39,7 @@ is empirical, not aspirational.
 | Wallet | Form factor | Contract version | TC v2 | Testnet | Status |
 |---|---|---|---|---|---|
 | Tonkeeper | mobile + browser ext | W5 (`v5r1`) | ✓ | ✓ | **2026-05-30: 4.7.0 browser ext, testnet — partial (5/12 phases, D1–D4 captured)** |
-| MyTonWallet | browser ext + mobile | W4 default, W5 supported | ✓ | ✓ | not yet tested |
+| MyTonWallet | browser ext + mobile | W4 default, W5 supported | ✓ | ✓ | **2026-05-31: 4.10.1 browser, testnet — Phases 2/4a/5; D1→A, D5 (address encoding)** |
 | Tonhub | mobile | W4 default | ✓ | ✓ | not yet tested |
 | OpenMask | browser ext | W4 default | ✓ | ✓ | not yet tested |
 | Wallet (Telegram) | in-app | proprietary on-chain | ✓ | ? | not yet tested |
@@ -222,10 +222,11 @@ nonces, TTLs are wallet-provider implementation. Re-connect requires fresh
 
 | # | Section | Observed deviation | Spec clarification candidate | Status |
 |---|---|---|---|---|
-| D1 | Exec-spec §8.3; `ton-connect-ingress-design.md` §3; `cal-validator-design.md` §8.1 + §10.2 | Wallet does NOT sign raw `payload.bytes`. `signData` signs a **structured commit** `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(payload.bytes))`; `timestamp` + `domain` echoed top-level so validator can rebuild. | Update §8.3 to reference the TC v2 SignData hash schema; validator §8.1 needs an alternative verify routine for the SignData channel (cannot call `ed25519_verify(payload_bytes, sig, pubkey)` directly). | **Open — Consensus-affecting.** Spec wins during quiet period; logged as wallet-behavior row. Spec PR deferred to post-quiet. Blocks Freeze gates #1 (real Ed25519) + #4 (e2e smoke). |
+| D1 | Exec-spec §8.3; `ton-connect-ingress-design.md` §3; `cal-validator-design.md` §8.1 + §10.2 | Wallet does NOT sign raw `payload.bytes`. `signData` signs a **structured commit** `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(payload.bytes))`; `timestamp` + `domain` echoed top-level so validator can rebuild. | Update §8.3 to reference the TC v2 SignData hash schema; validator §8.1 needs an alternative verify routine for the SignData channel (cannot call `ed25519_verify(payload_bytes, sig, pubkey)` directly). | **Open — Consensus-affecting. Classified `A — TC_V2_COMMIT_MODEL` 2026-05-31** (confirmed on MyTonWallet 4.10.1, 2nd independent TC v2 wallet — see §10.1). Spec wins during quiet period; PR deferred to post-quiet. Blocks Freeze gates #1 (real Ed25519) + #4 (e2e smoke). |
 | D2 | Exec-spec §8.3 | `@tonconnect/ui` (2.1.0, 2.4.4) does not export `signMessage`; the TC v2 JS SDK renamed the RPC to `signData`. Calling `tc.signMessage(...)` throws `TypeError`. | Wording fix: clarify "signMessage" is the historical (TC v1) RPC name; modern TC v2 JS SDK exposes it as `signData`. No semantic change. | **Open — Cosmetic.** Spec PR (wording) deferred to post-quiet. |
 | D3 | Exec-spec §8.3; `ton-connect-ingress-design.md` | TC v2 `SignDataPayload` uses per-type field names: `text` / `bytes` / `cell`. Spec references generic `payload.data`. | Wording fix: explicit per-type field names in §8.3. | **Open — Observable.** dApp `index.html` already patched to emit the correct shape; spec wording PR deferred to post-quiet. |
 | D4 | Exec-spec §8.3 | `SignDataPayload` for `type:"cell"` requires a TL-B `schema` field (mandatory, SDK-side rejection: `'schema' is required`). | None — confirms PFC-1's implicit ranking of `binary` over `cell` for the owner-sig channel. Revisit only if a `cell` channel is ever wanted (needs a TL-B schema for the CAL variant). | **Closed — wallet-quirk row only.** No spec change. |
+| D5 | Exec-spec §8.3; `cal-validator-design.md` §10.2 | Top-level `address` returned in **user-friendly base64url** by MyTonWallet 4.10.1 (`0Q…`, testnet non-bounceable) vs raw `0:hex` by Tonkeeper. `payload.from` is raw `0:hex` in BOTH; decoded hashparts match the account. | Validator must accept both `address` representations, OR key owner identity strictly off `payload.from` (raw in both wallets). | **Open — Observable, non-consensus.** First seen MyTonWallet 4.10.1, 2026-05-31. Spec wording PR deferred to post-quiet. |
 
 **Repro for all rows:** Tonkeeper 4.7.0 (Chrome extension, testnet `-3`), `interop/dapp/index.html` served over ssh reverse tunnel, session `2026-05-30`. Full captures + signatures: `interop/observations/2026-05-30-tonkeeper.md`. Branch `post-pfc1/interop-smoke`.
 
@@ -242,18 +243,23 @@ signing model** (every TC v2 wallet does it) or **Tonkeeper-specific** behavior?
 observation cannot answer this. The slot below is filled per wallet; classification is
 assigned only after ≥1 independent TC v2 implementation is observed.
 
-**Current D1 status:** `UNCLASSIFIED — awaiting 2nd wallet` (first pass: MyTonWallet).
+**Current D1 status:** **`A — TC_V2_COMMIT_MODEL`** (assigned 2026-05-31, 2nd wallet =
+MyTonWallet 4.10.1). Both Tonkeeper and MyTonWallet produce the same structured SignData commit
+binding domain + timestamp; neither signs raw `payload.bytes`. D1 is a property of the TON
+Connect v2 signing model, not Tonkeeper-specific. → §8.3 post-freeze clarification candidate:
+validator must adopt the TC v2 SignData hash schema as canonical owner-sig verify. Spec PR
+deferred (quiet period). Source: `interop/observations/2026-05-31-mytonwallet.md`.
 
 **Comparison axes** (one column per wallet build; Tonkeeper column from
 `interop/observations/2026-05-30-tonkeeper.md`):
 
-| Axis | Tonkeeper 4.7.0 | MyTonWallet | OpenMask | … |
+| Axis | Tonkeeper 4.7.0 | MyTonWallet 4.10.1 | OpenMask | … |
 |---|---|---|---|---|
-| commit format | `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(bytes))` | PENDING | PENDING | |
-| domain binding | yes — domain inside commit + echoed top-level | PENDING | PENDING | |
-| timestamp inclusion | yes — inside commit + echoed top-level | PENDING | PENDING | |
-| payload hashing | `sha256(payload.bytes)` — NOT raw bytes | PENDING | PENDING | |
-| returned signature object | base64 64-byte Ed25519 + top-level `timestamp` / `domain` | PENDING | PENDING | |
+| commit format | `sha256(prefix ‖ domain_len ‖ domain ‖ timestamp ‖ sha256(bytes))` | structured commit — domain+timestamp bound (byte-layout not independently verified) | PENDING | |
+| domain binding | yes — domain inside commit + echoed top-level | yes — `ooopalladiumsb.github.io` (24B) echoed top-level | PENDING | |
+| timestamp inclusion | yes — inside commit + echoed top-level | yes — echoed top-level | PENDING | |
+| payload hashing | `sha256(payload.bytes)` — NOT raw bytes | NOT raw — sig varies w/ type+timestamp at identical content (Phase 5) | PENDING | |
+| returned signature object | base64 64-byte Ed25519 + top-level `timestamp` / `domain` | base64 64-byte Ed25519 + top-level `timestamp`/`domain`; `address` in user-friendly base64url (D5) | PENDING | |
 
 **Classification enum** (assign once a 2nd wallet column is filled):
 
