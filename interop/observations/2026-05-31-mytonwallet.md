@@ -1,6 +1,6 @@
 # Session notes — 2026-05-31 — MyTonWallet testnet observation
 
-**Status:** Phases 2, 3, 4a, 5 captured + **D1 classified → A (`TC_V2_COMMIT_MODEL`)** [committed `c7493e4`]. Phase 9: attempt 1 → **D6** (SDK address-form asymmetry; harness fixed, gh-pages `d5cf2e1`); attempt 2 → **SUCCESS, deploys WalletV5R1** (seqno 0, pubkey-bound, self-send). Divergences: D5 (address encoding), D6. Phases 6–8, 10–12 deferred.
+**Status:** Phases 2, 3, 4a, 5, 8, 9, 10(partial), 12 captured. **D1 → A** [`c7493e4`]; transport node [`3e7e5ea`]. Phase 9: deploy = WalletV5R1 seqno 0; steady-state tx seqno 2 (opcode `0x7369676e`). Phase 8: two reject classes (`n` user-cancel / `e` not-sent). Phase 12: export works. Phase 11 (Unicode) DONE: multi-script verbatim echo (35B) + NFD probe → **wallet does NOT NFC-normalize** (`Cafe%CC%81` echoed verbatim) ⇒ text must be NFC-normalized upstream; reinforces PFC-1 binary-over-text. Empty-text SDK reject noted. Phase 6 (cell), 7 (size) deferred. Divergences: D5, D6.
 
 **Primary objective (highest-ROI):** capture the **D1 classification column** for MyTonWallet
 (matrix §10.1). One `signData`/`binary` trial yields all five comparison axes and decides
@@ -192,7 +192,16 @@ PENDING (deferred on Tonkeeper — tunnel died). Stable Pages host makes this ru
 Record: accepted? truncated? wallet warning?
 
 ### Phase 8 — reject path
-PENDING. Cancel at wallet approval popup. Record exact SDK error + shape.
+Captured (session 12:38, export). **Two distinct SDK error classes** observed across repeated
+`sendTransaction` attempts:
+
+| Error class | message | likely cause |
+|---|---|---|
+| `n` | `[TON_CONNECT_SDK_ERROR] n: User rejects the action in the wallet.\nCanceled by the user` | explicit user cancel at approval popup |
+| `e` | `[TON_CONNECT_SDK_ERROR] e\nTransaction was not sent` | NOT an explicit reject — popup dismissed/closed or bridge failed to deliver; no "rejects" wording |
+
+- `code: null` on both — no numeric error code surfaced; classification only via message text + minified class letter.
+- A relayer/validator distinguishing "user said no" from "delivery failed" must parse the message string (`n:`/`User rejects` vs `e`/`Transaction was not sent`), since `code` is null.
 
 ### Phase 9 — `sendTransaction` (testnet self-send, 1 nanoTON)
 **ATTEMPT 1 — blocked at SDK client-side validation (did NOT reach wallet). → D6.**
@@ -245,20 +254,69 @@ Decoded (local BOC parser, `/tmp/bochash.py`): external-in message, **25 cells �
 signed external message. MyTonWallet 4.10.1 (testnet) provisions **W5R1 directly**, not the W4
 the matrix candidate row assumed. seqno=0 confirms the account was undeployed before this tx.
 
-**Soft observations still open (user did not report):** approval-popup rendering, on-chain
-confirmation, round-trip latency, dust-threshold behavior at 1 nanoTON (the wallet accepted 1 nTON
-into the BOC → no client-side dust floor, at least pre-broadcast).
+**Soft observations still open:** approval-popup rendering, on-chain confirmation, dust-threshold
+behavior at 1 nanoTON (wallet accepted 1 nTON into the BOC → no client-side dust floor pre-broadcast).
+Round-trip latency observed (session 12:38, export): signData ≈ 11.9 s; successful sendTransaction
+≈ 29 s (incl. user re-attempts). Wallet round-trips are seconds-scale, human-paced.
+
+**Steady-state tx — ATTEMPT 3 (session 12:38, second BOC, non-deploy).** A later success in the
+export produced a 4-cell BOC with **no StateInit** (wallet already deployed). Decoded W5 external
+body: opcode **`0x7369676e`** ("sign" — W5R1 external auth prefix, cross-confirms the code-hash ID),
+`wallet_id=0x7ffffffd`, `valid_until=1780231587` (matches the 12:41:27 `send_request`), **`seqno=2`**
+(steady state — account had advanced past deploy). Internal transfer cell byte-identical to the
+deploy tx's (self, non-bounceable, 1 nTON). This is the **relayer-relevant steady-state message
+shape** (vs the deploy-bundled first tx). A further steady-state tx (session 12:51, after the
+Phase 11 signData) decoded to **seqno 3** (same opcode `0x7369676e`, valid_until 1780232187) —
+confirms monotonic seqno increment (0 deploy → 2 → 3) and stable 4-cell non-deploy shape.
 
 ### Phase 10 — reconnect
-PENDING. disconnect → reconnect same origin; hard-reload auto-restore from localStorage.
-Compare ton_proof presence on each path.
+Partially captured. Session 12:38 was a **fresh modal-flow connect** producing a **new ton_proof**:
+nonce `6q4lcoa19Yay8itXETx/ko+F9AOjg/uDdxL4uhzwuzU=`, timestamp 1780231131, new 64-byte signature —
+distinct from the 07:09 connect (nonce/ts/sig all fresh). Confirms **fresh proof per modal connect**
+(matches Tonkeeper). Hard-reload auto-restore (localStorage, proof absent) path not separately probed.
 
 ### Phase 11 — Unicode payload (text)
-PENDING. Send emoji + CJK + RTL in a `text` payload. Cross-checks NFC / Unicode-15.1 pinning.
-Record exact bytes signed (does wallet NFC-normalize? alter the string?).
+**DONE (partial).** Session 12:50, `signData/text`, input `Hello é 你好 🌍 ابحرم ﷽` (latency 14074 ms).
+
+Codepoints: `H e l l o · U+00E9(é) · 你 好 · U+1F30D(🌍) · ا ب ح ر م · U+FDFD(﷽ BISMILLAH ligature)`.
+
+- **Verbatim echo, byte-identical.** `sign_request.data` == `sign_response.payload.text`, both **35
+  bytes UTF-8** (`48656c6c6f20c3a920e4bda0e5a5bd20f09f8c8d20d8a7d8a8d8add8b1d98520efb7bd`). Wallet does
+  NOT alter emoji / CJK / Arabic-RTL / the U+FDFD ligature in the echo — full multi-script byte fidelity.
+- First-trial input was **already NFC** (precomposed acute) -> couldn't test normalization there.
+
+**NFC-normalization probe -- RESOLVED (sessions 13:28 & 13:33).** Input forced to **NFD** via
+console (`payload-data = 'Cafe' + U+0301` combining acute, guaranteed decomposed). Signed via
+`signData/text`. Read the wallet's echoed `payload.text` codepoints (`encodeURIComponent` of the
+response -- transport-safe):
+
+```
+encodeURIComponent(resp.payload.text)  ->  "Cafe%CC%81"
+```
+
+`%CC%81` = UTF-8 of U+0301. Wallet echoed the **decomposed (NFD) bytes verbatim**.
+
+=> **MyTonWallet 4.10.1 does NOT NFC-normalize the `text` payload -- it signs/echoes the exact
+UTF-8 bytes received.** (Two NFD trials; distinct sigs via timestamp.)
+
+**Consequence for CAL / PFC-1 §8.3:** the wallet commits to *received* bytes, while our validator
+pins NFC (Unicode-15.1). So any `text` owner-sig channel must be **NFC-normalized UPSTREAM**
+(relayer/dApp) before bytes reach the wallet -- the wallet won't do it. This **reinforces PFC-1's
+existing choice of `binary` (pre-canonicalized bytes) over `text`** for the owner-sig channel:
+binary sidesteps wallet-side normalization ambiguity entirely (parallels D4's binary-over-cell
+ranking). No spec change -- confirms existing design. Evidence only.
+
+**signData input validation (bonus, session 12:50):** empty `text` → SDK-side reject
+`[TON_CONNECT_SDK_ERROR] n  SignDataPayload validation failed: 'text' is required` (latency 1–5 ms,
+pre-wallet, `code: null`). Five rapid attempts, all rejected client-side. Confirms `text` is a
+required non-empty field at the SDK layer (sibling of D4's `'schema' is required` for `cell`).
 
 ### Phase 12 — export JSON
-PENDING. Export the session capture from the dApp for the record.
+**DONE.** Full session export works: `session_id`, `started_at`/`exported_at`, `tc_lib`, wallet
+block, derived `features` map, and complete `events[]` log (init→ready→connect→proof→sign→send×N).
+The `send_request` events now carry `raw_address`/`friendly_address`/`test_only` (D6 fix telemetry).
+Note: `sign_request` logs the payload generically as `{type, data}` (harness log shape), while the
+SDK/response correctly use the per-type key `text` (D3) — logging artifact, not a payload defect.
 
 ---
 

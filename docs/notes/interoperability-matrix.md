@@ -39,7 +39,7 @@ is empirical, not aspirational.
 | Wallet | Form factor | Contract version | TC v2 | Testnet | Status |
 |---|---|---|---|---|---|
 | Tonkeeper | mobile + browser ext | W5 (`v5r1`) | ✓ | ✓ | **2026-05-30: 4.7.0 browser ext, testnet — partial (5/12 phases, D1–D4 captured)** |
-| MyTonWallet | browser ext + mobile | **W5R1 observed** (deploy seqno 0, testnet) | ✓ | ✓ | **2026-05-31: 4.10.1 browser, testnet — Phases 2/3/4a/5/9; D1→A; D5 (addr encoding), D6 (SDK addr-form); sendTransaction deploys WalletV5R1** |
+| MyTonWallet | browser ext + mobile | **W5R1 observed** (deploy seqno 0→2→3, testnet) | ✓ | ✓ | **2026-05-31: 4.10.1 browser, testnet — Phases 2/3/4a/5/8/9/10p/11p/12; D1→A; D5/D6; deploys WalletV5R1; reject classes n/e; Unicode verbatim, no wallet NFC-normalization** |
 | Tonhub | mobile | W4 default | ✓ | ✓ | not yet tested |
 | OpenMask | browser ext | W4 default | ✓ | ✓ | not yet tested |
 | Wallet (Telegram) | in-app | proprietary on-chain | ✓ | ? | not yet tested |
@@ -179,6 +179,9 @@ strip null bytes. The validator hashes pre-base64 raw bytes.
 | `payload.type = "text"` — should we ever use it? | No (binary only) | confirmed by spec |
 | Wallet base64 strictness (with/without padding, URL-safe vs standard)? | Standard with padding | TBD |
 | Round-trip: sign → broadcast → on-chain payload bytes — do they match the signed bytes? | Yes per W5 spec | TBD |
+| `text`-type multi-script echo fidelity (emoji/CJK/RTL/ligature)? | verbatim | **MyTonWallet 4.10.1: verbatim, byte-identical** (35B UTF-8 round-trip, `Hello é 你好 🌍 ابحرم ﷽`, U+FDFD intact) — 2026-05-31 |
+| Does the wallet **NFC-normalize** a *decomposed* `text` input before signing? | (CAL pins NFC) | **NO** — MyTonWallet 4.10.1 echoes/signs NFD verbatim (NFD input `Cafe`+U+0301 → echoed `Cafe%CC%81`). Text must be NFC-normalized **upstream**; reinforces PFC-1's `binary`-over-`text` choice. 2026-05-31 |
+| Empty `text` field handling? | reject | SDK rejects pre-wallet: `'text' is required` (MyTonWallet/SDK 3.4.1) |
 
 ---
 
