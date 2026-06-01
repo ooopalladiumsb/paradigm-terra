@@ -6,3 +6,4 @@
  * root; byte-for-byte replayable. See ./node.ts and ../../docs/notes/orchestrator-design.md.
  */
 export * from "./node.js";
+export * from "./ingress.js";
