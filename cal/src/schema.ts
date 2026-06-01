@@ -71,14 +71,46 @@ function validateEmbeddedDsl(node: unknown, scope: Scope, where: string): void {
   }
 }
 
+const HEX256 = /^0x[0-9a-fA-F]{64}$/;
+const OWNER_ENVELOPE_KEYS = new Set(["signature", "domain", "timestamp", "workchain", "address_hash"]);
+
+/**
+ * `signatures` (§8.1). `operator_sig` (always) and `sponsor_sig` are raw hex Ed25519 bytes.
+ * `owner_sig` accepts TWO forms during the §8.4 Tier-2 compatibility window (dual-accept /
+ * single-emit; D-S3):
+ *   - legacy: a hex-bytes string (schema-tolerated; not verifiable post-D1 — no envelope);
+ *   - current: the owner co-signature envelope object (D-S1/D-S2) carrying the Contract A
+ *     reconstruction primitives `{ signature, domain, timestamp, workchain, address_hash }`.
+ * Reconstruction is exclusively from these CAL-carried fields (D-S4, no backfill).
+ */
 function validateSignatures(sig: unknown): void {
   const o = asObject(sig, "BAD_SIGNATURES");
   checkUnexpected(o, SIG_KEYS, "UNEXPECTED_SIG_FIELD");
   if (!("operator_sig" in o)) throw calError("MISSING_FIELD", "signatures.operator_sig");
-  for (const k of SIG_KEYS) {
+
+  for (const k of ["operator_sig", "sponsor_sig"]) {
     if (k in o) {
       const v = o[k];
       if (typeof v !== "string" || !HEX_BYTES.test(v)) throw calError("BAD_SIG_BYTES", `signatures.${k}`);
+    }
+  }
+
+  if ("owner_sig" in o) {
+    const v = o["owner_sig"];
+    if (typeof v === "string") {
+      if (!HEX_BYTES.test(v)) throw calError("BAD_SIG_BYTES", "signatures.owner_sig"); // legacy form
+    } else {
+      const env = asObject(v, "BAD_OWNER_ENVELOPE");
+      checkUnexpected(env, OWNER_ENVELOPE_KEYS, "UNEXPECTED_OWNER_ENVELOPE_FIELD");
+      for (const k of OWNER_ENVELOPE_KEYS) {
+        if (!(k in env)) throw calError("MISSING_FIELD", `signatures.owner_sig.${k}`);
+      }
+      if (typeof env["signature"] !== "string" || !HEX_BYTES.test(env["signature"] as string)) throw calError("BAD_SIG_BYTES", "signatures.owner_sig.signature");
+      if (typeof env["address_hash"] !== "string" || !HEX256.test(env["address_hash"] as string)) throw calError("BAD_OWNER_ENVELOPE", "signatures.owner_sig.address_hash (expect 0x + 32 bytes)");
+      if (typeof env["domain"] !== "string" || env["domain"] === "") throw calError("BAD_OWNER_ENVELOPE", "signatures.owner_sig.domain");
+      requireUint(env["timestamp"], UINT64_MAX, "BAD_OWNER_ENVELOPE");
+      const wc = env["workchain"];
+      if (typeof wc !== "bigint" || wc < -(2n ** 31n) || wc > 2n ** 31n - 1n) throw calError("BAD_OWNER_ENVELOPE", "signatures.owner_sig.workchain (int32)");
     }
   }
 }

@@ -51,6 +51,45 @@ test("owner-required action with owner_sig present validates (no auth check here
   assert.equal(checkCal(c).valid, true);
 });
 
+// §8.4 Tier-2 (D-S1/D-S2/D-S3): owner_sig accepts the legacy hex string AND the new
+// Contract A reconstruction envelope object during the compatibility window.
+const OWNER_ENVELOPE = {
+  signature: "0x" + "22".repeat(64),
+  domain: "ooopalladiumsb.github.io",
+  timestamp: 1780211353n,
+  workchain: 0n,
+  address_hash: "0x" + "ab".repeat(32),
+};
+
+test("owner_sig as the Contract A envelope object validates (D-S1)", () => {
+  const c = base();
+  (c.signatures as Record<string, unknown>).owner_sig = { ...OWNER_ENVELOPE };
+  assert.equal(checkCal(c).valid, true);
+});
+
+test("owner_sig legacy hex string still validates (dual-accept, D-S3)", () => {
+  const c = base();
+  (c.signatures as Record<string, unknown>).owner_sig = SIG;
+  assert.equal(checkCal(c).valid, true);
+});
+
+test("owner envelope rejects empty domain / short address_hash / missing + extra fields", () => {
+  const bad = (patch: Record<string, unknown>) => {
+    const c = base();
+    (c.signatures as Record<string, unknown>).owner_sig = { ...OWNER_ENVELOPE, ...patch };
+    return checkCal(c).valid;
+  };
+  assert.equal(bad({ domain: "" }), false, "empty domain");
+  assert.equal(bad({ address_hash: "0xabcd" }), false, "short address_hash (not 32 bytes)");
+  assert.equal(bad({ workchain: "0" as unknown as bigint }), false, "non-int workchain");
+  assert.equal(bad({ extra: 1n }), false, "unexpected envelope field");
+  // missing field
+  const c = base();
+  const { signature: _omit, ...missing } = OWNER_ENVELOPE;
+  (c.signatures as Record<string, unknown>).owner_sig = missing;
+  assert.equal(checkCal(c).valid, false, "missing signature");
+});
+
 test("invariants must be a list", () => {
   const c = base();
   c.invariants = { not: "a list" };
