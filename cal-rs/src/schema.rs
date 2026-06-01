@@ -226,3 +226,62 @@ pub fn check_cal(cal: &JcsValue) -> CheckResult {
         Err(e) => CheckResult { valid: false, code: Some(e.code), detail: e.detail },
     }
 }
+
+#[cfg(test)]
+mod owner_envelope_tests {
+    // §8.4 dual-accept: owner_sig as the Contract A envelope object (D-S1/D-S2) and legacy hex.
+    use super::*;
+    use paradigm_terra_canonical::jcs::JcsValue as J;
+
+    fn hexbytes(n: usize) -> J {
+        J::Str(format!("0x{}", "ab".repeat(n)))
+    }
+    fn obj_from(p: Vec<(&str, J)>) -> J {
+        J::Object(p.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+    }
+    fn base_pairs() -> Vec<(&'static str, J)> {
+        vec![
+            ("signature", hexbytes(64)),
+            ("domain", J::Str("ooopalladiumsb.github.io".into())),
+            ("timestamp", J::Int("1780211353".into())),
+            ("workchain", J::Int("0".into())),
+            ("address_hash", hexbytes(32)),
+        ]
+    }
+    fn sigs(owner: J) -> J {
+        obj_from(vec![("operator_sig", hexbytes(64)), ("owner_sig", owner)])
+    }
+
+    #[test]
+    fn object_form_accepts() {
+        assert!(validate_signatures(&sigs(obj_from(base_pairs()))).is_ok());
+    }
+
+    #[test]
+    fn legacy_string_accepts() {
+        assert!(validate_signatures(&sigs(hexbytes(64))).is_ok());
+    }
+
+    #[test]
+    fn malformed_envelope_rejects() {
+        let mut p = base_pairs();
+        p[1].1 = J::Str(String::new()); // empty domain
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p[4].1 = hexbytes(2); // address_hash not 32 bytes
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p[3].1 = J::Str("0".into()); // non-int workchain
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p.push(("x", J::Int("1".into()))); // unexpected field
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p.remove(0); // missing signature
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+    }
+}
