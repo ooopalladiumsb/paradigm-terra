@@ -28,7 +28,7 @@
 
 import { calHash, eventHash } from "@paradigm-terra/cal";
 import { apply, genesis, scanStateRoots, stateRootOf, type Json, type State } from "@paradigm-terra/cal-reducer";
-import { validate, type ExecutionTrace, type Json as VJson } from "@paradigm-terra/cal-validator";
+import { validate, validateToValidated, resumeFromValidated, type ExecutionTrace, type Json as VJson } from "@paradigm-terra/cal-validator";
 import { streamTreeRoot, toHex, type StreamLeaf } from "@paradigm-terra/canonical";
 
 export class OrchestratorError extends Error {
@@ -50,6 +50,15 @@ export interface Submission {
   readonly cal: Json;
   /** Validators do not execute — the step outcomes / before-after state arrive here (§4.1). */
   readonly trace: ExecutionTrace;
+  /**
+   * Lifecycle staging (Gate #3, reachability only — no new business logic):
+   * - `"atomic"` (default): created→signed→validate()→terminal in one tick.
+   * - `"validate-only"`: created→signed→validateToValidated(); leaves the CAL in-flight at
+   *   VALIDATED (so a later-tick resume can hit EXPIRED_POST, or a same-agent CAL hits AGENT_BUSY).
+   * - `"resume"`: no ingress events; resumeFromValidated() drives an already-in-flight VALIDATED CAL
+   *   to its terminal (EXPIRED_POST when currentTick > expiration_tick).
+   */
+  readonly mode?: "atomic" | "validate-only" | "resume";
 }
 
 /** All submissions that land at one tick. */
@@ -170,6 +179,25 @@ export function run(program: Program): Transcript {
         stateRoots.push(hex(stateRootOf(state)));
       };
 
+      const mode = sub.mode ?? "atomic";
+
+      // resume (Gate #3): the CAL is already in-flight at VALIDATED (left there by an
+      // earlier-tick validate-only). No ingress events; drive it to terminal. At a tick
+      // past expiration_tick this yields EXPIRED_POST.
+      if (mode === "resume") {
+        const trace: ExecutionTrace = { ...sub.trace, currentTick };
+        const res = resumeFromValidated(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
+        for (const evV of res.events) {
+          const ev = evV as unknown as Event;
+          fold(ev, (code) => {
+            throw new OrchestratorError("APPLY_FAILED", `${res.terminalStage} resume event ${String(ev["event_type"])} rejected: ${code}`);
+          });
+          record(ev);
+        }
+        subs.push({ calHash: calHashHex, agentId, terminalStage: res.terminalStage, reasonCode: res.reasonCode, events, stateRoots });
+        continue;
+      }
+
       // Ingress: cal.created then cal.signed. The reducer enforces §6.1
       // (one in-flight CAL per agent → AGENT_BUSY) and CAL uniqueness here.
       let ingressError: { code: string } | undefined;
@@ -190,6 +218,24 @@ export function run(program: Program): Transcript {
       // The node is authoritative on the tick: pin trace.currentTick to its own
       // currentTick so a submission cannot misreport the tick and dodge expiration.
       const trace: ExecutionTrace = { ...sub.trace, currentTick };
+
+      // validate-only (Gate #3): stage 1 — leave the CAL in-flight at VALIDATED (or surface a
+      // pre-validation failure as terminal). No execution/finalization this tick.
+      if (mode === "validate-only") {
+        const s1 = validateToValidated(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
+        const evs = s1.terminal ? s1.terminal.events : s1.events;
+        for (const evV of evs) {
+          const ev = evV as unknown as Event;
+          fold(ev, (code) => {
+            throw new OrchestratorError("APPLY_FAILED", `validate-only event ${String(ev["event_type"])} rejected: ${code}`);
+          });
+          record(ev);
+        }
+        // terminalStage null = staged-pending (CAL in-flight at VALIDATED, not yet terminal).
+        subs.push({ calHash: calHashHex, agentId, terminalStage: s1.terminal ? s1.terminal.terminalStage : null, reasonCode: s1.terminal ? s1.terminal.reasonCode : null, events, stateRoots });
+        continue;
+      }
+
       const res = validate(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
       for (const evV of res.events) {
         const ev = evV as unknown as Event;
