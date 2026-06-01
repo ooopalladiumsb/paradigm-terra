@@ -43,9 +43,19 @@ func canonErr(err error) *NodeError {
 }
 
 // Submission is one CAL handed to the node with the off-chain executor's trace.
+// SubmissionMode is the Gate #3 lifecycle staging selector (reachability only).
+type SubmissionMode int
+
+const (
+	ModeAtomic SubmissionMode = iota
+	ModeValidateOnly
+	ModeResume
+)
+
 type Submission struct {
 	Cal   canonical.Value
 	Trace calvalidator.ExecutionTrace
+	Mode  SubmissionMode
 }
 
 // TickBlock is all submissions that land at one tick (must be ≥ the node's tick).
@@ -183,6 +193,26 @@ func traceAt(src calvalidator.ExecutionTrace, tick *big.Int) calvalidator.Execut
 
 // Run folds a program to a transcript. It errors on a tick regression or on a
 // validator-emitted event the reducer rejects (an integration defect).
+// foldEvents folds a validator-emitted event stream into the live state, recording the log,
+// event types, and per-event STATE_ROOT. Returns APPLY_FAILED if the reducer rejects an event.
+func foldEvents(state *canonical.Value, log *[]canonical.Value, eventTypes *[]string, stateRoots *[]string, events []canonical.Value, stageLabel string) *NodeError {
+	for _, ev := range events {
+		ns, aerr := calreducer.Apply(*state, ev)
+		if aerr != nil {
+			return nodeErr("APPLY_FAILED", fmt.Sprintf("%s event %s rejected: %s", stageLabel, eventType(ev), aerr.Code))
+		}
+		*state = ns
+		*log = append(*log, ev)
+		*eventTypes = append(*eventTypes, eventType(ev))
+		sr, serr := calreducer.StateRootOf(*state)
+		if serr != nil {
+			return canonErr(serr)
+		}
+		*stateRoots = append(*stateRoots, hex32(sr))
+	}
+	return nil
+}
+
 func Run(program *Program) (*Transcript, *NodeError) {
 	genesisState := program.GenesisState
 	state := genesisState
@@ -221,6 +251,26 @@ func Run(program *Program) (*Transcript, *NodeError) {
 			}
 			var eventTypes []string
 			var stateRoots []string
+			trace := traceAt(sub.Trace, currentTick)
+
+			// resume (Gate #3): CAL already in-flight at VALIDATED; no ingress.
+			if sub.Mode == ModeResume {
+				res, verr := calvalidator.ResumeFromValidated(sub.Cal, calHashHex, state, trace)
+				if verr != nil {
+					return nil, nodeErr("VALIDATE_ERROR", verr.Error())
+				}
+				if ferr := foldEvents(&state, &log, &eventTypes, &stateRoots, res.Events, res.TerminalStage); ferr != nil {
+					return nil, ferr
+				}
+				stage := res.TerminalStage
+				var reason *string
+				if res.ReasonCode != "" {
+					rc := res.ReasonCode
+					reason = &rc
+				}
+				subs = append(subs, SubmissionResult{CalHash: calHashHex, AgentID: agentID, TerminalStage: &stage, ReasonCode: reason, EventTypes: eventTypes, StateRoots: stateRoots})
+				continue
+			}
 
 			// Ingress: cal.created then cal.signed (reducer enforces §6.1 / uniqueness).
 			var ingressError *string
@@ -249,41 +299,46 @@ func Run(program *Program) (*Transcript, *NodeError) {
 				continue
 			}
 
-			// Validate against the live state (tick pinned), then fold the events.
-			trace := traceAt(sub.Trace, currentTick)
+			// validate-only (Gate #3): stage 1 — leave the CAL in-flight at VALIDATED.
+			if sub.Mode == ModeValidateOnly {
+				s1, verr := calvalidator.ValidateToValidated(sub.Cal, calHashHex, state, trace)
+				if verr != nil {
+					return nil, nodeErr("VALIDATE_ERROR", verr.Error())
+				}
+				events := s1.Events
+				var stage *string
+				var reason *string
+				if s1.Terminal != nil {
+					events = s1.Terminal.Events
+					st := s1.Terminal.TerminalStage
+					stage = &st
+					if s1.Terminal.ReasonCode != "" {
+						rc := s1.Terminal.ReasonCode
+						reason = &rc
+					}
+				}
+				if ferr := foldEvents(&state, &log, &eventTypes, &stateRoots, events, "validate-only"); ferr != nil {
+					return nil, ferr
+				}
+				subs = append(subs, SubmissionResult{CalHash: calHashHex, AgentID: agentID, TerminalStage: stage, ReasonCode: reason, EventTypes: eventTypes, StateRoots: stateRoots})
+				continue
+			}
+
+			// atomic: validate() then fold.
 			res, verr := calvalidator.Validate(sub.Cal, calHashHex, state, trace)
 			if verr != nil {
 				return nil, nodeErr("VALIDATE_ERROR", verr.Error())
 			}
-			for _, ev := range res.Events {
-				ns, aerr := calreducer.Apply(state, ev)
-				if aerr != nil {
-					return nil, nodeErr("APPLY_FAILED", fmt.Sprintf("%s event %s rejected: %s", res.TerminalStage, eventType(ev), aerr.Code))
-				}
-				state = ns
-				log = append(log, ev)
-				eventTypes = append(eventTypes, eventType(ev))
-				sr, serr := calreducer.StateRootOf(state)
-				if serr != nil {
-					return nil, canonErr(serr)
-				}
-				stateRoots = append(stateRoots, hex32(sr))
+			if ferr := foldEvents(&state, &log, &eventTypes, &stateRoots, res.Events, res.TerminalStage); ferr != nil {
+				return nil, ferr
 			}
-
 			stage := res.TerminalStage
 			var reason *string
 			if res.ReasonCode != "" {
 				rc := res.ReasonCode
 				reason = &rc
 			}
-			subs = append(subs, SubmissionResult{
-				CalHash:       calHashHex,
-				AgentID:       agentID,
-				TerminalStage: &stage,
-				ReasonCode:    reason,
-				EventTypes:    eventTypes,
-				StateRoots:    stateRoots,
-			})
+			subs = append(subs, SubmissionResult{CalHash: calHashHex, AgentID: agentID, TerminalStage: &stage, ReasonCode: reason, EventTypes: eventTypes, StateRoots: stateRoots})
 		}
 
 		stateRoot, serr := calreducer.StateRootOf(state)

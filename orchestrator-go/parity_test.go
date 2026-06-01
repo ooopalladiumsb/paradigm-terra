@@ -138,21 +138,6 @@ func TestParityWithTypeScriptGoldenVectors(t *testing.T) {
 	checks := 0
 
 	for _, p := range doc.Programs {
-		// Gate #3 staged programs carry a submission `mode` (validate-only / resume). The Go
-		// staged-validator split is a pending increment; skip until ported (verified by the TS
-		// reference + golden). Atomic programs (no mode) run as before.
-		staged := false
-		for _, blk := range p.InputTicks {
-			for _, s := range blk.Submissions {
-				if s.Mode != "" {
-					staged = true
-				}
-			}
-		}
-		if staged {
-			t.Logf("parity: skipping staged program (pending Go staged-validator port): %s", p.ID)
-			continue
-		}
 		genesis, perr := canonical.ParseCanonical(p.StartStateCanonical)
 		if perr != nil {
 			t.Fatalf("%s: parse start state: %v", p.ID, perr)
@@ -171,7 +156,14 @@ func TestParityWithTypeScriptGoldenVectors(t *testing.T) {
 				if e1 != nil || e2 != nil {
 					t.Fatalf("%s: parse submission: %v / %v", p.ID, e1, e2)
 				}
-				subs = append(subs, Submission{Cal: calV, Trace: buildTrace(traceV)})
+				mode := ModeAtomic
+				switch s.Mode {
+				case "validate-only":
+					mode = ModeValidateOnly
+				case "resume":
+					mode = ModeResume
+				}
+				subs = append(subs, Submission{Cal: calV, Trace: buildTrace(traceV), Mode: mode})
 			}
 			ticks = append(ticks, TickBlock{Tick: tk, Submissions: subs})
 		}
