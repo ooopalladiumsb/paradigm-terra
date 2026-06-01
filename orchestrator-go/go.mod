@@ -7,6 +7,7 @@ require (
 	github.com/paradigm-terra/cal-reducer-go v0.0.0
 	github.com/paradigm-terra/cal-validator-go v0.0.0
 	github.com/paradigm-terra/canonical-go v0.0.0
+	github.com/paradigm-terra/tc-v2-verify-go v0.0.0
 )
 
 require (
@@ -26,3 +27,5 @@ replace github.com/paradigm-terra/cal-go => ../cal-go
 replace github.com/paradigm-terra/cal-reducer-go => ../cal-reducer-go
 
 replace github.com/paradigm-terra/cal-validator-go => ../cal-validator-go
+
+replace github.com/paradigm-terra/tc-v2-verify-go => ../tc-v2-verify-go
