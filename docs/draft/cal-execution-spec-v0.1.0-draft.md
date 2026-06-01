@@ -60,9 +60,16 @@ A `Step` is:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `operator_sig` | `bytes` | yes | Ed25519 signature by the agent's operator key over the canonical CAL bytes excluding `signatures.*`. |
-| `owner_sig` | `bytes` | conditional | Required if `action ∈ OWNER_REQUIRED_ACTIONS` (§8.2) or if `state.failure_mode.is_bounded_mode == true` (§10.4). |
+| `operator_sig` | `bytes` | yes | **Raw** Ed25519 signature by the agent's operator key over the canonical CAL bytes excluding `signatures.*` (agent runtime; not TON Connect). |
+| `owner_sig` | `bytes` \| `object` | conditional | Required if `action ∈ OWNER_REQUIRED_ACTIONS` (§8.2) or if `state.failure_mode.is_bounded_mode == true` (§10.4). **TON Connect v2 owner co-signature.** Current form: the Contract A reconstruction **envelope object** `{ signature, domain, timestamp, workchain, address_hash }` (`TC_V2_SIGNDATA_VERIFY_V1`, D1; see `docs/spec/cal-co-signature-envelope.md`). Legacy hex-`bytes` form is dual-accepted during the §8.4 Tier-2 compatibility window (schema-tolerated; not verifiable — no envelope). |
 | `sponsor_sig` | `bytes` | optional | Gas Legacy Bridge sponsor signature (§11.3). |
+
+> **§8.4 Tier-2 compatibility note (2026-06-01).** `owner_sig` gains the envelope-object form so the
+> node can reconstruct the TON Connect v2 Contract A commit (D1). Dual-accept / single-emit: new
+> code emits the object; validators accept both forms during the 1000-tick window; legacy form is
+> removed after. `CAL_HASH` is unaffected (`signatures.*` excluded from canonical bytes). The trace
+> booleans are derived from this material by `verifyIngress()` (D-S4: reconstruction exclusively
+> from CAL-carried fields, no backfill).
 
 ### 2.2. Canonical CAL hash
 
