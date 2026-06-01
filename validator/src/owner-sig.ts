@@ -137,15 +137,39 @@ export function verifyTonProof(input: TonProofInput, signatureB64: string, opera
 
 // ---------------------------------------------------------------------------
 // CAL co-signature → ExecutionTrace booleans (§8.1 / §8.2)
+//
+// TWO DISTINCT signature-origin chains — do NOT unify (cal-co-signature-envelope-draft.md):
+//   operator_sig — raw Ed25519 over canonical CAL bytes, produced by the AGENT RUNTIME with
+//                  its local operator key (Exec Spec §8.1/§8.3: "no external ingress channel").
+//                  NO TON Connect, NO Contract A, NO envelope.
+//   owner_sig    — TON Connect signData/binary, a Contract A commit by a human WALLET (D1).
+//                  Carries the envelope (domain/timestamp/address/workchain) so the node can
+//                  rebuild the commit.
 // ---------------------------------------------------------------------------
 
 /**
- * The ingress envelope around a CAL co-signature. Per §8.3 the signer co-signs
- * `canonical_bytes(cal_without_signatures)` via `signData`/`binary` (Contract A); the
- * wallet echoes the address/domain/timestamp top-level (the D1 finding) so the node can
- * rebuild the commit. `calCanonicalBytesB64 = base64(canonical_bytes(cal_without_signatures))`.
+ * Compute `ExecutionTrace.operatorSigPresent`: a RAW Ed25519 verify of the agent's operator
+ * signature over `canonical_bytes(cal_without_signatures)`. The operator key is held by the
+ * agent runtime and signs programmatically — there is no wallet, so this is NOT a Contract A
+ * commit. False on any failure → validator emits §9.4 `CAPABILITY_DENIED`.
  */
-export interface CalCoSignature {
+export function operatorSigPresent(
+  calCanonicalBytes: Uint8Array,
+  operatorSigB64: string,
+  operatorPubkeyHex: string,
+): boolean {
+  if (!operatorPubkeyHex) return false;
+  return crypto.verify(null, calCanonicalBytes, ed25519PublicKey(operatorPubkeyHex), Buffer.from(operatorSigB64, "base64"));
+}
+
+/**
+ * The owner co-signature envelope. Per §8.3 the OWNER co-signs
+ * `canonical_bytes(cal_without_signatures)` via TON Connect `signData`/`binary` (Contract A);
+ * the wallet echoes address/domain/timestamp top-level (the D1 finding) so the node can rebuild
+ * the commit. `calCanonicalBytesB64 = base64(canonical_bytes(cal_without_signatures))`.
+ * (operator_sig has NO envelope — see `operatorSigPresent`.)
+ */
+export interface OwnerCoSignature {
   readonly calCanonicalBytesB64: string;
   readonly workchain: number;
   readonly addressHashHex: string;
@@ -154,8 +178,13 @@ export interface CalCoSignature {
   readonly signatureB64: string;
 }
 
-function verifyCalCoSignature(env: CalCoSignature, signerPubkeyHex: string): boolean {
-  if (!signerPubkeyHex) return false;
+/**
+ * Compute `ExecutionTrace.ownerSigPresent` from the owner co-signature envelope and the
+ * registry `owner_pubkey` (§8.2; required for OWNER_REQUIRED_ACTIONS and Bounded Mode §10.4)
+ * via Contract A reconstruction.
+ */
+export function ownerSigPresent(env: OwnerCoSignature, ownerPubkeyHex: string): boolean {
+  if (!ownerPubkeyHex) return false;
   return verifySignData(
     {
       workchain: env.workchain,
@@ -165,23 +194,6 @@ function verifyCalCoSignature(env: CalCoSignature, signerPubkeyHex: string): boo
       payload: { type: "binary", bytesB64: env.calCanonicalBytesB64 },
     },
     env.signatureB64,
-    signerPubkeyHex,
+    ownerPubkeyHex,
   );
-}
-
-/**
- * Compute `ExecutionTrace.operatorSigPresent` from the operator co-signature envelope and
- * the registry `operator_pubkey`. Returns false on any failure (missing key / bad sig),
- * which the validator turns into a §9.4 `CAPABILITY_DENIED` spam-charge.
- */
-export function operatorSigPresent(env: CalCoSignature, operatorPubkeyHex: string): boolean {
-  return verifyCalCoSignature(env, operatorPubkeyHex);
-}
-
-/**
- * Compute `ExecutionTrace.ownerSigPresent` from the owner co-signature envelope and the
- * registry `owner_pubkey` (§8.2; required for OWNER_REQUIRED_ACTIONS and Bounded Mode §10.4).
- */
-export function ownerSigPresent(env: CalCoSignature, ownerPubkeyHex: string): boolean {
-  return verifyCalCoSignature(env, ownerPubkeyHex);
 }

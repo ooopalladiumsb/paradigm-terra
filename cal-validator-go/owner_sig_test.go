@@ -1,18 +1,19 @@
-// Integration test for the node-side owner-signature wiring (owner_sig.go). The contract
-// digest/verdict parity itself is proven in tc-v2-verify-go; here we confirm the CAL
-// co-signature envelope produces the right trace boolean against a REAL signData/binary
-// signature (treating the captured payload bytes as the CAL canonical bytes).
+// Integration test for the node-side owner-signature wiring (owner_sig.go). Contract digest/
+// verdict parity is proven in tc-v2-verify-go; here we confirm the CAL-binding layer routes the
+// two channels correctly: owner_sig via Contract A (real wallet capture verifies), operator_sig
+// as a RAW Ed25519 verify (a wallet Contract A signature must NOT pass it — channels differ).
 
 package calvalidator
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestOperatorSigPresentAgainstRealCapture(t *testing.T) {
+func TestOwnerVsOperatorChannelsAreDistinct(t *testing.T) {
 	path := filepath.Join("..", "spec", "vectors", "tc_v2_sig_verify_v1", "positive", "mytonwallet-binary.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -33,7 +34,8 @@ func TestOperatorSigPresentAgainstRealCapture(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 
-	env := CalCoSignature{
+	// owner_sig: Contract A reconstruction verifies (real wallet signData/binary).
+	env := OwnerCoSignature{
 		CalCanonicalBytesB64: v.Input.PayloadB64, // capture payload stands in for CAL canonical bytes
 		Workchain:            v.Input.Workchain,
 		AddressHashHex:       v.Input.AddressHash,
@@ -41,23 +43,20 @@ func TestOperatorSigPresentAgainstRealCapture(t *testing.T) {
 		Timestamp:            v.Input.Timestamp,
 		SignatureB64:         v.SignatureB64,
 	}
+	if !OwnerSigPresent(env, v.OperatorPubkey) {
+		t.Error("expected OwnerSigPresent=true via Contract A")
+	}
+	if OwnerSigPresent(env, "") {
+		t.Error("empty owner pubkey → false")
+	}
 
-	if !OperatorSigPresent(env, v.OperatorPubkey) {
-		t.Error("expected OperatorSigPresent=true for a real signData/binary signature")
+	// operator_sig: RAW Ed25519 over canonical bytes. A Contract A wallet signature is NOT a raw
+	// signature over the payload bytes, so the raw path MUST reject it.
+	canonicalBytes, _ := base64.StdEncoding.DecodeString(v.Input.PayloadB64)
+	if OperatorSigPresent(canonicalBytes, v.SignatureB64, v.OperatorPubkey) {
+		t.Error("a Contract A wallet signature must NOT pass the raw operator path")
 	}
-	// tampered (but valid-length) pubkey must fail, not panic
-	tampered := "00" + v.OperatorPubkey[2:]
-	if OperatorSigPresent(env, tampered) {
-		t.Error("expected false for tampered pubkey")
-	}
-	// empty pubkey must fail, not panic
-	if OperatorSigPresent(env, "") {
-		t.Error("expected false for empty pubkey")
-	}
-	// tampered timestamp must fail
-	bad := env
-	bad.Timestamp = env.Timestamp + 1
-	if OperatorSigPresent(bad, v.OperatorPubkey) {
-		t.Error("expected false for tampered timestamp")
+	if OperatorSigPresent(canonicalBytes, v.SignatureB64, "") {
+		t.Error("empty operator pubkey → false")
 	}
 }

@@ -13,7 +13,7 @@ import { verify as edVerify, createPublicKey } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { signDataDigest, tonProofDigest } from "../src/owner-sig.js";
+import { signDataDigest, tonProofDigest, operatorSigPresent, ownerSigPresent, type OwnerCoSignature } from "../src/owner-sig.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG = resolve(__dirname, "..", "..", "spec", "vectors", "tc_v2_sig_verify_v1");
@@ -85,4 +85,29 @@ test("owner-sig verifier matches TC_V2_SIGNDATA_VERIFY_V1 golden vectors", () =>
   assert.equal(verdictChecked, 16, "verdict axis count");
   assert.equal(countA, 13, "signData-verifier vector count");
   assert.equal(countB, 3, "tonProof-verifier vector count");
+});
+
+test("operator_sig (raw) and owner_sig (Contract A) are distinct channels at the CAL-binding layer", () => {
+  // A real wallet signData/binary capture = OWNER channel (Contract A).
+  const c = load("positive/mytonwallet-binary.json");
+  const env: OwnerCoSignature = {
+    calCanonicalBytesB64: c.input.payload_b64, // capture payload stands in for CAL canonical bytes
+    workchain: c.input.workchain,
+    addressHashHex: c.input.address_hash_hex,
+    domain: c.input.domain,
+    timestamp: c.input.timestamp,
+    signatureB64: c.signature_b64,
+  };
+
+  // owner_sig: Contract A reconstruction verifies.
+  assert.equal(ownerSigPresent(env, c.operator_pubkey_hex), true, "owner_sig should verify via Contract A");
+  assert.equal(ownerSigPresent(env, ""), false, "empty owner pubkey → false");
+
+  // operator_sig: RAW Ed25519 over canonical bytes. A wallet (Contract A) signature is NOT a
+  // raw signature over the payload bytes, so the raw path MUST reject it — the channels are
+  // not interchangeable at the binding layer (mirrors the contract-layer cross-channel vectors).
+  const canonicalBytes = Buffer.from(c.input.payload_b64, "base64");
+  assert.equal(operatorSigPresent(canonicalBytes, c.signature_b64, c.operator_pubkey_hex), false,
+    "a Contract A wallet signature must NOT pass the raw operator path");
+  assert.equal(operatorSigPresent(canonicalBytes, c.signature_b64, ""), false, "empty operator pubkey → false");
 });

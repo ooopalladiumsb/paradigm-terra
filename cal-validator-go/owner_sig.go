@@ -4,14 +4,18 @@
 // stays a pure function over the resulting booleans; this runs BEFORE the trace is built and
 // is never called from inside validate().
 //
-// The two contracts (TC_V2_SIGNDATA_VERIFY_V1 / TC_V2_TONPROOF_VERIFY_V1) live in the shared,
-// vector-pinned tc-v2-verify-go package — single Go source, no re-implementation, no shared
-// serializer across the two (docs/spec/tc-v2-contract-boundaries.md). This file only adds the
-// CAL co-signature → boolean wiring (§8.1/§8.2).
+// TWO DISTINCT signature-origin chains — do NOT unify (cal-co-signature-envelope-draft.md):
+//   operator_sig — RAW Ed25519 over canonical CAL bytes, produced by the AGENT RUNTIME with its
+//                  local operator key (Exec Spec §8.1/§8.3: "no external ingress channel").
+//                  No TON Connect, no Contract A, no envelope.
+//   owner_sig    — TON Connect signData/binary, a Contract A commit by a human WALLET (D1), with
+//                  the envelope (domain/timestamp/address/workchain). Contract A lives in the
+//                  shared, vector-pinned tc-v2-verify-go package (no re-implementation).
 
 package calvalidator
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
 
@@ -20,11 +24,31 @@ import (
 
 const ed25519PublicKeySize = 32
 
-// CalCoSignature is the ingress envelope around a CAL co-signature. Per §8.3 the signer
-// co-signs canonical_bytes(cal_without_signatures) via signData/binary (Contract A); the
-// wallet echoes address/domain/timestamp top-level (the D1 finding) so the node can rebuild
-// the commit. CalCanonicalBytesB64 = base64(canonical_bytes(cal_without_signatures)).
-type CalCoSignature struct {
+// OperatorSigPresent computes ExecutionTrace.OperatorSigPresent: a RAW Ed25519 verify of the
+// agent's operator signature over canonical_bytes(cal_without_signatures). The operator key is
+// held by the agent runtime and signs programmatically — no wallet, so this is NOT a Contract A
+// commit. False on any failure → validate() turns it into §9.4 CAPABILITY_DENIED.
+func OperatorSigPresent(calCanonicalBytes []byte, operatorSigB64, operatorPubkeyHex string) bool {
+	if operatorPubkeyHex == "" {
+		return false
+	}
+	pub, err := hex.DecodeString(operatorPubkeyHex)
+	if err != nil || len(pub) != ed25519PublicKeySize {
+		return false
+	}
+	sig, err := base64.StdEncoding.DecodeString(operatorSigB64)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+	return ed25519.Verify(ed25519.PublicKey(pub), calCanonicalBytes, sig)
+}
+
+// OwnerCoSignature is the owner co-signature envelope. Per §8.3 the OWNER co-signs
+// canonical_bytes(cal_without_signatures) via TON Connect signData/binary (Contract A); the
+// wallet echoes address/domain/timestamp top-level (the D1 finding) so the node can rebuild the
+// commit. CalCanonicalBytesB64 = base64(canonical_bytes(cal_without_signatures)).
+// (operator_sig has NO envelope — see OperatorSigPresent.)
+type OwnerCoSignature struct {
 	CalCanonicalBytesB64 string
 	Workchain            int32
 	AddressHashHex       string
@@ -33,11 +57,14 @@ type CalCoSignature struct {
 	SignatureB64         string
 }
 
-func verifyCalCoSignature(env CalCoSignature, signerPubkeyHex string) bool {
-	if signerPubkeyHex == "" {
+// OwnerSigPresent computes ExecutionTrace.OwnerSigPresent from the owner co-signature envelope
+// and the registry owner_pubkey (§8.2; required for OWNER_REQUIRED_ACTIONS and Bounded Mode
+// §10.4) via Contract A reconstruction.
+func OwnerSigPresent(env OwnerCoSignature, ownerPubkeyHex string) bool {
+	if ownerPubkeyHex == "" {
 		return false
 	}
-	pub, err := hex.DecodeString(signerPubkeyHex)
+	pub, err := hex.DecodeString(ownerPubkeyHex)
 	if err != nil || len(pub) != ed25519PublicKeySize {
 		return false
 	}
@@ -61,17 +88,4 @@ func verifyCalCoSignature(env CalCoSignature, signerPubkeyHex string) bool {
 		PayloadB64:  env.CalCanonicalBytesB64,
 	}
 	return tcv2.VerifySignData(in, sig, pub)
-}
-
-// OperatorSigPresent computes ExecutionTrace.OperatorSigPresent from the operator co-signature
-// envelope and the registry operator_pubkey. False on any failure (missing key / bad sig),
-// which validate() turns into a §9.4 CAPABILITY_DENIED spam-charge.
-func OperatorSigPresent(env CalCoSignature, operatorPubkeyHex string) bool {
-	return verifyCalCoSignature(env, operatorPubkeyHex)
-}
-
-// OwnerSigPresent computes ExecutionTrace.OwnerSigPresent from the owner co-signature envelope
-// and the registry owner_pubkey (§8.2; required for OWNER_REQUIRED_ACTIONS and Bounded Mode §10.4).
-func OwnerSigPresent(env CalCoSignature, ownerPubkeyHex string) bool {
-	return verifyCalCoSignature(env, ownerPubkeyHex)
 }

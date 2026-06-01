@@ -28,14 +28,18 @@ export interface ExecutionTrace {
   /** Post-execution state bound to `state.after.*`. */
   readonly stateAfter: Json;
   /**
-   * Whether a valid `operator_sig` is present over the CAL's canonical-unsigned
-   * payload (§8.1, §8.3). The trace carries the node's verifier verdict; `validate()`
-   * stays pure over this boolean. Real Ed25519 curve arithmetic now lands in
-   * `owner-sig.ts` (`operatorSigPresent(env, operator_pubkey)` via Contract A,
-   * `TC_V2_SIGNDATA_VERIFY_V1`), computed BEFORE the trace is built — not inside `validate()`.
+   * Whether a valid `operator_sig` is present over `canonical_bytes(cal_without_signatures)`
+   * (§8.1, §8.3). The trace carries the node's verifier verdict; `validate()` stays pure over
+   * this boolean. The verdict lands in `owner-sig.ts` `operatorSigPresent(...)` — a RAW Ed25519
+   * verify (the agent runtime signs programmatically with its operator key; no wallet, no
+   * Contract A) — computed BEFORE the trace is built, not inside `validate()`.
    */
   readonly operatorSigPresent: boolean;
-  /** Whether a valid `owner_sig` co-signature is present (§8.2 structural check). */
+  /**
+   * Whether a valid `owner_sig` co-signature is present (§8.2). Verdict lands in `owner-sig.ts`
+   * `ownerSigPresent(env, owner_pubkey)` via Contract A (`TC_V2_SIGNDATA_VERIFY_V1`, TON Connect
+   * signData/binary, D1) — computed before the trace is built, not inside `validate()`.
+   */
   readonly ownerSigPresent: boolean;
   /**
    * Validator-local pinned MCP schema hash (§4.4). Compared to
