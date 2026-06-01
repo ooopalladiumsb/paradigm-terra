@@ -59,6 +59,12 @@ function sub(agent: string, nonce: bigint, over: Record<string, Json> = {}): Sub
   return { cal: mkCal(agent, nonce, over), trace: okTrace };
 }
 
+// Staged submission (Gate #3): mode = "validate-only" leaves the CAL in-flight at VALIDATED;
+// "resume" drives an in-flight VALIDATED CAL to terminal.
+function subM(agent: string, nonce: bigint, mode: Submission["mode"], over: Record<string, Json> = {}): Submission {
+  return { cal: mkCal(agent, nonce, over), trace: okTrace, mode };
+}
+
 const FALSE_PRECOND: Record<string, Json> = { preconditions: { op: "gte", lhs: { const: 0n }, rhs: { const: 1n } } };
 
 export interface GoldenProgram {
@@ -101,6 +107,25 @@ export const PROGRAMS: readonly GoldenProgram[] = [
         { tick: 0n, submissions: [sub(A, 1n)] },
         { tick: 10n, submissions: [sub(A, 2n, { expiration_tick: 3n })] },
       ],
+    },
+  },
+  {
+    id: "expiration_post_validated",
+    description: "Gate #3 (staged): CAL reaches VALIDATED at tick 0 (validate-only), then resumed at tick 10 past expiration_tick=5 → EXPIRED_POST (unreachable under atomic validate())",
+    program: {
+      genesisState: start({ id: A, balance: FUND }),
+      ticks: [
+        { tick: 0n, submissions: [subM(A, 1n, "validate-only", { expiration_tick: 5n })] },
+        { tick: 10n, submissions: [subM(A, 1n, "resume", { expiration_tick: 5n })] },
+      ],
+    },
+  },
+  {
+    id: "agent_busy",
+    description: "Gate #3 (staged): CAL_A left in-flight at VALIDATED (validate-only) → a second CAL for the same agent at the same tick is rejected AGENT_BUSY (§6.1, one in-flight CAL per agent)",
+    program: {
+      genesisState: start({ id: A, balance: FUND }),
+      ticks: [{ tick: 0n, submissions: [subM(A, 1n, "validate-only"), sub(A, 2n)] }],
     },
   },
 ];
