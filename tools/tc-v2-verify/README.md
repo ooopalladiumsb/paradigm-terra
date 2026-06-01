@@ -28,7 +28,7 @@ node tools/tc-v2-verify/run-vectors.mjs   # verify committed vectors (15/15 expe
 
 ## References
 
-- Normative contract description: `docs/draft/tc-v2-sig-verify-v1-draft.md`
+- Normative contract description: `docs/spec/tc-v2-sig-verify-v1.md`
 - Capture corpus (source of truth): `interop/conformance/`
 - Golden vectors: `spec/vectors/tc_v2_sig_verify_v1/`
 - Work-item / package scope: `docs/notes/tc-v2-signdata-verify-v1.md`

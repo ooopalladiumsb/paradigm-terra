@@ -17,7 +17,7 @@ is the standing prohibition against it.
 | type discriminator | `"txt"` / `"bin"` | none |
 | envelope | `sha256(message)` | `sha256(0xFFFF ‖ "ton-connect" ‖ sha256(inner))` |
 
-Full byte layouts: `docs/draft/tc-v2-sig-verify-v1-draft.md`. They agree only on the Ed25519
+Full byte layouts: `docs/spec/tc-v2-sig-verify-v1.md`. They agree only on the Ed25519
 primitive and on using sha256 as a building block — nowhere else.
 
 ## FORBIDDEN

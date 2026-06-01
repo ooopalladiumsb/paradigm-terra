@@ -26,12 +26,12 @@ hand contract-owned data to one implementation and re-introduce the very couplin
 exists to prevent.
 
 > Note: `spec/` (vectors) is distinct from `docs/spec/` (prose normative specifications). The
-> prose contract for the package below lives at `docs/draft/tc-v2-sig-verify-v1-draft.md`; its
+> prose contract for the package below lives at `docs/spec/tc-v2-sig-verify-v1.md`; its
 > boundary fuse at `docs/spec/tc-v2-contract-boundaries.md`.
 
 ## Packages
 
-### `tc_v2_sig_verify_v1/`  (status: PRE-NORMATIVE)
+### `tc_v2_sig_verify_v1/`  (status: NORMATIVE)
 
 Golden vectors for the two TC v2 owner-signature contracts. Two measurement axes, kept
 deliberately separate so a verify-less implementation can still participate:
@@ -43,4 +43,5 @@ deliberately separate so a verify-less implementation can still participate:
   Requires a crypto backend.
 
 Reference + harness: `tools/tc-v2-verify/`. Source corpus: `interop/conformance/`.
-Promotion PRE-NORMATIVE → NORMATIVE is gated on TS/Rust/Go cross-language digest parity.
+**NORMATIVE** (promoted 2026-06-01 with the Exec-spec §8.4 Tier-2 amendment); TS/Rust/Go
+cross-language digest parity green, TS & Go verdict parity green.

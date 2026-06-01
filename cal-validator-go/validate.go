@@ -258,9 +258,10 @@ func Validate(cal canonical.Value, calHash string, snapshot canonical.Value, tra
 	// 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2).
 	//    operator_sig is always required; owner_sig is required for
 	//    OWNER_REQUIRED_ACTIONS and (§10.4) for every action in Bounded Mode.
-	//    Real Ed25519 curve verification is deferred: the trace's *SigPresent
-	//    flags carry the node's verifier verdict, and registry pubkeys are
-	//    looked up here so wiring is in place once curve arithmetic lands.
+	//    The trace's *SigPresent flags carry the node's verifier verdict (real
+	//    Ed25519 now lands upstream in owner_sig.go: operator_sig raw, owner_sig
+	//    Contract A; validate() stays pure over the booleans). Registry pubkeys are
+	//    looked up here for the §10.2 byte-match.
 	//    Each branch is §9.4 spam-charge (CAPABILITY_DENIED).
 	if !trace.OperatorSigPresent {
 		return preFail("CAPABILITY_DENIED", "operator_sig required", calgas.FailedPrecond)

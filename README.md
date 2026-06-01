@@ -77,10 +77,10 @@ and are not expected to change before promotion except via the gates below:
 
 Promotion from PFC-1 to actual Consensus Freeze requires **all** of:
 
-1. **Real Ed25519** wired into the validator (currently `*_sig_present` is a stub verdict from the trace; the actual curve arithmetic is deferred).
+1. **Real Ed25519** — **verify path DONE (2026-06-01).** `operator_sig` = raw Ed25519 over `canonical_bytes`; `owner_sig` = TON Connect v2 Contract A commit (`TC_V2_SIGNDATA_VERIFY_V1`, D1 finding, confirmed on 2 wallets). TS/Rust/Go cross-language parity green, NORMATIVE vectors `spec/vectors/tc_v2_sig_verify_v1/`, validator node-side verifier in TS + Go (`owner-sig.ts` / `owner_sig.go`), Exec-spec §8.3 wired via the §8.4 Tier-2 amendment. *Remaining:* the orchestrator populates the trace `*_sig_present` booleans by calling the verifier (node integration); `validate()` stays a pure function over those booleans by design.
 2. **§C.3 ns/op CPU benchmarks** built and every cell within `[0.5×, 2.0×]` of its abstract unit weight.
 3. **Staged validator** lifting the single-tick model — `EXPIRED_POST` and `AGENT_BUSY` become reachable (the two states the current orchestrator cannot induce).
-4. **End-to-end smoke flow** — at least one signed CAL transits `signMessage` (owner) → `validate()` → `cal.finalized` end-to-end against a TON testnet wallet, even if final on-chain `sendTransaction` publication is stubbed.
+4. **End-to-end smoke flow** — at least one signed CAL transits `signData` (owner, Contract A) → `validate()` → `cal.finalized` end-to-end against a TON testnet wallet, even if final on-chain `sendTransaction` publication is stubbed. *(Verify leg now real (gate 1); transport happy-path observed on Tonkeeper/MyTonWallet testnet; the full signed-CAL transit is the remaining piece.)*
 5. **30-day quiet period** — no new normative changes to PFC-1 contents during the gating period.
 
 Out of PFC-1 scope (intentionally — addressed post-Freeze):

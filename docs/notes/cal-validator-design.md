@@ -94,9 +94,17 @@ truth:
    `snapshot.registry.agents[agent_id].granted_scopes` must contain every one.
    Actions with no table entry require no scope.
 
-Full Constitution §V scope matrix / CAL Annex A, real Ed25519 verification, the
-MCP schema-hash check (§4.4), and Bounded-Mode whitelisting (§10) are **deferred**
-— same posture as every prior phase (crypto/external pinned later).
+Full Constitution §V scope matrix / CAL Annex A, the MCP schema-hash check (§4.4),
+and Bounded-Mode whitelisting (§10) are **deferred** — same posture as every prior
+phase (crypto/external pinned later).
+
+**Real Ed25519 verification — LANDED (2026-06-01).** The node-side verifier producing the
+trace's `*SigPresent` booleans now does real curve arithmetic: `operator_sig` = raw Ed25519
+over `canonical_bytes(cal_without_signatures)` (agent runtime key); `owner_sig` = Contract A
+commit (`TC_V2_SIGNDATA_VERIFY_V1`, TON Connect signData/binary, D1). It runs before the trace
+is built; `validate()` stays pure over the booleans. The §10.2 operator-pubkey byte-match
+invariant is unchanged. Impl: `validator/src/owner-sig.ts`, `cal-validator-go/owner_sig.go`;
+NORMATIVE vectors `spec/vectors/tc_v2_sig_verify_v1/`; contract `docs/spec/cal-co-signature-envelope.md`.
 
 ## 6. Gas & the reducer-accounting reconciliation
 

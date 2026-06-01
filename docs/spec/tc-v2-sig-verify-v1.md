@@ -1,9 +1,9 @@
-# TC v2 owner-signature verification — DRAFT normative description
+# TC v2 owner-signature verification — NORMATIVE
 
-**Status:** DRAFT (normative-intent). Two independent verification contracts. Promotion to
-frozen normative (`docs/spec/`) is gated on TS/Rust/Go cross-language parity (Stage 5) and
-validator integration (Stage 6). Quiet period was consciously ended 2026-05-31 to open this
-package.
+**Status:** NORMATIVE (promoted 2026-06-01 as part of the Exec-spec §8.4 Tier-2 amendment). Two
+independent verification contracts, byte-reconstructed and ed25519-verified against real captures
+(2 wallets each), with TS/Rust/Go cross-language parity green and validator integration landed
+(TS + Go). Golden vectors `spec/vectors/tc_v2_sig_verify_v1/` are NORMATIVE.
 
 **Scope.** Defines how an owner/operator Ed25519 signature obtained via TON Connect v2 is
 verified. There are **two** such channels, and they are **separate contracts** — they share
@@ -102,7 +102,7 @@ spec MUST state BE explicitly and cite that authority. Full framing:
       trace booleans; `validate()` stays pure. TS (`validator/src/owner-sig.ts`) + Go
       (`cal-validator-go/owner_sig.go`); Rust validator deferred-by-constraint (no Ed25519). Two
       distinct entry points; no universal facade.
-- [x] Formalize the CAL co-signature ingress envelope type (`docs/draft/cal-co-signature-envelope-draft.md`) — decisions 1A–5A; Decision≠Reconstruction inputs; consensus surface = one new invariant
+- [x] Formalize the CAL co-signature ingress envelope type (`docs/spec/cal-co-signature-envelope.md`) — decisions 1A–5A; Decision≠Reconstruction inputs; consensus surface = one new invariant
 - [ ] Exec-spec §8.3 wiring; remove the stale `ed25519_verify(payload_bytes, …)` assumption (D1)
 - [x] **Contract B corroboration** — 2nd `ton_proof` capture landed (Tonkeeper 4.7.0, ed25519-verified); Contract B now at 2 captures / 2 wallets, meeting the same ≥2-wallet bar used for D1
 - [ ] Promote vectors PRE-NORMATIVE → NORMATIVE; move this doc to `docs/spec/`

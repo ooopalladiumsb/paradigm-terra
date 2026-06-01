@@ -5,7 +5,7 @@
 // serialization helper with sign-data.mjs (Contract A) — the conventions genuinely
 // differ (BE vs LE, single vs nested hash) and must not be unified.
 //
-// Byte layout (verified against a real capture — see docs/draft/tc-v2-sig-verify-v1-draft.md):
+// Byte layout (verified against a real capture — see docs/spec/tc-v2-sig-verify-v1.md):
 //   inner  = "ton-proof-item-v2/" || int32_be(workchain) || address_hash[32]
 //          || uint32_le(domain_len) || domain || uint64_le(timestamp)
 //          || proof_payload          (the dApp nonce, as its LITERAL string bytes)

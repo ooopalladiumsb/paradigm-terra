@@ -4,7 +4,7 @@
 period consciously ended 2026-05-31** — the package is now open and under active development.
 Foundation landed (Stages 1–4·TS): PRE-NORMATIVE corpus + golden vectors + TS reference, all
 ed25519-verified (15/15). Remaining: Rust + Go + parity + validator integration + §8.3 wiring.
-Normative contract description: `docs/draft/tc-v2-sig-verify-v1-draft.md` (authoritative
+Normative contract description: `docs/spec/tc-v2-sig-verify-v1.md` (authoritative
 promotion checklist there).
 
 **Anchor `z3h0ix`:** interop OBSERVES, PFC-1 DEFINES. This note records *what must be built

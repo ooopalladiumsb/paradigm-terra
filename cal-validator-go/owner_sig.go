@@ -4,7 +4,7 @@
 // stays a pure function over the resulting booleans; this runs BEFORE the trace is built and
 // is never called from inside validate().
 //
-// TWO DISTINCT signature-origin chains — do NOT unify (cal-co-signature-envelope-draft.md):
+// TWO DISTINCT signature-origin chains — do NOT unify (cal-co-signature-envelope.md):
 //   operator_sig — RAW Ed25519 over canonical CAL bytes, produced by the AGENT RUNTIME with its
 //                  local operator key (Exec Spec §8.1/§8.3: "no external ingress channel").
 //                  No TON Connect, no Contract A, no envelope.

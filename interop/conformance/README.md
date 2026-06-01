@@ -38,7 +38,7 @@ in `docs/notes/tc-v2-signdata-verify-v1.md` §4.
 - **Contract B — `TC_V2_TONPROOF_VERIFY_V1`** (owner *authentication*): `tonProof/*`
 
 They use different serialization (BE vs LE) and different hashing (single vs nested
-sha256). See `docs/draft/tc-v2-sig-verify-v1-draft.md`. A verifier must never share
+sha256). See `docs/spec/tc-v2-sig-verify-v1.md`. A verifier must never share
 serialization logic across the two.
 
 ## Verification

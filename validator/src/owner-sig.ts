@@ -12,7 +12,7 @@
  *
  * Pinned byte-for-byte to spec/vectors/tc_v2_sig_verify_v1 by test/owner-sig.test.ts, so
  * this validator-side implementation cannot drift from the TS/Rust/Go references.
- * Normative description: docs/draft/tc-v2-sig-verify-v1-draft.md.
+ * Normative description: docs/spec/tc-v2-sig-verify-v1.md.
  */
 
 import crypto from "node:crypto";
@@ -138,7 +138,7 @@ export function verifyTonProof(input: TonProofInput, signatureB64: string, opera
 // ---------------------------------------------------------------------------
 // CAL co-signature → ExecutionTrace booleans (§8.1 / §8.2)
 //
-// TWO DISTINCT signature-origin chains — do NOT unify (cal-co-signature-envelope-draft.md):
+// TWO DISTINCT signature-origin chains — do NOT unify (cal-co-signature-envelope.md):
 //   operator_sig — raw Ed25519 over canonical CAL bytes, produced by the AGENT RUNTIME with
 //                  its local operator key (Exec Spec §8.1/§8.3: "no external ingress channel").
 //                  NO TON Connect, NO Contract A, NO envelope.

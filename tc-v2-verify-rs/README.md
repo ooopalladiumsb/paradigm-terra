@@ -1,7 +1,7 @@
 # tc-v2-verify-rs — Rust port of TC_V2_SIGNDATA_VERIFY_V1 (digest axis)
 
 Rust implementation of the two TC v2 owner-signature contracts, derived from the
-normative description (`docs/draft/tc-v2-sig-verify-v1-draft.md`) and verified against
+normative description (`docs/spec/tc-v2-sig-verify-v1.md`) and verified against
 the same golden vectors as the TS reference.
 
 ## Scope: digest only (by design)

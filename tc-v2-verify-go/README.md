@@ -1,7 +1,7 @@
 # tc-v2-verify-go — Go port of TC_V2_SIGNDATA_VERIFY_V1 (digest + verdict)
 
 Third independent implementation of the two TC v2 owner-signature contracts, written from
-the normative draft (`docs/draft/tc-v2-sig-verify-v1-draft.md`) — not ported from TS or Rust.
+the normative draft (`docs/spec/tc-v2-sig-verify-v1.md`) — not ported from TS or Rust.
 Three implementations agreeing on the vectors is evidence the draft itself is unambiguous.
 
 ## Scope: both axes

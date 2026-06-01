@@ -3,7 +3,7 @@
 // Contract A — TC_V2_SIGNDATA_VERIFY_V1 — lives in this file.
 // Contract B — TC_V2_TONPROOF_VERIFY_V1 — lives in ton_proof.go.
 //
-// Implemented from the normative draft (docs/draft/tc-v2-sig-verify-v1-draft.md), NOT
+// Implemented from the normative draft (docs/spec/tc-v2-sig-verify-v1.md), NOT
 // ported from the TS or Rust implementations — so agreement across the three is evidence
 // the draft is unambiguous, not evidence that one port copied another.
 //

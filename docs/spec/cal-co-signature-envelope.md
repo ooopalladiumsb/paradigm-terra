@@ -1,9 +1,8 @@
-# CAL co-signature envelope — DRAFT normative
+# CAL co-signature envelope — NORMATIVE
 
-**Status:** DRAFT (normative-intent). Defines how paradigm_terra binds CAL co-signatures, and in
-particular the **owner co-signature envelope** for the TON Connect channel. Promotion to
-`docs/spec/` happens together with `tc-v2-sig-verify-v1-draft.md` at the Stage-7 NORMATIVE
-promotion.
+**Status:** NORMATIVE (promoted 2026-06-01 with `tc-v2-sig-verify-v1.md`, Exec-spec §8.4 Tier-2
+amendment). Defines how paradigm_terra binds CAL co-signatures, and in particular the **owner
+co-signature envelope** for the TON Connect channel.
 
 **Ownership.** Contracts A/B (`TC_V2_SIGNDATA_VERIFY_V1`, `TC_V2_TONPROOF_VERIFY_V1`) are TON
 Connect v2 constructs we reconstructed and verified. The **owner co-signature envelope** is
@@ -69,7 +68,7 @@ the agent signs the canonical bytes raw, so nothing beyond the signature itself 
 ## 3. Owner signData / Contract A binding
 
 `owner_sig` is verified by reconstructing the **Contract A** commit
-(`tc-v2-sig-verify-v1-draft.md`, big-endian, `"bin"` discriminator, single sha256) with:
+(`tc-v2-sig-verify-v1.md`, big-endian, `"bin"` discriminator, single sha256) with:
 
 ```
 payload  = canonical_bytes(cal_without_signatures)        # from the CAL
@@ -225,7 +224,7 @@ domain, timestamp, address, origin, freshness, or replay.
 
 ## 15. References
 
-- Contracts: `docs/draft/tc-v2-sig-verify-v1-draft.md`; boundaries fuse `docs/spec/tc-v2-contract-boundaries.md`
+- Contracts: `docs/spec/tc-v2-sig-verify-v1.md`; boundaries fuse `docs/spec/tc-v2-contract-boundaries.md`
 - Verifiers: `validator/src/owner-sig.ts`, `cal-validator-go/owner_sig.go`, `tools/tc-v2-verify/`
 - Vectors: `spec/vectors/tc_v2_sig_verify_v1/`
 - Signing model: `docs/draft/cal-execution-spec-v0.1.0-draft.md` §8.1 (two key tiers), §8.3

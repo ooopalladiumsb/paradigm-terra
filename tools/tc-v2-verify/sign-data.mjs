@@ -5,7 +5,7 @@
 // it shares NO serialization helper with ton-proof.mjs (Contract B). Reusing one
 // channel's helpers for the other is the exact integrator bug the package guards against.
 //
-// Byte layout (verified against real captures — see docs/draft/tc-v2-sig-verify-v1-draft.md):
+// Byte layout (verified against real captures — see docs/spec/tc-v2-sig-verify-v1.md):
 //   message = 0xFFFF || "ton-connect/sign-data/" || int32_be(workchain) || address_hash[32]
 //           || uint32_be(domain_len) || domain || uint64_be(timestamp)
 //           || ("txt"|"bin") || uint32_be(payload_len) || payload

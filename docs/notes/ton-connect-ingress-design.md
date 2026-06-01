@@ -14,7 +14,7 @@ deferred. See §6.
 ## 2. Architecture
 
 ```
-┌──────────┐  signMessage(canonical_bytes(CAL))    ┌──────────────┐
+┌──────────┐  signData/binary(canonical_bytes(CAL)) ┌──────────────┐
 │ Wallet   │ ◄──────────────────────────────────── │ Orchestrator │
 │ (V5/SBT) │  owner_sig:bytes64                    │              │
 │          │ ─────────────────────────────────────►│ ─────────────┼─► validator
@@ -37,27 +37,31 @@ Boundaries:
 
 ## 3. Signed payload
 
-`signMessage` is invoked with:
+`signData` (historical name `signMessage`, D2) is invoked with `type:"binary"`:
 
 ```jsonc
 {
   "type":    "binary",
-  "data":    "<base64(canonical_bytes(cal_without_signatures))>",
+  "bytes":   "<base64(canonical_bytes(cal_without_signatures))>",
   "network": "-239",           // mainnet; -3 for testnet
   "from":    "<owner wallet TON address, user-friendly form is OK here>"
 }
 ```
 
 - `canonical_bytes(cal_without_signatures)` is the same byte stream defined in
-  CAL Spec §8.3 — same as for `operator_sig`. There is no separate "Connect
-  envelope" hashed into `CAL_HASH`.
+  CAL Spec §8.3. **The operator signs these bytes RAW; the owner wallet signs a
+  Contract A commit OVER them** — same bytes, different envelope (do not conflate
+  the two channels). There is no separate "Connect envelope" hashed into `CAL_HASH`.
 - `network` and `from` are TON Connect-side metadata that the wallet renders for
   user confirmation. They are **not** part of `CAL_HASH` and the validator
   **MUST NOT** read them.
-- The wallet returns an `Ed25519` signature of the raw `data` bytes. The wallet
-  may prepend its own domain-separator internally (per TON Connect §6), but for
-  `signMessage(binary)` the spec mandates raw-byte signing — verify with the
-  wallet implementation before relying on this.
+- **D1 (verified, 2 wallets): the wallet does NOT return a raw signature over the
+  `bytes`.** It returns an `Ed25519` signature over the TON Connect v2 **SignData
+  commit** (`TC_V2_SIGNDATA_VERIFY_V1`): `sha256(0xFFFF ‖ "ton-connect/sign-data/" ‖
+  workchain ‖ addr_hash ‖ domain_len ‖ domain ‖ timestamp ‖ "bin" ‖ payload_len ‖
+  payload)`. The wallet echoes `domain`/`timestamp`/`address` top-level so the node
+  can rebuild the commit. The raw-byte verify applies **only to `operator_sig`** (the
+  agent runtime's local key, §3 boundaries above). See `docs/spec/cal-co-signature-envelope.md`.
 
 ## 4. `ton_proof` and domain binding
 
