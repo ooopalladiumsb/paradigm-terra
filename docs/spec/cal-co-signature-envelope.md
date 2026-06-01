@@ -168,6 +168,30 @@ into the commit because the wallet puts it there (D1); layering it as a second e
 would add client-clock non-determinism and conflict with the existing model. It is therefore a
 reconstruction input only (§4).
 
+## 10.1 Ingress derivation & test-invariant boundary (Option B)
+
+The trace's signature-presence booleans are derived, not asserted:
+
+> **`verifyIngress()` is the normative path by which `operatorSigPresent` and `ownerSigPresent`
+> are derived from consensus-visible signature material carried in the CAL.**
+
+It lifts the validator's pure-function principle one level up:
+`CAL → verifyIngress() → {operatorSigPresent, ownerSigPresent} → ExecutionTrace → validate()`.
+`validate()` and the reducer stay pure over the booleans; `verifyIngress()` does the Ed25519
+work (operator raw / owner Contract A) before the trace is built. Ed25519-capable-runtime
+concern: TS + Go; a Rust node is deferred-by-constraint (no no-build-script Ed25519, consistent
+with `validator-rs`).
+
+The test corpus is split accordingly:
+
+> **Lifecycle golden vectors MAY inject the trace booleans directly. Their purpose is
+> state-machine validation, not signature verification.**
+
+The crypto-suite (real Ed25519 keys, real signatures, `verifyIngress` → … → `cal.finalized`)
+verifies the signature path; the lifecycle-suite injects booleans to exercise the state machine.
+They check **different invariants** and neither subsumes the other. Reference proof:
+`orchestrator/test/ingress.test.ts`; verifier `orchestrator/src/ingress.ts`.
+
 ## 11. Security invariants
 
 - **Identity (§3A):** the registry public key is the **sole** consensus identity anchor —

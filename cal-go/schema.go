@@ -21,6 +21,7 @@ var requiredFields = []string{
 }
 var stepKeys = []string{"verb", "params", "post_conditions"}
 var sigKeys = []string{"operator_sig", "owner_sig", "sponsor_sig"}
+var ownerEnvelopeKeys = []string{"signature", "domain", "timestamp", "workchain", "address_hash"}
 
 func objOf(v canonical.Value) (*canonical.Object, bool) {
 	o, ok := v.(*canonical.Object)
@@ -134,7 +135,8 @@ func validateSignatures(sig canonical.Value) *calErr {
 	if _, ok := o.Get("operator_sig"); !ok {
 		return cerrD("MISSING_FIELD", "signatures.operator_sig")
 	}
-	for _, k := range sigKeys {
+	// operator_sig / sponsor_sig: raw hex Ed25519 bytes.
+	for _, k := range []string{"operator_sig", "sponsor_sig"} {
 		if v, ok := o.Get(k); ok {
 			s, isStr := v.(string)
 			if !isStr || !isHexBytes(s) {
@@ -142,7 +144,60 @@ func validateSignatures(sig canonical.Value) *calErr {
 			}
 		}
 	}
+	// owner_sig: legacy hex string OR the Contract A reconstruction envelope object
+	// (dual-accept, §8.4 Tier-2 window; D-S1/D-S2).
+	if v, ok := o.Get("owner_sig"); ok {
+		if s, isStr := v.(string); isStr {
+			if !isHexBytes(s) {
+				return cerrD("BAD_SIG_BYTES", "signatures.owner_sig")
+			}
+		} else {
+			env, isObj := objOf(v)
+			if !isObj {
+				return cerrD("BAD_OWNER_ENVELOPE", "signatures.owner_sig")
+			}
+			if e := checkUnexpected(env, ownerEnvelopeKeys, "UNEXPECTED_OWNER_ENVELOPE_FIELD"); e != nil {
+				return e
+			}
+			for _, k := range ownerEnvelopeKeys {
+				if _, ok := env.Get(k); !ok {
+					return cerrD("MISSING_FIELD", "signatures.owner_sig."+k)
+				}
+			}
+			sv, _ := env.Get("signature")
+			if s, isStr := sv.(string); !isStr || !isHexBytes(s) {
+				return cerrD("BAD_SIG_BYTES", "signatures.owner_sig.signature")
+			}
+			// address_hash: 0x + exactly 32 bytes (reconstruction primitive, not friendly form).
+			av, _ := env.Get("address_hash")
+			if s, isStr := av.(string); !isStr || !isHexBytes(s) || len(s) != 66 {
+				return cerrD("BAD_OWNER_ENVELOPE", "signatures.owner_sig.address_hash")
+			}
+			dv, _ := env.Get("domain")
+			if s, isStr := dv.(string); !isStr || s == "" {
+				return cerrD("BAD_OWNER_ENVELOPE", "signatures.owner_sig.domain")
+			}
+			if tv, ok := env.Get("timestamp"); !isU64(tv, ok) {
+				return cerrD("BAD_OWNER_ENVELOPE", "signatures.owner_sig.timestamp")
+			}
+			if wv, ok := env.Get("workchain"); !isInt32(wv, ok) {
+				return cerrD("BAD_OWNER_ENVELOPE", "signatures.owner_sig.workchain")
+			}
+		}
+	}
 	return nil
+}
+
+func isInt32(v canonical.Value, ok bool) bool {
+	if !ok {
+		return false
+	}
+	iv, isInt := v.(canonical.Int)
+	if !isInt {
+		return false
+	}
+	n, err := strconv.ParseInt(string(iv), 10, 64)
+	return err == nil && n >= -(1<<31) && n <= (1<<31)-1
 }
 
 func validateStep(step canonical.Value, namespace, where string) *calErr {
