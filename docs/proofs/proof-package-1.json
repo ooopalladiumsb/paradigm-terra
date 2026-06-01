@@ -1,0 +1,123 @@
+{
+  "proof_package": "PROOF_PACKAGE_1",
+  "status": "LIVE",
+  "generated_at": "2026-06-01T17:00:52.634Z",
+  "agent_id": "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "operator_pubkey": "0xd75bc10691fdfc987a48f9c4c093c6b9ffab114c33b1bc539b9beb5a1e79afb2",
+  "owner_pubkey": "0xe4bd70ac7328e5cb46b79227ca972a421ff5261e1a0068ca16cd8e7c8768c48a",
+  "wallet_address": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "cal": {
+    "cal_version": "0.1.0",
+    "action": "wallet.send_ton",
+    "agent_id": "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "nonce": 1,
+    "expiration_tick": 100,
+    "preconditions": {
+      "op": "gte",
+      "lhs": {
+        "var": "state.ptra.balances.0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "rhs": {
+        "const": 1
+      }
+    },
+    "invariants": [],
+    "steps": [
+      {
+        "verb": "wallet.send_ton",
+        "params": {},
+        "post_conditions": []
+      }
+    ],
+    "receipt_required": true
+  },
+  "cal_hash": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426",
+  "cal_id": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426",
+  "signatures": {
+    "operator_sig": "0x9bd5e75b133b73d5de09d1f12868ff40c665697aa66626b182e0ebd288d96d358b3fb0a155a4135b3304549c5077c37a2cf85d620fa2c977d4cde948cfb7570f",
+    "owner_sig": {
+      "signature": "0xb11cde3d6d30ca2778a19b7f8feb686dc78471eaeb17f03e9fe6182961d78d66df06c478aedf1d19b8330d203cfcbd2f99b32580a747a19654f1be771d04cc03",
+      "domain": "ooopalladiumsb.github.io",
+      "timestamp": 1780333118,
+      "workchain": 0,
+      "address_hash": "0x28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8"
+    }
+  },
+  "transport": {
+    "tc_session_id": null,
+    "trace_id": "019e841f-8705-71ba-98d1-6c2db362bc08",
+    "tx_hash": null
+  },
+  "ingress_verdict": {
+    "operatorSigPresent": true,
+    "ownerSigPresent": true
+  },
+  "trace": {
+    "currentTick": 0,
+    "steps": [
+      {
+        "ok": true,
+        "effects": []
+      }
+    ],
+    "stateBefore": {},
+    "stateAfter": {},
+    "operatorSigPresent": true,
+    "ownerSigPresent": true
+  },
+  "validator_observation": {
+    "events": [
+      {
+        "event_type": "cal.created",
+        "cal_hash": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426",
+        "agent_id": "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "event_type": "cal.signed",
+        "cal_hash": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426"
+      },
+      {
+        "event_type": "cal.validated",
+        "cal_hash": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426",
+        "agent_id": "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "nonce": 1,
+        "escrow_ptra": 10100000
+      },
+      {
+        "event_type": "cal.executed",
+        "cal_hash": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426",
+        "agent_id": "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "nonce": 1,
+        "effects": [],
+        "gas_consumed_ptra": 211000
+      },
+      {
+        "event_type": "cal.settled",
+        "cal_hash": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426"
+      },
+      {
+        "event_type": "cal.finalized",
+        "cal_hash": "0xacfe6450b5f51fba682a35fa9b555630176212f75c3487e396f5e04403cdc426",
+        "agent_id": "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "nonce": 1,
+        "tick_finalized": 0,
+        "gas_consumed_ptra": 211000,
+        "gas_refunded_ptra": 9789000,
+        "steps_applied": 1,
+        "invariants_checked": 0
+      }
+    ],
+    "terminal_stage": "FINALIZED",
+    "reason_code": null
+  },
+  "finalized_observation": {
+    "state_root_before": "0x67153467669e7887e42dfe811b6b45d3d117479eed323c0eb40f87abe0f56c00",
+    "state_root_after": "0x6214ede02365e5c8a5a23703ba9b036ba4579ec62e0943032dfa84a87e2d439d",
+    "event_log_root": "0xf94e2e8ced32e9f4eb48fdc75fb3f5899f90d0c845403ae4852821e773583104"
+  },
+  "timestamps": {
+    "owner_sig_unix": 1780333118,
+    "tick": 0,
+    "cal_expiration_tick": 100
+  }
+}
