@@ -102,17 +102,21 @@ function capabilityGrants(snapshot: Json, agent: string, action: string): boolea
 }
 
 /**
- * Validate a SIGNED CAL against the snapshot and execution trace, producing the
- * lifecycle events and terminal outcome. `calHashHex` is the CAL_HASH computed
- * at ingress (opaque here; echoed into every event's `cal_hash`).
+ * Factory holding the parsed CAL context, the shared event buffer, and the two
+ * lifecycle phases. `phaseA` runs the pre-VALIDATED gates (§ 1–7) and emits
+ * `cal.validated`; `phaseB` runs the post-VALIDATED gates (§ 8–13) to a terminal
+ * event. They push to a SHARED `events` array so the atomic `validate()` composes
+ * them byte-identically to the pre-staging monolith.
  */
-export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: ExecutionTrace): ValidationResult {
+function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: ExecutionTrace) {
   const agent = asStr(getIn(cal, ["agent_id"]));
   const action = asStr(getIn(cal, ["action"]));
   const nonce = asBig(getIn(cal, ["nonce"]));
   const expiration = asBig(getIn(cal, ["expiration_tick"]));
   const tick = trace.currentTick;
   const fee = flatValidationFee(snapshot);
+  const boundedMode = getIn(snapshot, ["failure_mode", "is_bounded_mode"]) === true;
+  const maxGas = maxExpectedDynamicGas(cal, fee);
 
   const events: Event[] = [];
   const idBase = (): Event => ({ cal_hash: calHashHex, agent_id: agent, nonce });
@@ -126,106 +130,19 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
 
   // Pre-VALIDATED FAILED that retains the §9.4 spam charge (PRECOND_FALSE,
   // CAPABILITY_DENIED). No cal.validated fires, so the fee was never escrowed:
-  // the failure event carries `fee_debited_ptra` and the reducer debits it at
-  // cal.failed (Tier-2 revision). The amount is min(fee, balance) — the escrow
-  // gate (§9.3) runs *after* these gates, so the full fee is not yet guaranteed.
-  // events == bill: the event's fee_debited_ptra IS the bill's feeRetained.
+  // the failure event carries fee_debited_ptra and the reducer debits it at cal.failed.
   const spamFail = (reason: ReasonCode, detail: string): ValidationResult => {
     const bill = settle("FAILED_PRECOND", cal, snapshot, 0n);
     events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, fee_debited_ptra: bill.feeRetained, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
-
-  // Pre-VALIDATED FAILED that moves no PTRA: malformed/replay submissions
-  // (UNKNOWN_ACTION, NONCE_MISMATCH), a precondition that errored rather than
-  // returned false (PRECOND_ERROR), or an agent that cannot even cover the
-  // escrow (§9.3). §9.4 charges only PRECOND_FALSE / CAPABILITY_DENIED; these
-  // are §9.1 ingress-class (TON ingress fee only). fee_debited_ptra = 0.
+  // Pre-VALIDATED FAILED that moves no PTRA (UNKNOWN_ACTION, NONCE_MISMATCH,
+  // PRECOND_ERROR, INSUFFICIENT_ESCROW): §9.1 ingress-class, fee_debited_ptra = 0.
   const noChargeFail = (reason: ReasonCode, detail: string): ValidationResult => {
     const bill = settle("FAILED_NO_CHARGE", cal, snapshot, 0n);
     events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, fee_debited_ptra: 0n, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
-
-  // 1. action registered (§2.3)
-  if (!isRegisteredAction(action)) return noChargeFail("UNKNOWN_ACTION", `action ${JSON.stringify(action)} not in §2.3 registry`);
-
-  // 1.25. §4.4 MCP schema-hash pin: when the validator has configured a pinned
-  //       hash (trace.pinnedMcpSchemaHash !== ""), it MUST equal
-  //       state.registry.mcp_schema_hash. A mismatch is a system-level fault,
-  //       not the agent's — no-charge (ingress-class). Per Constitution §VI the
-  //       node also enters MCP_DEGRADED_MODE, but that is a node-level state
-  //       transition outside this pure function.
-  const pinned = trace.pinnedMcpSchemaHash ?? "";
-  if (pinned !== "") {
-    const stateSchema = asStr(getIn(snapshot, ["registry", "mcp_schema_hash"]));
-    if (stateSchema !== pinned) {
-      return noChargeFail("SCHEMA_MISMATCH", `pinned mcp_schema_hash ${pinned} != state ${stateSchema}`);
-    }
-  }
-
-  // 1.5. §10.2 Bounded-Mode admission gate: when state.failure_mode.is_bounded_mode
-  //      is true the validator MUST reject any action absent from the whitelist.
-  //      No-charge (ingress-class) — not listed in §9.4's spam-charge set.
-  const boundedMode = getIn(snapshot, ["failure_mode", "is_bounded_mode"]) === true;
-  if (boundedMode && !isBoundedAllowed(action)) {
-    return noChargeFail("BOUNDED_BLOCKED", `action ${action} not in §10.2 Bounded-Mode whitelist`);
-  }
-
-  // 2. expiration before VALIDATED (§3.4) — no PTRA touched
-  if (tick > expiration) {
-    const bill = settle("EXPIRED_PRE", cal, snapshot, 0n);
-    events.push({ event_type: "cal.expired", ...idBase(), tick_expired: tick, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
-    return result("EXPIRED", null, `expired before VALIDATED: tick ${tick} > expiration ${expiration}`, bill);
-  }
-
-  // 3. nonce monotonicity (§6.2)
-  const expectedNonce = asBig(getIn(snapshot, ["cal", "nonces", agent])) + 1n;
-  if (nonce !== expectedNonce) return noChargeFail("NONCE_MISMATCH", `nonce ${nonce} != ${expectedNonce}`);
-
-  // 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2).
-  //    operator_sig is always required; owner_sig is required for
-  //    OWNER_REQUIRED_ACTIONS and (§10.4) for every action in Bounded Mode.
-  //    The trace's *SigPresent flags carry the node's verifier verdict (real
-  //    Ed25519 now lands upstream in owner-sig.ts: operator_sig raw, owner_sig
-  //    Contract A; validate() stays pure over the booleans). Registry pubkeys are
-  //    looked up here for the §10.2 byte-match.
-  //    Each branch is §9.4 spam-charge (CAPABILITY_DENIED).
-  if (!trace.operatorSigPresent) return spamFail("CAPABILITY_DENIED", `operator_sig required for ${action}`);
-  if (asStr(getIn(snapshot, ["registry", "agents", agent, "operator_pubkey"])) === "") {
-    return spamFail("CAPABILITY_DENIED", `agent ${agent} has no operator_pubkey in registry`);
-  }
-  const ownerRequired = isOwnerRequired(action) || boundedMode;
-  if (ownerRequired) {
-    if (!trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
-    if (asStr(getIn(snapshot, ["registry", "agents", agent, "owner_pubkey"])) === "") {
-      return spamFail("CAPABILITY_DENIED", `agent ${agent} has no owner_pubkey in registry`);
-    }
-  }
-
-  // 5. scope grant (§4.3) — §9.4 spam charge
-  if (!capabilityGrants(snapshot, agent, action)) return spamFail("CAPABILITY_DENIED", `agent lacks required scope for ${action}`);
-
-  // 6. preconditions over the snapshot — PRECOND_FALSE retains the §9.4 fee;
-  //    PRECOND_ERROR (a malformed/erroring expression) is ingress-class, no charge.
-  const pre = evalExpr(getIn(cal, ["preconditions"]), "precondition", { state: snapshot });
-  if (pre.code !== "EVALUATION_TRUE") {
-    const detail = `preconditions ${pre.code}${pre.reason ? `/${pre.reason}` : ""}`;
-    return pre.code === "EVALUATION_FALSE" ? spamFail("PRECOND_FALSE", detail) : noChargeFail("PRECOND_ERROR", detail);
-  }
-
-  // 7. §9.3 escrow gate: balance ≥ Flat_Validation_Fee + Max_Expected_Dynamic_Gas.
-  //    The agent cannot cover escrow, so no PTRA can be taken (no charge). Distinct
-  //    from the post-VALIDATED OUT_OF_GAS overrun (gate 11): this is the admission
-  //    shortfall, §3.5 reason code INSUFFICIENT_ESCROW.
-  if (!canValidate(cal, snapshot)) return noChargeFail("INSUFFICIENT_ESCROW", `balance < escrow (§9.3)`);
-
-  // --- cal.validated: §9.3 upfront deposit — the agent escrows fee + Max_Expected_
-  // Dynamic_Gas. The reducer debits the full escrow; the unused gas is refunded at
-  // the terminal event (gas_refunded_ptra), and the treasury keeps escrow − refund.
-  const maxGas = maxExpectedDynamicGas(cal, fee);
-  events.push({ event_type: "cal.validated", ...idBase(), escrow_ptra: fee + maxGas });
-
   const expirePost = (): ValidationResult => {
     const bill = settle("EXPIRED_POST", cal, snapshot, 0n);
     events.push({ event_type: "cal.expired", ...idBase(), tick_expired: tick, gas_consumed_ptra: 0n, gas_refunded_ptra: bill.gasRefunded, ton_ingress_fee_paid: 0n });
@@ -237,67 +154,178 @@ export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: E
     return result("FAILED", reason, detail, bill);
   };
 
-  // 8. re-check expiration (defensive; fires only under multi-tick orchestration)
-  if (tick > expiration) return expirePost();
+  // Phase A — pre-VALIDATED gates (§1–7), then emit cal.validated.
+  // Returns a terminal ValidationResult on failure, or null on reaching VALIDATED.
+  const phaseA = (): ValidationResult | null => {
+    // 1. action registered (§2.3)
+    if (!isRegisteredAction(action)) return noChargeFail("UNKNOWN_ACTION", `action ${JSON.stringify(action)} not in §2.3 registry`);
 
-  // 9–10. steps: each must succeed and satisfy its post_conditions
-  const stepsNode = getIn(cal, ["steps"]);
-  const steps = Array.isArray(stepsNode) ? stepsNode : [];
-  const committed: Json[] = [];
-  for (let i = 0; i < steps.length; i++) {
-    const tr = trace.steps[i];
-    if (!tr || !tr.ok) return execFail("STEP_ERROR", tr?.errorDetail ?? `step ${i} failed`, committed);
-    for (const eff of tr.effects) committed.push(eff);
-    const pcs = getIn(steps[i], ["post_conditions"]);
-    if (Array.isArray(pcs)) {
-      const params = getIn(steps[i], ["params"]);
-      for (const pc of pcs) {
-        const o = evalExpr(pc, "post_condition", { before: trace.stateBefore, after: trace.stateAfter, params });
-        if (o.code !== "EVALUATION_TRUE") {
-          const reason: ReasonCode = o.code === "EVALUATION_FALSE" ? "POSTCOND_FALSE" : "STEP_ERROR";
-          return execFail(reason, `step ${i} post_condition ${o.code}${o.reason ? `/${o.reason}` : ""}`, committed);
+    // 1.25. §4.4 MCP schema-hash pin (no-charge on mismatch).
+    const pinned = trace.pinnedMcpSchemaHash ?? "";
+    if (pinned !== "") {
+      const stateSchema = asStr(getIn(snapshot, ["registry", "mcp_schema_hash"]));
+      if (stateSchema !== pinned) return noChargeFail("SCHEMA_MISMATCH", `pinned mcp_schema_hash ${pinned} != state ${stateSchema}`);
+    }
+
+    // 1.5. §10.2 Bounded-Mode admission gate (no-charge).
+    if (boundedMode && !isBoundedAllowed(action)) return noChargeFail("BOUNDED_BLOCKED", `action ${action} not in §10.2 Bounded-Mode whitelist`);
+
+    // 2. expiration before VALIDATED (§3.4) — no PTRA touched
+    if (tick > expiration) {
+      const bill = settle("EXPIRED_PRE", cal, snapshot, 0n);
+      events.push({ event_type: "cal.expired", ...idBase(), tick_expired: tick, gas_consumed_ptra: 0n, ton_ingress_fee_paid: 0n });
+      return result("EXPIRED", null, `expired before VALIDATED: tick ${tick} > expiration ${expiration}`, bill);
+    }
+
+    // 3. nonce monotonicity (§6.2)
+    const expectedNonce = asBig(getIn(snapshot, ["cal", "nonces", agent])) + 1n;
+    if (nonce !== expectedNonce) return noChargeFail("NONCE_MISMATCH", `nonce ${nonce} != ${expectedNonce}`);
+
+    // 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2). The
+    //    trace's *SigPresent flags carry the node's verifier verdict (real Ed25519
+    //    lands upstream in owner-sig.ts / verifyIngress; validate() is pure over them).
+    if (!trace.operatorSigPresent) return spamFail("CAPABILITY_DENIED", `operator_sig required for ${action}`);
+    if (asStr(getIn(snapshot, ["registry", "agents", agent, "operator_pubkey"])) === "") {
+      return spamFail("CAPABILITY_DENIED", `agent ${agent} has no operator_pubkey in registry`);
+    }
+    const ownerRequired = isOwnerRequired(action) || boundedMode;
+    if (ownerRequired) {
+      if (!trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
+      if (asStr(getIn(snapshot, ["registry", "agents", agent, "owner_pubkey"])) === "") {
+        return spamFail("CAPABILITY_DENIED", `agent ${agent} has no owner_pubkey in registry`);
+      }
+    }
+
+    // 5. scope grant (§4.3) — §9.4 spam charge
+    if (!capabilityGrants(snapshot, agent, action)) return spamFail("CAPABILITY_DENIED", `agent lacks required scope for ${action}`);
+
+    // 6. preconditions over the snapshot
+    const pre = evalExpr(getIn(cal, ["preconditions"]), "precondition", { state: snapshot });
+    if (pre.code !== "EVALUATION_TRUE") {
+      const detail = `preconditions ${pre.code}${pre.reason ? `/${pre.reason}` : ""}`;
+      return pre.code === "EVALUATION_FALSE" ? spamFail("PRECOND_FALSE", detail) : noChargeFail("PRECOND_ERROR", detail);
+    }
+
+    // 7. §9.3 escrow gate
+    if (!canValidate(cal, snapshot)) return noChargeFail("INSUFFICIENT_ESCROW", `balance < escrow (§9.3)`);
+
+    // --- cal.validated: §9.3 upfront deposit (escrow = fee + Max_Expected_Dynamic_Gas).
+    events.push({ event_type: "cal.validated", ...idBase(), escrow_ptra: fee + maxGas });
+    return null;
+  };
+
+  // Phase B — post-VALIDATED gates (§8–13) → terminal. Assumes VALIDATED reached.
+  // EXPIRED_POST fires when tick > expiration (only under multi-tick orchestration).
+  const phaseB = (): ValidationResult => {
+    // 8. re-check expiration
+    if (tick > expiration) return expirePost();
+
+    // 9–10. steps: each must succeed and satisfy its post_conditions
+    const stepsNode = getIn(cal, ["steps"]);
+    const steps = Array.isArray(stepsNode) ? stepsNode : [];
+    const committed: Json[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      const tr = trace.steps[i];
+      if (!tr || !tr.ok) return execFail("STEP_ERROR", tr?.errorDetail ?? `step ${i} failed`, committed);
+      for (const eff of tr.effects) committed.push(eff);
+      const pcs = getIn(steps[i], ["post_conditions"]);
+      if (Array.isArray(pcs)) {
+        const params = getIn(steps[i], ["params"]);
+        for (const pc of pcs) {
+          const o = evalExpr(pc, "post_condition", { before: trace.stateBefore, after: trace.stateAfter, params });
+          if (o.code !== "EVALUATION_TRUE") {
+            const reason: ReasonCode = o.code === "EVALUATION_FALSE" ? "POSTCOND_FALSE" : "STEP_ERROR";
+            return execFail(reason, `step ${i} post_condition ${o.code}${o.reason ? `/${o.reason}` : ""}`, committed);
+          }
         }
       }
     }
-  }
 
-  // 11. dynamic gas vs escrowed budget (§9.3) → OUT_OF_GAS on overrun
-  const bytesWritten = effectsBytes(committed);
-  const rawGas = toNano(gasUnits(cal, bytesWritten), gasPrice(snapshot));
-  if (rawGas > maxGas) return execFail("OUT_OF_GAS", `dynamic gas ${rawGas} > budget ${maxGas}`, committed);
-  const consumed = rawGas;
+    // 11. dynamic gas vs escrowed budget (§9.3) → OUT_OF_GAS on overrun
+    const bytesWritten = effectsBytes(committed);
+    const rawGas = toNano(gasUnits(cal, bytesWritten), gasPrice(snapshot));
+    if (rawGas > maxGas) return execFail("OUT_OF_GAS", `dynamic gas ${rawGas} > budget ${maxGas}`, committed);
+    const consumed = rawGas;
 
-  // --- cal.executed: effects staged, gas recorded ---
-  events.push({ event_type: "cal.executed", ...idBase(), effects: committed, gas_consumed_ptra: consumed });
+    // --- cal.executed: effects staged, gas recorded ---
+    events.push({ event_type: "cal.executed", ...idBase(), effects: committed, gas_consumed_ptra: consumed });
 
-  // 12. re-check expiration (defensive)
-  if (tick > expiration) return expirePost();
+    // 12. re-check expiration (defensive)
+    if (tick > expiration) return expirePost();
 
-  // 13. invariants over state.before / state.after — Bounded Mode appends the
-  //     constitutional emergency set (DSL v1.2 §7.1 / CAL §10.3), evaluated under
-  //     the same scope as declared invariants. The injected set is not part of
-  //     the CAL hash but is part of consensus (deterministic in is_bounded_mode).
-  const invNode = getIn(cal, ["invariants"]);
-  const declared = Array.isArray(invNode) ? invNode : [];
-  const invariants = effectiveInvariants(declared as readonly unknown[], boundedMode) as Json[];
-  for (let i = 0; i < invariants.length; i++) {
-    const o = evalExpr(invariants[i], "invariant", { before: trace.stateBefore, after: trace.stateAfter });
-    if (o.code !== "EVALUATION_TRUE") {
-      return execFail("INVARIANT_FALSE", `invariant ${i} ${o.code}${o.reason ? `/${o.reason}` : ""}`, committed);
+    // 13. invariants over state.before / state.after (Bounded Mode appends the emergency set)
+    const invNode = getIn(cal, ["invariants"]);
+    const declared = Array.isArray(invNode) ? invNode : [];
+    const invariants = effectiveInvariants(declared as readonly unknown[], boundedMode) as Json[];
+    for (let i = 0; i < invariants.length; i++) {
+      const o = evalExpr(invariants[i], "invariant", { before: trace.stateBefore, after: trace.stateAfter });
+      if (o.code !== "EVALUATION_TRUE") {
+        return execFail("INVARIANT_FALSE", `invariant ${i} ${o.code}${o.reason ? `/${o.reason}` : ""}`, committed);
+      }
     }
-  }
 
-  // --- cal.settled + cal.finalized: refund unused gas ---
-  events.push({ event_type: "cal.settled", cal_hash: calHashHex });
-  const bill = settle("FINALIZED", cal, snapshot, bytesWritten);
-  events.push({
-    event_type: "cal.finalized",
-    ...idBase(),
-    tick_finalized: tick,
-    gas_consumed_ptra: consumed,
-    gas_refunded_ptra: bill.gasRefunded,
-    steps_applied: BigInt(steps.length),
-    invariants_checked: BigInt(invariants.length),
-  });
-  return result("FINALIZED", null, "", bill);
+    // --- cal.settled + cal.finalized: refund unused gas ---
+    events.push({ event_type: "cal.settled", cal_hash: calHashHex });
+    const bill = settle("FINALIZED", cal, snapshot, bytesWritten);
+    events.push({
+      event_type: "cal.finalized",
+      ...idBase(),
+      tick_finalized: tick,
+      gas_consumed_ptra: consumed,
+      gas_refunded_ptra: bill.gasRefunded,
+      steps_applied: BigInt(steps.length),
+      invariants_checked: BigInt(invariants.length),
+    });
+    return result("FINALIZED", null, "", bill);
+  };
+
+  return { events, phaseA, phaseB };
+}
+
+/**
+ * Validate a SIGNED CAL against the snapshot and execution trace, producing the
+ * lifecycle events and terminal outcome. `calHashHex` is the CAL_HASH computed
+ * at ingress (opaque here; echoed into every event's `cal_hash`).
+ *
+ * Atomic composition of {@link validateToValidated} + {@link resumeFromValidated}
+ * (Gate #3): the orchestrator uses the staged pair to split a CAL's lifecycle
+ * across ticks, making EXPIRED_POST (resume at tick > expiration) and AGENT_BUSY
+ * (a CAL left in-flight at VALIDATED) reachable. This atomic path is byte-identical
+ * to the pre-staging behavior.
+ */
+export function validate(cal: Json, calHashHex: string, snapshot: Json, trace: ExecutionTrace): ValidationResult {
+  const v = makeValidator(cal, calHashHex, snapshot, trace);
+  const a = v.phaseA();
+  if (a) return a;
+  return v.phaseB();
+}
+
+/** Stage-1 result for staged (multi-tick) orchestration. */
+export interface ToValidatedResult {
+  /** Non-null on pre-validation failure (terminal); null on reaching VALIDATED. */
+  readonly terminal: ValidationResult | null;
+  /** Events to fold: the failure event when terminal, else `[cal.validated]`. */
+  readonly events: readonly Event[];
+}
+
+/**
+ * Stage 1 (§ gates 1–7 → `cal.validated`). On success, leaves the CAL in-flight at
+ * VALIDATED (events = `[cal.validated]`, `terminal` null). On a pre-validation
+ * failure, `terminal` is the terminal result and `events` its failure event.
+ */
+export function validateToValidated(cal: Json, calHashHex: string, snapshot: Json, trace: ExecutionTrace): ToValidatedResult {
+  const v = makeValidator(cal, calHashHex, snapshot, trace);
+  const a = v.phaseA();
+  if (a) return { terminal: a, events: a.events };
+  return { terminal: null, events: [...v.events] };
+}
+
+/**
+ * Stage 2 (§ gates 8–13). Resumes a VALIDATED CAL to a terminal event. Run against
+ * the post-`cal.validated` snapshot at the resume tick; EXPIRED_POST fires when
+ * `trace.currentTick > expiration_tick`. Emits only the post-VALIDATED events.
+ */
+export function resumeFromValidated(cal: Json, calHashHex: string, snapshot: Json, trace: ExecutionTrace): ValidationResult {
+  const v = makeValidator(cal, calHashHex, snapshot, trace);
+  return v.phaseB();
 }
