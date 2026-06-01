@@ -4,6 +4,15 @@
 normative package replaces all of it and leaves no parallel old semantics. **Not** a spec edit —
 a checklist to execute the edit against. Built from a repo-wide grep (2026-06-01).
 
+**Stage 7A review — COMPLETE (2026-06-01). Result:**
+- **channel-mixing audit = CLEAN** — after the operator/owner fix (`4470539`) + the `trace.go`
+  residual fix, `grep 'operator … (Contract A|signData|verifySignData)'` → NONE.
+- **operator/owner separation = LOCKED** — operator raw / owner Contract A, enforced by code
+  (TS+Go non-interchangeability tests), the envelope §0, and the do-not-touch list (4, 11).
+- **Reference fix:** item ⑤ (Tier-2 amendment / 1000-tick window) is **§8.4**, not §8.3 L336.
+- No new forks surfaced — all 11 loci are pure "carry decided rules into the normative layer."
+  → cleared to execute the single atomic Tier-2 package.
+
 **Prerequisite correction (DONE, commit `4470539`).** The Stage-6 binding layer wrongly routed
 `operator_sig` through Contract A. Fixed: `operator_sig` is RAW Ed25519; only `owner_sig` is
 Contract A. This inventory assumes the corrected model:
