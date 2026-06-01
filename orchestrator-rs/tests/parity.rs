@@ -7,7 +7,7 @@
 use paradigm_terra_cal_gas::U256;
 use paradigm_terra_cal_validator::{ExecutionTrace, StepResult};
 use paradigm_terra_canonical::jcs::{canonicalize_value, parse_canonical, JcsValue};
-use paradigm_terra_orchestrator::{run, Program, Submission, TickBlock};
+use paradigm_terra_orchestrator::{run, Program, Submission, SubmissionMode, TickBlock};
 
 const GOLDEN: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../orchestrator/vectors/golden.json"));
 
@@ -71,18 +71,6 @@ fn parity_with_typescript_golden_vectors() {
         let genesis_state = parse_canonical(gstr(p, "start_state_canonical").as_deref().unwrap()).expect("start state");
         let in_ticks = p.get("input_ticks").and_then(JcsValue::as_array).expect("input_ticks");
 
-        // Gate #3 staged programs carry a submission `mode` (validate-only / resume). The Rust
-        // staged-validator split is a pending increment; skip these until ported (they are
-        // verified by the TS reference + golden). Atomic programs (no `mode`) run as before.
-        let staged = in_ticks.iter().any(|blk| {
-            blk.get("submissions")
-                .and_then(JcsValue::as_array)
-                .map_or(false, |subs| subs.iter().any(|s| s.get("mode").is_some()))
-        });
-        if staged {
-            eprintln!("parity: skipping staged program (pending Rust staged-validator port): {id}");
-            continue;
-        }
 
         let ticks: Vec<TickBlock> = in_ticks
             .iter()
@@ -96,6 +84,11 @@ fn parity_with_typescript_golden_vectors() {
                     .map(|s| Submission {
                         cal: parse_canonical(gstr(s, "cal_canonical").as_deref().unwrap()).expect("cal"),
                         trace: build_trace(&parse_canonical(gstr(s, "trace_canonical").as_deref().unwrap()).expect("trace")),
+                        mode: match s.get("mode").and_then(JcsValue::as_str) {
+                            Some("validate-only") => SubmissionMode::ValidateOnly,
+                            Some("resume") => SubmissionMode::Resume,
+                            _ => SubmissionMode::Atomic,
+                        },
                     })
                     .collect(),
             })

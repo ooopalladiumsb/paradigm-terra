@@ -4,7 +4,7 @@
 use paradigm_terra_cal::{cal_hash, event_hash};
 use paradigm_terra_cal_gas::U256;
 use paradigm_terra_cal_reducer::{apply, state_root_of};
-use paradigm_terra_cal_validator::{validate, ExecutionTrace, StepResult};
+use paradigm_terra_cal_validator::{resume_from_validated, validate, validate_to_validated, ExecutionTrace, StepResult};
 use paradigm_terra_canonical::integers::to_hex_prefixed;
 use paradigm_terra_canonical::jcs::JcsValue;
 use paradigm_terra_canonical::merkle::{stream_tree_root, StreamLeaf};
@@ -23,9 +23,21 @@ fn canon_err(e: CanonicalError) -> NodeError {
     NodeError { code: "CANON_ERROR", detail: format!("{e:?}") }
 }
 
+/// Lifecycle staging (Gate #3, reachability only — no new business logic).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SubmissionMode {
+    /// created→signed→validate()→terminal in one tick (default; pre-staging behavior).
+    Atomic,
+    /// created→signed→validate_to_validated(); leaves the CAL in-flight at VALIDATED.
+    ValidateOnly,
+    /// no ingress; resume_from_validated() drives an in-flight VALIDATED CAL to terminal.
+    Resume,
+}
+
 pub struct Submission {
     pub cal: JcsValue,
     pub trace: ExecutionTrace,
+    pub mode: SubmissionMode,
 }
 pub struct TickBlock {
     pub tick: U256,
@@ -117,6 +129,28 @@ fn trace_at(src: &ExecutionTrace, tick: &U256) -> ExecutionTrace {
     }
 }
 
+/// Fold a validator-emitted event stream into the live state, recording the log, event types,
+/// and per-event STATE_ROOT. Errors (APPLY_FAILED) if the reducer rejects an event.
+fn fold_events(
+    state: &mut JcsValue,
+    log: &mut Vec<JcsValue>,
+    event_types: &mut Vec<String>,
+    state_roots: &mut Vec<String>,
+    events: &[JcsValue],
+    stage_label: &str,
+) -> Result<(), NodeError> {
+    for ev in events {
+        match apply(state, ev) {
+            Ok(ns) => *state = ns,
+            Err(e) => return Err(node_err("APPLY_FAILED", format!("{} event {} rejected: {}", stage_label, ev.get("event_type").and_then(JcsValue::as_str).unwrap_or("?"), e.code))),
+        }
+        log.push(ev.clone());
+        event_types.push(ev.get("event_type").and_then(JcsValue::as_str).unwrap_or("?").to_string());
+        state_roots.push(hex32(&state_root_of(state).map_err(canon_err)?));
+    }
+    Ok(())
+}
+
 /// Run a program to a transcript. Errors on a tick regression or a validator-emitted
 /// event the reducer rejects (an integration defect).
 pub fn run(program: &Program) -> Result<Transcript, NodeError> {
@@ -143,6 +177,24 @@ pub fn run(program: &Program) -> Result<Transcript, NodeError> {
             let agent_id = str_field(&sub.cal, "agent_id")?;
             let mut event_types: Vec<String> = Vec::new();
             let mut state_roots: Vec<String> = Vec::new();
+            let trace = trace_at(&sub.trace, &current_tick);
+
+            // resume (Gate #3): CAL already in-flight at VALIDATED (left by an earlier-tick
+            // validate-only). No ingress; drive to terminal (EXPIRED_POST past expiration).
+            if sub.mode == SubmissionMode::Resume {
+                let res = resume_from_validated(&sub.cal, &cal_hash_hex, &state, &trace).map_err(|e| node_err("VALIDATE_ERROR", format!("{e:?}")))?;
+                fold_events(&mut state, &mut log, &mut event_types, &mut state_roots, &res.events, res.terminal_stage)?;
+                subs.push(SubmissionResult {
+                    cal_hash: cal_hash_hex,
+                    agent_id,
+                    terminal_stage: Some(res.terminal_stage.to_string()),
+                    reason_code: res.reason_code.map(str::to_string),
+                    event_types,
+                    state_roots,
+                    ingress_error: None,
+                });
+                continue;
+            }
 
             // Ingress: cal.created then cal.signed (reducer enforces §6.1 / uniqueness).
             let mut ingress_error: Option<String> = None;
@@ -169,18 +221,22 @@ pub fn run(program: &Program) -> Result<Transcript, NodeError> {
                 continue;
             }
 
-            // Validate against the live state (tick pinned), then fold the events.
-            let trace = trace_at(&sub.trace, &current_tick);
-            let res = validate(&sub.cal, &cal_hash_hex, &state, &trace).map_err(|e| node_err("VALIDATE_ERROR", format!("{e:?}")))?;
-            for ev in &res.events {
-                match apply(&state, ev) {
-                    Ok(ns) => state = ns,
-                    Err(e) => return Err(node_err("APPLY_FAILED", format!("{} event {} rejected: {}", res.terminal_stage, ev.get("event_type").and_then(JcsValue::as_str).unwrap_or("?"), e.code))),
-                }
-                log.push(ev.clone());
-                event_types.push(ev.get("event_type").and_then(JcsValue::as_str).unwrap_or("?").to_string());
-                state_roots.push(hex32(&state_root_of(&state).map_err(canon_err)?));
+            // validate-only (Gate #3): stage 1 — leave the CAL in-flight at VALIDATED (or surface
+            // a pre-validation failure as terminal). No execution/finalization this tick.
+            if sub.mode == SubmissionMode::ValidateOnly {
+                let s1 = validate_to_validated(&sub.cal, &cal_hash_hex, &state, &trace).map_err(|e| node_err("VALIDATE_ERROR", format!("{e:?}")))?;
+                let (events, stage, reason): (&[JcsValue], Option<String>, Option<String>) = match &s1.terminal {
+                    Some(t) => (&t.events, Some(t.terminal_stage.to_string()), t.reason_code.map(str::to_string)),
+                    None => (&s1.events, None, None),
+                };
+                fold_events(&mut state, &mut log, &mut event_types, &mut state_roots, events, "validate-only")?;
+                subs.push(SubmissionResult { cal_hash: cal_hash_hex, agent_id, terminal_stage: stage, reason_code: reason, event_types, state_roots, ingress_error: None });
+                continue;
             }
+
+            // atomic: validate() against the live state (tick pinned), then fold the events.
+            let res = validate(&sub.cal, &cal_hash_hex, &state, &trace).map_err(|e| node_err("VALIDATE_ERROR", format!("{e:?}")))?;
+            fold_events(&mut state, &mut log, &mut event_types, &mut state_roots, &res.events, res.terminal_stage)?;
             subs.push(SubmissionResult {
                 cal_hash: cal_hash_hex,
                 agent_id,

@@ -79,149 +79,159 @@ fn is_true(o: &DslOutcome) -> bool {
 /// Validate a SIGNED CAL against the snapshot and execution trace, producing the
 /// lifecycle events and terminal outcome. `cal_hash_hex` is opaque (echoed into
 /// every event's `cal_hash`).
-pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: &ExecutionTrace) -> Result<ValidationResult, GasError> {
+/// Parsed CAL context shared by the two lifecycle phases (mirrors makeValidator in validate.ts).
+struct Ctx<'a> {
+    cal: &'a JcsValue,
+    cal_hash_hex: &'a str,
+    snapshot: &'a JcsValue,
+    trace: &'a ExecutionTrace,
+    agent: String,
+    action: String,
+    nonce: U256,
+    expiration: U256,
+    tick: U256,
+    fee: U256,
+    bounded_mode: bool,
+    max_gas: U256,
+}
+
+fn build_ctx<'a>(cal: &'a JcsValue, cal_hash_hex: &'a str, snapshot: &'a JcsValue, trace: &'a ExecutionTrace) -> Ctx<'a> {
     let agent = get_in(cal, &["agent_id"]).and_then(JcsValue::as_str).unwrap_or("").to_string();
     let action = get_in(cal, &["action"]).and_then(JcsValue::as_str).unwrap_or("").to_string();
     let nonce = as_big(get_in(cal, &["nonce"]), U256::ZERO);
     let expiration = as_big(get_in(cal, &["expiration_tick"]), U256::ZERO);
     let tick = trace.current_tick;
     let fee = flat_validation_fee(snapshot);
+    let bounded_mode = matches!(get_in(snapshot, &["failure_mode", "is_bounded_mode"]), Some(JcsValue::Bool(true)));
+    let max_gas = max_expected_dynamic_gas(cal, fee);
+    Ctx { cal, cal_hash_hex, snapshot, trace, agent, action, nonce, expiration, tick, fee, bounded_mode, max_gas }
+}
 
-    let mut events: Vec<JcsValue> = Vec::new();
+fn mk_take(events: &mut Vec<JcsValue>, stage: &'static str, reason: Option<&'static str>, detail: String, bill: GasBill) -> ValidationResult {
+    ValidationResult { events: std::mem::take(events), terminal_stage: stage, reason_code: reason, reason_detail: detail, bill }
+}
 
-    let mk = |events: Vec<JcsValue>, stage: &'static str, reason: Option<&'static str>, detail: String, bill: GasBill| ValidationResult {
-        events,
-        terminal_stage: stage,
-        reason_code: reason,
-        reason_detail: detail,
-        bill,
-    };
-
+/// Phase A — pre-VALIDATED gates (§1–7), then emit cal.validated. Returns
+/// `Ok(Some(terminal))` on a pre-validation failure, `Ok(None)` on reaching VALIDATED.
+fn phase_a(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<Option<ValidationResult>, GasError> {
     // 1. action registered (§2.3) — malformed, §9.1 ingress-class, no charge
-    if !is_registered_action(&action) {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "UNKNOWN_ACTION", "action not in §2.3 registry", GasOutcome::FailedNoCharge);
+    if !is_registered_action(&c.action) {
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "UNKNOWN_ACTION", "action not in §2.3 registry", GasOutcome::FailedNoCharge)?));
     }
 
-    // 1.25. §4.4 MCP schema-hash pin: when the validator has configured a non-empty
-    //       pinned hash, it MUST equal state.registry.mcp_schema_hash. System-level
-    //       fault → no-charge (ingress-class). The node-level MCP_DEGRADED_MODE
-    //       transition (Constitution §VI) sits outside this pure function.
-    if !trace.pinned_mcp_schema_hash.is_empty() {
-        let state_schema = get_in(snapshot, &["registry", "mcp_schema_hash"]).and_then(JcsValue::as_str).unwrap_or("");
-        if state_schema != trace.pinned_mcp_schema_hash {
-            return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "SCHEMA_MISMATCH", "pinned mcp_schema_hash != state", GasOutcome::FailedNoCharge);
+    // 1.25. §4.4 MCP schema-hash pin — system-level fault → no-charge (ingress-class).
+    if !c.trace.pinned_mcp_schema_hash.is_empty() {
+        let state_schema = get_in(c.snapshot, &["registry", "mcp_schema_hash"]).and_then(JcsValue::as_str).unwrap_or("");
+        if state_schema != c.trace.pinned_mcp_schema_hash {
+            return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "SCHEMA_MISMATCH", "pinned mcp_schema_hash != state", GasOutcome::FailedNoCharge)?));
         }
     }
 
     // 1.5. §10.2 Bounded-Mode admission gate — no-charge (ingress-class).
-    let bounded_mode = matches!(get_in(snapshot, &["failure_mode", "is_bounded_mode"]), Some(JcsValue::Bool(true)));
-    if bounded_mode && !is_bounded_allowed(&action) {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "BOUNDED_BLOCKED", "action not in §10.2 Bounded-Mode whitelist", GasOutcome::FailedNoCharge);
+    if c.bounded_mode && !is_bounded_allowed(&c.action) {
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "BOUNDED_BLOCKED", "action not in §10.2 Bounded-Mode whitelist", GasOutcome::FailedNoCharge)?));
     }
 
     // 2. expiration before VALIDATED (§3.4) — no PTRA
-    if tick > expiration {
-        let bill = settle(GasOutcome::ExpiredPre, cal, snapshot, &U256::ZERO)?;
-        let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
-        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
+    if c.tick > c.expiration {
+        let bill = settle(GasOutcome::ExpiredPre, c.cal, c.snapshot, &U256::ZERO)?;
+        let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
+        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&c.tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
-        return Ok(mk(events, "EXPIRED", None, "expired before VALIDATED".into(), bill));
+        return Ok(Some(mk_take(events, "EXPIRED", None, "expired before VALIDATED".into(), bill)));
     }
 
     // 3. nonce (§6.2) — malformed/replay, §9.1 ingress-class, no charge
-    let expected = as_big(get_in(snapshot, &["cal", "nonces", &agent]), U256::ZERO).checked_add(&U256::from_u64(1)).expect("nonce overflow");
-    if nonce != expected {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "NONCE_MISMATCH", "nonce mismatch", GasOutcome::FailedNoCharge);
+    let expected = as_big(get_in(c.snapshot, &["cal", "nonces", &c.agent]), U256::ZERO).checked_add(&U256::from_u64(1)).expect("nonce overflow");
+    if c.nonce != expected {
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "NONCE_MISMATCH", "nonce mismatch", GasOutcome::FailedNoCharge)?));
     }
 
-    // 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2).
-    //    operator_sig is always required; owner_sig is required for
-    //    OWNER_REQUIRED_ACTIONS and (§10.4) for every action in Bounded Mode.
-    //    Real Ed25519 curve verification is deferred: the trace's *_sig_present
-    //    flags carry the node's verifier verdict, and registry pubkeys are
-    //    looked up here so the wiring is in place once curve arithmetic lands.
-    //    Each branch is §9.4 spam-charge (CAPABILITY_DENIED).
-    if !trace.operator_sig_present {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "operator_sig required", GasOutcome::FailedPrecond);
+    // 4. signature presence + pubkey availability (§8.1 two key tiers, §8.2). The trace's
+    //    *_sig_present flags carry the node's verifier verdict (real Ed25519 lands upstream in
+    //    owner_sig.rs / verifyIngress; validate() is pure over them). §9.4 spam-charge.
+    if !c.trace.operator_sig_present {
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "operator_sig required", GasOutcome::FailedPrecond)?));
     }
-    let operator_pubkey = get_in(snapshot, &["registry", "agents", &agent, "operator_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
+    let operator_pubkey = get_in(c.snapshot, &["registry", "agents", &c.agent, "operator_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
     if operator_pubkey.is_empty() {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "agent has no operator_pubkey in registry", GasOutcome::FailedPrecond);
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "agent has no operator_pubkey in registry", GasOutcome::FailedPrecond)?));
     }
-    let owner_required = is_owner_required(&action) || bounded_mode;
+    let owner_required = is_owner_required(&c.action) || c.bounded_mode;
     if owner_required {
-        if !trace.owner_sig_present {
-            return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond);
+        if !c.trace.owner_sig_present {
+            return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond)?));
         }
-        let owner_pubkey = get_in(snapshot, &["registry", "agents", &agent, "owner_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
+        let owner_pubkey = get_in(c.snapshot, &["registry", "agents", &c.agent, "owner_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
         if owner_pubkey.is_empty() {
-            return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "agent has no owner_pubkey in registry", GasOutcome::FailedPrecond);
+            return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "agent has no owner_pubkey in registry", GasOutcome::FailedPrecond)?));
         }
     }
 
     // 5. scope grant (§4.3) — §9.4 spam charge
-    if !capability_grants(snapshot, &agent, &action) {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "CAPABILITY_DENIED", "agent lacks required scope", GasOutcome::FailedPrecond);
+    if !capability_grants(c.snapshot, &c.agent, &c.action) {
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "agent lacks required scope", GasOutcome::FailedPrecond)?));
     }
 
     // 6. preconditions — PRECOND_FALSE retains the §9.4 fee; PRECOND_ERROR is ingress-class, no charge
-    let pre = eval_expr(get_in(cal, &["preconditions"]), Scope::Precondition, &Bindings { state: Some(snapshot.clone()), ..Default::default() });
+    let pre = eval_expr(get_in(c.cal, &["preconditions"]), Scope::Precondition, &Bindings { state: Some(c.snapshot.clone()), ..Default::default() });
     if !is_true(&pre) {
         let (reason, outcome) = if pre.code == "EVALUATION_FALSE" {
             ("PRECOND_FALSE", GasOutcome::FailedPrecond)
         } else {
             ("PRECOND_ERROR", GasOutcome::FailedNoCharge)
         };
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, reason, "preconditions not satisfied", outcome);
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, reason, "preconditions not satisfied", outcome)?));
     }
 
-    // 7. escrow gate (§9.3) — agent cannot cover escrow, no PTRA can be taken.
-    //    §3.5: dedicated INSUFFICIENT_ESCROW, distinct from the gate-11 OUT_OF_GAS overrun.
-    if !can_validate(cal, snapshot) {
-        return pre_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "INSUFFICIENT_ESCROW", "balance < escrow (§9.3)", GasOutcome::FailedNoCharge);
+    // 7. escrow gate (§9.3) — §3.5 INSUFFICIENT_ESCROW, distinct from gate-11 OUT_OF_GAS.
+    if !can_validate(c.cal, c.snapshot) {
+        return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "INSUFFICIENT_ESCROW", "balance < escrow (§9.3)", GasOutcome::FailedNoCharge)?));
     }
 
     // --- cal.validated: §9.3 upfront deposit — escrow = fee + Max_Expected_Dynamic_Gas.
-    // The reducer debits the full escrow; the unused gas is refunded at the terminal
-    // event (gas_refunded_ptra) and the treasury keeps escrow − refund.
-    let max_gas = max_expected_dynamic_gas(cal, fee);
     {
-        let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
+        let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
         p.push(("event_type", si("cal.validated")));
-        p.push(("escrow_ptra", ii(&fee.checked_add(&max_gas).expect("escrow overflow"))));
+        p.push(("escrow_ptra", ii(&c.fee.checked_add(&c.max_gas).expect("escrow overflow"))));
         events.push(JcsValue::object(p));
     }
+    Ok(None)
+}
 
-    // 8. expiration recheck (defensive; constant tick → never fires here)
-    if tick > expiration {
-        let bill = settle(GasOutcome::ExpiredPost, cal, snapshot, &U256::ZERO)?;
-        let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
-        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
+/// Phase B — post-VALIDATED gates (§8–13) → terminal. Assumes VALIDATED reached.
+/// EXPIRED_POST fires when tick > expiration (only under multi-tick staging).
+fn phase_b(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<ValidationResult, GasError> {
+    // 8. expiration recheck
+    if c.tick > c.expiration {
+        let bill = settle(GasOutcome::ExpiredPost, c.cal, c.snapshot, &U256::ZERO)?;
+        let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
+        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&c.tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
-        return Ok(mk(events, "EXPIRED", None, "expired after VALIDATED".into(), bill));
+        return Ok(mk_take(events, "EXPIRED", None, "expired after VALIDATED".into(), bill));
     }
 
     // 9–10. steps
-    let steps: Vec<JcsValue> = match get_in(cal, &["steps"]) {
+    let steps: Vec<JcsValue> = match get_in(c.cal, &["steps"]) {
         Some(JcsValue::Array(a)) => a.clone(),
         _ => Vec::new(),
     };
     let mut committed: Vec<JcsValue> = Vec::new();
     for (i, step) in steps.iter().enumerate() {
-        let tr = trace.steps.get(i);
+        let tr = c.trace.steps.get(i);
         if tr.map(|t| t.ok) != Some(true) {
             let detail = tr.and_then(|t| t.error_detail.clone()).unwrap_or_else(|| format!("step {i} failed"));
-            return exec_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "STEP_ERROR", &detail, &committed);
+            return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "STEP_ERROR", &detail, &committed);
         }
         committed.extend(tr.unwrap().effects.iter().cloned());
         if let Some(JcsValue::Array(pcs)) = get_in(step, &["post_conditions"]) {
             let params = get_in(step, &["params"]).cloned();
             for pc in pcs {
-                let b = Bindings { before: Some(trace.state_before.clone()), after: Some(trace.state_after.clone()), params: params.clone(), ..Default::default() };
+                let b = Bindings { before: Some(c.trace.state_before.clone()), after: Some(c.trace.state_after.clone()), params: params.clone(), ..Default::default() };
                 let o = eval_expr(Some(pc), Scope::PostCondition, &b);
                 if !is_true(&o) {
                     let reason = if o.code == "EVALUATION_FALSE" { "POSTCOND_FALSE" } else { "STEP_ERROR" };
-                    return exec_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, reason, "post_condition not satisfied", &committed);
+                    return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, reason, "post_condition not satisfied", &committed);
                 }
             }
         }
@@ -229,15 +239,15 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
 
     // 11. dynamic gas vs budget (§9.3)
     let bytes_written = effects_bytes(&JcsValue::Array(committed.clone()))?;
-    let raw_gas = to_nano(gas_units(cal, &bytes_written)?, gas_price(snapshot));
-    if raw_gas > max_gas {
-        return exec_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "OUT_OF_GAS", "dynamic gas exceeds budget", &committed);
+    let raw_gas = to_nano(gas_units(c.cal, &bytes_written)?, gas_price(c.snapshot));
+    if raw_gas > c.max_gas {
+        return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "OUT_OF_GAS", "dynamic gas exceeds budget", &committed);
     }
     let consumed = raw_gas;
 
     // --- cal.executed ---
     {
-        let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
+        let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
         p.push(("event_type", si("cal.executed")));
         p.push(("effects", JcsValue::Array(committed.clone())));
         p.push(("gas_consumed_ptra", ii(&consumed)));
@@ -245,36 +255,36 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
     }
 
     // 12. expiration recheck (defensive)
-    if tick > expiration {
-        let bill = settle(GasOutcome::ExpiredPost, cal, snapshot, &U256::ZERO)?;
-        let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
-        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
+    if c.tick > c.expiration {
+        let bill = settle(GasOutcome::ExpiredPost, c.cal, c.snapshot, &U256::ZERO)?;
+        let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
+        p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&c.tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
-        return Ok(mk(events, "EXPIRED", None, "expired after VALIDATED".into(), bill));
+        return Ok(mk_take(events, "EXPIRED", None, "expired after VALIDATED".into(), bill));
     }
 
     // 13. invariants — Bounded Mode appends the DSL §7.1 / CAL §10.3 emergency set.
-    let declared: Vec<JcsValue> = match get_in(cal, &["invariants"]) {
+    let declared: Vec<JcsValue> = match get_in(c.cal, &["invariants"]) {
         Some(JcsValue::Array(a)) => a.clone(),
         _ => Vec::new(),
     };
-    let invariants: Vec<JcsValue> = effective_invariants(&declared, bounded_mode);
+    let invariants: Vec<JcsValue> = effective_invariants(&declared, c.bounded_mode);
     for inv in &invariants {
-        let b = Bindings { before: Some(trace.state_before.clone()), after: Some(trace.state_after.clone()), ..Default::default() };
+        let b = Bindings { before: Some(c.trace.state_before.clone()), after: Some(c.trace.state_after.clone()), ..Default::default() };
         let o = eval_expr(Some(inv), Scope::Invariant, &b);
         if !is_true(&o) {
-            return exec_fail(&mut events, cal, snapshot, cal_hash_hex, &agent, &nonce, &tick, "INVARIANT_FALSE", "invariant not satisfied", &committed);
+            return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "INVARIANT_FALSE", "invariant not satisfied", &committed);
         }
     }
 
     // --- cal.settled + cal.finalized ---
-    events.push(JcsValue::object(vec![("event_type", si("cal.settled")), ("cal_hash", si(cal_hash_hex))]));
-    let bill = settle(GasOutcome::Finalized, cal, snapshot, &bytes_written)?;
+    events.push(JcsValue::object(vec![("event_type", si("cal.settled")), ("cal_hash", si(c.cal_hash_hex))]));
+    let bill = settle(GasOutcome::Finalized, c.cal, c.snapshot, &bytes_written)?;
     {
-        let mut p = id_pairs(cal_hash_hex, &agent, &nonce);
+        let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
         p.extend([
             ("event_type", si("cal.finalized")),
-            ("tick_finalized", ii(&tick)),
+            ("tick_finalized", ii(&c.tick)),
             ("gas_consumed_ptra", ii(&consumed)),
             ("gas_refunded_ptra", ii(&bill.gas_refunded)),
             ("steps_applied", ii(&U256::from_u64(steps.len() as u64))),
@@ -282,7 +292,46 @@ pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: 
         ]);
         events.push(JcsValue::object(p));
     }
-    Ok(mk(events, "FINALIZED", None, String::new(), bill))
+    Ok(mk_take(events, "FINALIZED", None, String::new(), bill))
+}
+
+/// Atomic composition of [`validate_to_validated`] + [`resume_from_validated`] (Gate #3):
+/// byte-identical to the pre-staging monolith. The staged pair lets the orchestrator split a
+/// CAL's lifecycle across ticks, making EXPIRED_POST and AGENT_BUSY reachable.
+pub fn validate(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: &ExecutionTrace) -> Result<ValidationResult, GasError> {
+    let c = build_ctx(cal, cal_hash_hex, snapshot, trace);
+    let mut events: Vec<JcsValue> = Vec::new();
+    if let Some(term) = phase_a(&c, &mut events)? {
+        return Ok(term);
+    }
+    phase_b(&c, &mut events)
+}
+
+/// Stage-1 result: `terminal` set on a pre-validation failure (its events the failure event),
+/// else `events` = `[cal.validated]` and the CAL is left in-flight at VALIDATED.
+pub struct ToValidated {
+    pub terminal: Option<ValidationResult>,
+    pub events: Vec<JcsValue>,
+}
+
+/// Stage 1 (§ gates 1–7 → cal.validated).
+pub fn validate_to_validated(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: &ExecutionTrace) -> Result<ToValidated, GasError> {
+    let c = build_ctx(cal, cal_hash_hex, snapshot, trace);
+    let mut events: Vec<JcsValue> = Vec::new();
+    match phase_a(&c, &mut events)? {
+        Some(term) => {
+            let evs = term.events.clone();
+            Ok(ToValidated { terminal: Some(term), events: evs })
+        }
+        None => Ok(ToValidated { terminal: None, events }),
+    }
+}
+
+/// Stage 2 (§ gates 8–13). Resumes a VALIDATED CAL → terminal; EXPIRED_POST when tick > expiration.
+pub fn resume_from_validated(cal: &JcsValue, cal_hash_hex: &str, snapshot: &JcsValue, trace: &ExecutionTrace) -> Result<ValidationResult, GasError> {
+    let c = build_ctx(cal, cal_hash_hex, snapshot, trace);
+    let mut events: Vec<JcsValue> = Vec::new();
+    phase_b(&c, &mut events)
 }
 
 /// Pre-VALIDATED FAILED (gates 1, 3–7): no cal.validated fires. The cal.failed

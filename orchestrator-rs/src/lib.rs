@@ -10,4 +10,4 @@
 
 pub mod node;
 
-pub use node::{run, replay, NodeError, Program, Submission, SubmissionResult, TickBlock, TickResult, Transcript};
+pub use node::{run, replay, NodeError, Program, Submission, SubmissionMode, SubmissionResult, TickBlock, TickResult, Transcript};
