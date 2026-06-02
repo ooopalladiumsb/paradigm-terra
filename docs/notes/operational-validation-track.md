@@ -93,6 +93,19 @@ crash → replay → same STATE_ROOT
 
 When this holds stably, the node earns *operational* trust, not just *mathematical* trust.
 
+**Status (2026-06-02): OVT-2 PASSES (H2.1–H2.5).** `orchestrator/src/node/persistent-node.ts`
+(`OvtNode`) wraps the proven `run()` fold with durability + recovery — strictly above the Freeze
+Surface. Durable WAL = the ordered submission stream (one fsync'd NDJSON line per committed tick,
+write-ahead); recovery re-folds the WAL from genesis; the event log is derived output (reproducible
+via `replay()`). `scripts/repro.sh ovt2` (`orchestrator/scripts/ovt2-crash-replay.mjs`, 9/9):
+submissions are minted by the OVT agent (real signed CALs + executor traces) and fed across ticks;
+the node is dropped with **no clean shutdown**; recovery from the WAL reproduces the identical
+`STATE_ROOT` + event-log Merkle root (H2.3, the headline); a **torn trailing WAL line** (crash
+mid-write) is dropped and the committed prefix recovers intact (H2.4); opening twice yields identical
+roots (H2.5); `verifyReplay` confirms the event log alone re-folds to the same roots. Not yet a
+long-running daemon (clock-driven ticks / mempool / async polling) — that surface arrives with the
+on-chain leg; the durability + determinism core is proven.
+
 ---
 
 ## OVT-3 — Ecosystem Correctness

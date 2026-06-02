@@ -9,6 +9,7 @@
 #   scripts/repro.sh vectors-check    # assert every golden vector + tc-v2 manifest is NORMATIVE
 #   scripts/repro.sh bench            # Gate #2 — ns/op baseline harnesses (advisory, §C.4)
 #   scripts/repro.sh ovt1             # OVT-1 — MCP executor (H1.1-H1.3) + autonomous agent loop (H1.4)
+#   scripts/repro.sh ovt2             # OVT-2 — node as a process: crash → replay → same STATE_ROOT
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -55,6 +56,8 @@ ovt1() {
   (cd orchestrator && "$NODE" --import tsx scripts/ovt1-agent-loop.mjs)
 }
 
+ovt2() { echo "→ OVT-2: persistent node — crash → replay → same STATE_ROOT"; (cd orchestrator && "$NODE" --import tsx scripts/ovt2-crash-replay.mjs); }
+
 case "${1:-help}" in
   verify-proof-ts) verify_proof_ts ;;
   verify-proof-go) verify_proof_go ;;
@@ -66,6 +69,7 @@ case "${1:-help}" in
   vectors-check)   vectors_check ;;
   bench)           bench ;;
   ovt1)            ovt1 ;;
+  ovt2)            ovt2 ;;
   freeze-check)    freeze_check ;;
   help|*)          grep -E '^#   scripts/repro.sh ' "$0" | sed 's/^#   /  /' ;;
 esac

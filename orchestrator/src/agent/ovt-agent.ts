@@ -168,6 +168,22 @@ export class OvtAgent {
     };
   }
 
+  /** The node-provisioning genesis (agent registered + funded) — for an external persistent node. */
+  nodeGenesis(): Json {
+    return this.provisionGenesis() as unknown as Json;
+  }
+
+  /** Build a submission (signed CAL + executor-generated trace) WITHOUT running the node — for
+   * feeding a persistent node (OVT-2). `tick` is the tick the submission will land at. */
+  async buildSubmission(nonce: bigint, tick: bigint): Promise<{ cal: Json; trace: Json }> {
+    const cal = this.buildCal(nonce);
+    const calJson = (await this.sign(cal)) as unknown as Json;
+    const record = await this.executor.executeCal(cal, { currentTick: tick, stateBefore: {} });
+    const reg = { operator_pubkey: this.operatorPubkeyHex(), owner_pubkey: this.owner.ownerPubkeyHex() };
+    const verdict = verifyIngress(calJson, reg);
+    return { cal: calJson, trace: { ...record, operatorSigPresent: verdict.operatorSigPresent, ownerSigPresent: verdict.ownerSigPresent } as unknown as Json };
+  }
+
   /** Replay safety / nonce lifecycle: submit the SAME signed CAL at two ticks over one state. */
   async runNonceReplay(): Promise<{ first: string | null; second: string | null; secondReason: string | null }> {
     const cal = this.buildCal(1n);
