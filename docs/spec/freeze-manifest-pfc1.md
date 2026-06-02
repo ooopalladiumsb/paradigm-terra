@@ -139,9 +139,11 @@ No project-history knowledge required. `scripts/repro.sh <target>` (portable, no
 | **`PATH_SEGMENT_WEIGHT_REVIEW`** | advisory Tier-2 | §4 — default is *no change*; decide at quiet-period close |
 | **Node-integration follow-ups** | breadth | Go end-to-end proof DONE; remaining node breadth is non-consensus |
 | **On-chain transport leg** (`sendTransaction`/`tx_hash`) | out of PFC-1 scope | §8.3 — post-Freeze (W5 external publication + Registry contract) |
+| **State checkpointing / snapshots** | operational Tier-2 (OVT-SG finding) | recovery by full re-fold is linear but ~2 h for 1M CALs; recovery must become "snapshot + replay tail". NOT a Freeze-Surface defect (roots correct); build with the long-running daemon. See `operational-validation-track.md` §OVT-SG |
 
-All four are recorded as **not blockers for Freeze**. Anything that would change consensus semantics
-during the quiet period is forbidden (spec wins; bug-fixes only).
+All are recorded as **not blockers for Freeze** (the last is an operations-layer item above the
+frozen core). Anything that would change consensus semantics during the quiet period is forbidden
+(spec wins; bug-fixes only).
 
 ---
 

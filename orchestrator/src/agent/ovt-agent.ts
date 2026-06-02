@@ -184,6 +184,25 @@ export class OvtAgent {
     return { cal: calJson, trace: { ...record, operatorSigPresent: verdict.operatorSigPresent, ownerSigPresent: verdict.ownerSigPresent } as unknown as Json };
   }
 
+  /** Mint a submission WITHOUT the MCP round-trip, using the OVT-1-proven trace shape directly.
+   * For throughput in OVT-SG state-growth measurement (the executor trace-generation path is
+   * validated separately in OVT-1; SG measures the node, not the executor). */
+  async mintSubmissionFast(nonce: bigint, tick: bigint): Promise<{ cal: Json; trace: Json }> {
+    const cal = this.buildCal(nonce);
+    const calJson = (await this.sign(cal)) as unknown as Json;
+    const reg = { operator_pubkey: this.operatorPubkeyHex(), owner_pubkey: this.owner.ownerPubkeyHex() };
+    const verdict = verifyIngress(calJson, reg);
+    const trace = {
+      currentTick: tick,
+      steps: [{ ok: true, effects: [] }],
+      stateBefore: {},
+      stateAfter: {},
+      operatorSigPresent: verdict.operatorSigPresent,
+      ownerSigPresent: verdict.ownerSigPresent,
+    };
+    return { cal: calJson, trace: trace as unknown as Json };
+  }
+
   /** Replay safety / nonce lifecycle: submit the SAME signed CAL at two ticks over one state. */
   async runNonceReplay(): Promise<{ first: string | null; second: string | null; secondReason: string | null }> {
     const cal = this.buildCal(1n);

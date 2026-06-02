@@ -66,6 +66,19 @@ export class OvtNode {
     return node;
   }
 
+  /** Persist many ticks at once (one WAL write, one fold) — for OVT-SG state-growth measurement,
+   * where building via N separate `submit()` calls would be an O(n²) harness artifact. */
+  static bulkCreate(dir: string, genesisState: State, tickBlocks: readonly WalTick[]): OvtNode {
+    fs.mkdirSync(dir, { recursive: true });
+    const p = OvtNode.paths(dir);
+    fs.writeFileSync(p.genesis, enc(genesisState));
+    fs.writeFileSync(p.wal, tickBlocks.map((b) => enc(b)).join("\n") + (tickBlocks.length ? "\n" : ""));
+    const ticks = tickBlocks.slice();
+    const node = new OvtNode(dir, genesisState, ticks, run({ genesisState, ticks }));
+    node.writeHead();
+    return node;
+  }
+
   /** Recover a node from disk: re-fold the committed WAL prefix from genesis (the headline path). */
   static open(dir: string): OvtNode {
     const p = OvtNode.paths(dir);

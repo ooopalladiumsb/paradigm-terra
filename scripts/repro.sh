@@ -10,6 +10,7 @@
 #   scripts/repro.sh bench            # Gate #2 — ns/op baseline harnesses (advisory, §C.4)
 #   scripts/repro.sh ovt1             # OVT-1 — MCP executor (H1.1-H1.3) + autonomous agent loop (H1.4)
 #   scripts/repro.sh ovt2             # OVT-2 — node as a process: crash → replay → same STATE_ROOT
+#   scripts/repro.sh ovt-sg           # OVT-SG — state-growth / recovery-cost curve (slow: ~9 min)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -58,6 +59,8 @@ ovt1() {
 
 ovt2() { echo "→ OVT-2: persistent node — crash → replay → same STATE_ROOT"; (cd orchestrator && "$NODE" --import tsx scripts/ovt2-crash-replay.mjs); }
 
+ovt_sg() { echo "→ OVT-SG: state-growth / recovery-cost curve (slow: ~9 min)"; (cd orchestrator && "$NODE" --import tsx scripts/ovt-sg-growth.mjs); }
+
 case "${1:-help}" in
   verify-proof-ts) verify_proof_ts ;;
   verify-proof-go) verify_proof_go ;;
@@ -70,6 +73,7 @@ case "${1:-help}" in
   bench)           bench ;;
   ovt1)            ovt1 ;;
   ovt2)            ovt2 ;;
+  ovt-sg)          ovt_sg ;;
   freeze-check)    freeze_check ;;
   help|*)          grep -E '^#   scripts/repro.sh ' "$0" | sed 's/^#   /  /' ;;
 esac

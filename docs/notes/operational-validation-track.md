@@ -140,19 +140,45 @@ Measure (not just pass/fail — record the curves):
 unrecoverable / unstartable. A system that is correct but un-operable after sustained use has failed
 OVT even with every other box checked.
 
+**Status (2026-06-02): MEASURED — a real finding.** `scripts/repro.sh ovt-sg`
+(`orchestrator/scripts/ovt-sg-growth.mjs`) measures cold recovery (`OvtNode.open` = read WAL +
+re-fold from genesis == crash-recovery) at growing log sizes (one agent, one finalized CAL/tick):
+
+| CALs | events | cold recovery | ns/event |
+|--:|--:|--:|--:|
+| 1,000 | 4,302 | 6.4 s | 1.50M |
+| 4,000 | 16,302 | 25.4 s | 1.56M |
+| 16,000 | 64,302 | 130.5 s | 2.03M |
+
+- **Growth shape is LINEAR** (ns/event spread 1.36× over a 16× range — *no O(n²) trap*; `globalMerkleRoot`
+  is O(1)/tick, state for one agent is bounded: nonce is a single counter, finalized CALs clear
+  `in_flight`). The structural concern is clear.
+- **But the constant is heavy:** ~1.5–2 ms **per event**, because the fold recomputes a `STATE_ROOT`
+  (canonicalize + hash 8 namespaces) after *every* event. Extrapolated cold recovery for **1M CALs ≈
+  ~2 hours**. That is *linear-but-not-practical*: criterion 6 of the DoD ("recovery stays practical at
+  scale") is **NOT met by full re-fold from genesis alone**.
+- **→ Operational Tier-2 candidate (flagged, not fixed): STATE CHECKPOINTING / snapshots.** Recovery
+  must become "load latest snapshot + replay the tail," not "re-fold from genesis." This is NOT a
+  Freeze-Surface defect — the root *values* are correct (OVT-2 proved determinism); it is an
+  operations-layer requirement OVT-SG surfaced *before* anything was built assuming fast cold-start.
+  Tracked in the Deferred / operational register; decided when the long-running daemon (OVT-2/OVT-3
+  follow-on) is built.
+
 ---
 
 ## Definition of done (hard AND — all simultaneously)
 
-OVT is **not** done when all tasks are finished. It is done when **all of these hold at once**:
+OVT is **not** done when all tasks are finished. It is done when **all of these hold at once**
+(status as of 2026-06-02):
 
 1. ✅ a real executor generates the trace (not asserted) — *OVT-1*
 2. ✅ `crash → replay → identical STATE_ROOT`, repeatably — *OVT-2*
-3. ✅ ≥1 testnet Proof Package (#2), `tx_hash ≠ null` — *OVT-3*
-4. ✅ TS and Go pass a long soak with **zero** divergence — *OVT-3*
-5. ✅ an external observer reproduces results independently — *OVT-3*
-6. ✅ state-growth curves keep replay/recovery practical at scale — *OVT-SG*
-7. ✅ **no Freeze Surface defect found during OVT**
+3. ⬜ ≥1 testnet Proof Package (#2), `tx_hash ≠ null` — *OVT-3* (needs network)
+4. ⬜ TS and Go pass a long soak with **zero** divergence — *OVT-3*
+5. ⬜ an external observer reproduces results independently — *OVT-3*
+6. 🟡 state-growth curves keep replay/recovery practical at scale — *OVT-SG*: growth is linear, but
+   meeting "practical at scale" requires **state checkpointing** (cold re-fold is ~2 h for 1M CALs)
+7. ✅ (so far) **no Freeze Surface defect found during OVT**
 
 Criterion **7 is the most important.** If OVT *does* surface a Freeze-Surface defect, OVT has
 succeeded — and the Freeze must be revisited rather than promoted. This is exactly the observation
