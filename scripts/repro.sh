@@ -8,7 +8,7 @@
 #   scripts/repro.sh parity           # full cross-language parity: TS == Rust == Go (all layers)
 #   scripts/repro.sh vectors-check    # assert every golden vector + tc-v2 manifest is NORMATIVE
 #   scripts/repro.sh bench            # Gate #2 — ns/op baseline harnesses (advisory, §C.4)
-#   scripts/repro.sh ovt1             # OVT-1 — MCP executor generates trace → FINALIZED, identical roots
+#   scripts/repro.sh ovt1             # OVT-1 — MCP executor (H1.1-H1.3) + autonomous agent loop (H1.4)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,7 +48,12 @@ bench() {
 
 freeze_check() { vectors_check; verify_proof; echo "✅ freeze-check passed — normative vectors intact + Gate #4 contour reproduces in TS and Go"; }
 
-ovt1() { echo "→ OVT-1: MCP executor generates ExecutionTrace over real MCP calls"; (cd orchestrator && "$NODE" --import tsx scripts/ovt1-executor-proof.mjs); }
+ovt1() {
+  echo "→ OVT-1 (H1.1-H1.3): MCP executor generates ExecutionTrace over real MCP calls"
+  (cd orchestrator && "$NODE" --import tsx scripts/ovt1-executor-proof.mjs)
+  echo "→ OVT-1 (H1.4): autonomous agent loop construct→sign→execute→submit→FINALIZED"
+  (cd orchestrator && "$NODE" --import tsx scripts/ovt1-agent-loop.mjs)
+}
 
 case "${1:-help}" in
   verify-proof-ts) verify_proof_ts ;;
