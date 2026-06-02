@@ -19,7 +19,7 @@ re-derivation; every line points at the artifact that holds the truth.
 | #2 ns/op benchmark baseline | **closed** (1 advisory Tier-2 item parked) | §2.3, §4 |
 | #3 Staged validator | **closed** | §2.2 |
 | #4 Transport / happy-path (PFC-1 bounds) | **closed** (proven in TS + Go) | §2.5 |
-| #5 Quiet period | **running** | — |
+| #5 Observation (was: quiet period) | **observation-based — gated by OVT DoD, not a calendar** | §7 |
 
 Gate #1 is recorded as *satisfied-for-freeze*, not unconditionally *closed*: the requirement met is
 "the owner/operator authorization model is independently confirmed by ≥2 reference implementations
@@ -145,9 +145,19 @@ during the quiet period is forbidden (spec wins; bug-fixes only).
 
 ---
 
-## 7. Quiet-period rule
+## 7. Observation gate (Gate #5) — observation-based, not calendar-based
 
-`freeze candidate → observation period → bug-fixes only → normative freeze`. During the quiet
-period: no new normative changes to PFC-1 contents, no new contracts, no optimizations. The open
-question is no longer *can the system prove a property* — it is *does it survive observation without
-new defects or contradictions*.
+For a not-yet-launched project a calendar timer buys little: a soak only finds defects if something
+is actually observing, and nothing observes an idle repo. So Gate #5 is **not** "30 days elapsed";
+it is **"the Operational Validation Track Definition of Done is met"**
+(`docs/notes/operational-validation-track.md`). OVT replaces elapsed time with *accumulated
+operational observation*: a real executor generates traces, `crash → replay → identical STATE_ROOT`,
+≥1 testnet Proof Package, a TS↔Go soak with zero divergence, an external observer reproduces results,
+state-growth stays practical — **and no Freeze-Surface defect surfaces**.
+
+Phase contract: `Consensus Freeze Surface (PFC-1, frozen) → Operational Validation Track →
+Production Readiness`. During OVT the change-freeze discipline still holds (no new normative changes
+to PFC-1 contents, no new contracts in the core, no optimizations); OVT works strictly *above* the
+frozen surface. The open question is no longer *can the system prove a property* — it is *does it
+operate without surfacing a contradiction*. If OVT surfaces a Freeze-Surface defect, that is a
+success of OVT and the Freeze is revisited, not promoted.
