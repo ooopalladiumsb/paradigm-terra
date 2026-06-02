@@ -40,16 +40,26 @@ triggers a Freeze revision (§5). OVT must never *re-prove* an axiom (that is wa
 
 > **Hypothesis:** an agent can autonomously produce a valid CAL **without manual assertions**.
 
-| Sub-hypothesis | Falsified if… | Gap# |
-|---|---|---|
-| H1.1 An MCP executor produces effects from real MCP calls | any effect must be hand-written | 1 |
-| H1.2 The `ExecutionTrace` is *generated*, not asserted | any trace field (`ok`, effects, state) must be hand-set | 1 |
-| H1.3 `MCP_SCHEMA_HASH` pins against a real `@ton/mcp` schema | a real schema does not produce the pinned hash, or a mismatch fails to raise `SCHEMA_MISMATCH` | — |
-| H1.4 The agent loop runs construct → `operator_sig` (programmatic) → `owner_sig` (TON Connect) → submit → finalized, with nonce/expiration/retry | the loop cannot complete a real action without human stitching | 4 |
+| Sub-hypothesis | Falsified if… | Gap# | Status |
+|---|---|---|---|
+| H1.1 An MCP executor produces effects from real MCP calls | any effect must be hand-written | 1 | ✅ done |
+| H1.2 The `ExecutionTrace` is *generated*, not asserted | any trace field (`ok`, effects, state) must be hand-set | 1 | ✅ done |
+| H1.3 `MCP_SCHEMA_HASH` pins against a real `@ton/mcp` schema | a real schema does not produce the pinned hash, or a mismatch fails to raise `SCHEMA_MISMATCH` | — | 🟡 seed (vs faithful double) |
+| H1.4 The agent loop runs construct → `operator_sig` (programmatic) → `owner_sig` (TON Connect) → submit → finalized, with nonce/expiration/retry | the loop cannot complete a real action without human stitching | 4 | ⬜ open |
 
 **Layer falsification test:** replace the hand-built trace in Proof Package #1 with an
 executor-generated one — the CAL must still reach `FINALIZED` with **identical roots**. This closes
 the honest boundary "trace step-results are the agent's claim."
+
+**Status (2026-06-02): layer test PASSES.** `orchestrator/src/mcp/executor.ts` (the MCP executor,
+real MCP JSON-RPC 2.0 over stdio) + `orchestrator/src/mcp/test-server.mjs` (a deterministic double
+faithful to the pinned 40-tool set). `scripts/repro.sh ovt1` re-derives Proof Package #1 with an
+**executor-generated** trace → `FINALIZED` with byte-identical `cal_hash` / state roots / event-log
+Merkle root (H1.2); the executor's `MCP_SCHEMA_HASH` computed from the live `tools/list` equals the
+registry pin `cb133fa7…ba34` (H1.3 seed); an unknown verb is rejected from the server's advertised
+list (H1.1, negative control — proves the executor consults the server, not a rubber stamp).
+Remaining for OVT-1: H1.3 against the live `@ton/mcp` package (needs network + TON backend) and H1.4
+the agent loop (operator-sign → TON Connect owner-sign → submit → poll, with nonce/expiration/retry).
 
 ---
 
