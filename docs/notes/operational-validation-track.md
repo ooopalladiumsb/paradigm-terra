@@ -127,9 +127,10 @@ the calendar quiet period was a hollow proxy for.
 
 ## Relationship to Gate #5
 
-OVT **replaces** the empty 30-day calendar timer with observation-based criteria: Gate #5 closes
-when the OVT Definition of Done is met. The freeze stops being "N days elapsed while nobody watched"
-and becomes "N units of real operational observation with zero new contradictions."
+OVT **replaces the calendar-only freeze criterion.** A minimum 5-day cooling-off period remains as a
+procedural safeguard, but freeze promotion is gated by the OVT Definition of Done rather than elapsed
+time alone. The freeze stops being "N days elapsed while nobody watched" and becomes "N units of real
+operational observation with zero new contradictions."
 
 ## Explicitly out of OVT scope (anti-backlog clause)
 
