@@ -1,8 +1,9 @@
 # Gate #2 — ns/op benchmark baseline (plan + target table)
 
-**Status:** Plan, not yet executed. Harness build deferred to a fresh session (measurement
-quality matters more than speed; a noisy baseline is worse than none). This file is the
-starting point so the work resumes cleanly.
+**Status:** EXECUTED 2026-06-02 — baseline captured in all three runtimes. Results, conditions,
+and Tier-2 findings live in `gate2-baseline-results.md`; Annex C.3 (`cal-execution-spec`) is
+populated. This file remains the design/intent record. Net finding: `path_segment` is the one
+systematic out-of-band cell (Tier-2 candidate); no weight was changed (MEASURE-not-optimize held).
 
 **Gate (README PFC-1 → Freeze gates #2):** §C.3 ns/op CPU benchmarks built, and every cell within
 `[0.5×, 2.0×]` of its abstract unit weight.

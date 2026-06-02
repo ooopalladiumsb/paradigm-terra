@@ -315,6 +315,12 @@ func evalBoolean(e *Expr, b Bindings, scope Scope) (Value, *DslError) {
 	return Value{Kind: "bool", B: acc}, nil
 }
 
+// Evaluate runs an already-parsed expression against bindings, returning the
+// normative outcome. Exported so a pre-parsed AST can be evaluated in a tight
+// loop (the §C.3 ns/op benchmark harness isolates evaluation from parse cost);
+// mirrors the TypeScript reference's exported `evaluate`.
+func Evaluate(e *Expr, b Bindings, scope Scope) Outcome { return evaluate(e, b, scope) }
+
 func evaluate(e *Expr, b Bindings, scope Scope) Outcome {
 	v, err := evalNode(e, b, scope)
 	if err != nil {

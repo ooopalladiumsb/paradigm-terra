@@ -973,34 +973,53 @@ The `Max_Expected_Dynamic_Gas` budget the agent escrows at `cal.validated`
 (§9.3) is computed identically; the validator pins it into the
 `escrow_ptra` field on `cal.validated` so the reducer never recomputes.
 
-#### C.3 Wall-clock benchmarks (DEFERRED to Conformance Freeze)
+#### C.3 Wall-clock benchmarks (BASELINE MEASURED 2026-06-02)
 
 The abstract unit weights above must be calibrated against measured CPU cost
-across the three reference languages before the spec leaves draft. The
-benchmark harness is not yet built; the rows below establish the *shape*
-Annex C will take at Conformance Freeze. Each cell pairs a median wall-clock
-time (ns/op) with the cost ratio relative to a single DSL binary op (the
-unit `1` peg).
+across the three reference languages before the spec leaves draft. A first
+single-machine baseline is now recorded; harnesses are `cal-gas/bench/gas-bench.mjs`
+(TS), `cal-gas-rs` bin `gas_bench` (Rust), `cal-gas-go` `cmd/gasbench` (Go); full
+conditions, methodology, and stability ranges are in
+`docs/notes/gate2-baseline-results.md`. Each cell pairs a median wall-clock time
+(ns/op) with the cost ratio relative to a single DSL binary op (the unit `1` peg).
+The harness isolates **evaluation** (AST parsed once, outside the timed loop) so
+fixed parse cost cannot swamp the marginal per-op cost; ≥2000 warmup, median of
+99×1000 batches, results consumed to defeat dead-code elimination. ns/op is
+machine-relative (Intel Celeron N4120, WSL2); the **ratio** is the portable signal.
 
 | Class | TS (ns / ratio) | Rust (ns / ratio) | Go (ns / ratio) |
 |---|---|---|---|
-| DSL binary op (peg) | TBD / 1.00 | TBD / 1.00 | TBD / 1.00 |
-| DSL `contains_key` | TBD | TBD | TBD |
-| DSL `size` | TBD | TBD | TBD |
-| DSL path segment | TBD | TBD | TBD |
-| DSL gate op | TBD | TBD | TBD |
-| MCP read (synthetic) | TBD | TBD | TBD |
-| MCP write (synthetic) | TBD | TBD | TBD |
-| Invariant base (eval + JCS bind) | TBD | TBD | TBD |
-| State-rent encode (1 KiB committed) | TBD | TBD | TBD |
+| DSL binary op (peg) | 389 / 1.00 | 253 / 1.00 | 201 / 1.00 |
+| DSL `contains_key` | 1843 / 4.74 | 2167 / 8.57 | 1624 / 8.10 |
+| DSL `size` | 1084 / 2.79 | 1537 / 6.08 | 3077 / 15.34 |
+| DSL path segment | 93 / 0.24 | 13 / 0.05 | 92 / 0.46 |
+| DSL gate op | 1899 / 4.89 | 1031 / 4.08 | 1321 / 6.59 |
+| MCP read (synthetic) | 406 / 1.04 | 99 / 0.39 | 392 / 1.96 |
+| MCP write (synthetic) | 312 / 0.80 | 81 / 0.32 | 412 / 2.06 |
+| Invariant base (eval + JCS bind) | 529 / 1.36 | 290 / 1.15 | 984 / 4.91 |
+| State-rent encode (per byte, 1 KiB) | 252 / 0.65 | 152 / 0.60 | 102 / 0.51 |
 
 **Acceptance gate at Conformance Freeze.** Each language column's ratio MUST
 fall inside `[0.5 × unit, 2.0 × unit]` of the abstract weight; any ratio
 outside that band requires a Tier 2 amendment to either the unit weight or
-the implementation. The harness will exercise the operation class in
-isolation (no IO, no canonicalization cost folded in) and report the median
-over ≥1k iterations after a warmup of ≥100; the protocol matches the
-diff-fuzzer harness convention (one case per line, hex of canonical-JSON).
+the implementation. The harness exercises the operation class in isolation (no
+IO, no canonicalization cost folded in) and reports the median over ≥1k
+iterations after a warmup of ≥100.
+
+**Baseline result (advisory — see §C.4).** One class is out of band in *all
+three* runtimes: **DSL path segment** (0.05–0.46× across TS/Rust/Go vs weight 2)
+— a path-segment marginal costs a fraction of a binary op in every tree-walker,
+so weight 2 over-prices it on a pure-CPU basis. This is the one systematic
+Tier-2-amendment candidate. The remaining single-runtime misses are explained,
+not defects: `size` is `O(n)` and was measured at n=3 (in band only where the
+per-runtime peg is cheapest — Go); `contains_key` / `invariant base` straddle a
+band edge because the ratio's denominator (the binary-op peg) differs per
+runtime. `gate op` and `state-rent/byte` are in band in all three. The MCP rows
+are **synthetic**: the validator's MCP cost is verb classification only (the real
+call cost is off-chain), so their CPU ratio is not a meaningful calibration of the
+50/200 economic weights. **No unit weight is changed by this baseline** — per §C.4
+the counts are consensus-locked anti-grief weights, not CPU predictors; whether to
+lower `path_segment` is a deferred Tier-2 decision, not a freeze blocker.
 
 #### C.4 Parity discipline
 
