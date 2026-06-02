@@ -83,10 +83,11 @@ node orchestrator/scripts/assemble-proof.mjs --owner-capture <capture.json>  # �
 ## Verify (falsifiable, not narrated)
 
 ```
-node orchestrator/scripts/verify-proof.mjs            # → re-derives proof-package-1.json
+node orchestrator/scripts/verify-proof.mjs                       # TS node
+CGO_ENABLED=0 go run ./cmd/verifyproof   # (from orchestrator-go/)  Go node — cross-language proof
 ```
 
-Re-derives the package from its OWN contents through the live code: recomputes `cal_hash`, re-runs
+Both re-derive the package from its OWN contents through the live code: recompute `cal_hash`, re-run
 `verifyIngress()` over the stored real signatures (the `owner_sig` is checked against THIS CAL's
 canonical bytes — a pass proves the wallet signed exactly this CAL), runs a **negative control**
 (one tampered signature byte → `ownerSigPresent: false`, so the test has teeth), and re-folds the
@@ -98,8 +99,11 @@ not a transcribed log.
 the validator is trace-only per §4.1 (MCP execution is non-deterministic, out of consensus scope).
 So the package proves *authorization + finalization given a well-formed success trace*, not that the
 MCP side-effect physically executed. The on-chain publication leg (`sendTransaction` / `tx_hash`) is
-`null` by design — out of PFC-1 scope (§8.3). The live run is the TS node; the pure state machine
-(`validate`/`reduce`) is parity-green across TS/Rust/Go and `verifyIngress` is also ported to Go.
+`null` by design — out of PFC-1 scope (§8.3). The full ingress→finalized run is now proven through
+**two** independent runtimes — the TS node and the Go node (`orchestrator-go/cmd/verifyproof`), which
+reproduces the identical `cal_hash`, state roots, and event-log Merkle root from the real signatures.
+The Rust node stays deferred-by-constraint (no Ed25519 without a build script); its pure
+`validate`/`reduce` are parity-green on the booleans.
 
 Destination for the frozen artifact: `docs/proofs/` (and, when an external audit track exists,
 mirrored into `/compliance/` or `/audit/`).
