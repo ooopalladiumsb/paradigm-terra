@@ -80,5 +80,26 @@ node orchestrator/scripts/assemble-proof.mjs --owner-capture <capture.json>  # �
    the CAL's canonical bytes (re-check step 2). On `FINALIZED`, `proof-package-1.json` is the gate
    artifact.
 
+## Verify (falsifiable, not narrated)
+
+```
+node orchestrator/scripts/verify-proof.mjs            # → re-derives proof-package-1.json
+```
+
+Re-derives the package from its OWN contents through the live code: recomputes `cal_hash`, re-runs
+`verifyIngress()` over the stored real signatures (the `owner_sig` is checked against THIS CAL's
+canonical bytes — a pass proves the wallet signed exactly this CAL), runs a **negative control**
+(one tampered signature byte → `ownerSigPresent: false`, so the test has teeth), and re-folds the
+live node (`validate → reduce`) to confirm `FINALIZED` with the stored event sequence, state roots,
+and event-log Merkle root. Exit 0 iff every check passes — the gate artifact is a reproducible run,
+not a transcribed log.
+
+**Scope boundary (honest).** The trace step results (`ok: true`, effects) are the agent's *claim* —
+the validator is trace-only per §4.1 (MCP execution is non-deterministic, out of consensus scope).
+So the package proves *authorization + finalization given a well-formed success trace*, not that the
+MCP side-effect physically executed. The on-chain publication leg (`sendTransaction` / `tx_hash`) is
+`null` by design — out of PFC-1 scope (§8.3). The live run is the TS node; the pure state machine
+(`validate`/`reduce`) is parity-green across TS/Rust/Go and `verifyIngress` is also ported to Go.
+
 Destination for the frozen artifact: `docs/proofs/` (and, when an external audit track exists,
 mirrored into `/compliance/` or `/audit/`).

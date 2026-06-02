@@ -59,7 +59,8 @@ ratio. Classifications that straddle a band edge are noted:
    than a binary comparison in every runtime. *This is the one systematic finding.*
    Resolution is a deferred Tier-2 decision: either lower the weight toward ~0.5–1,
    or (preferred for consensus stability) leave the count and rely on its advisory
-   status per §C.4. **No change made.**
+   status per §C.4. **No change made** — parked as `PATH_SEGMENT_WEIGHT_REVIEW`
+   (`tier2-path-segment-weight-review.md`), decided at quiet-period close.
 
 2. **`size` is data-dependent (`O(n)`), measured at n=3.** The static weight 20
    anticipates larger collections; with n=3 the eval is cheap (TS 2.8×, Rust 6.1×),

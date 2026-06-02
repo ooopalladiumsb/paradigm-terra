@@ -1019,7 +1019,8 @@ are **synthetic**: the validator's MCP cost is verb classification only (the rea
 call cost is off-chain), so their CPU ratio is not a meaningful calibration of the
 50/200 economic weights. **No unit weight is changed by this baseline** — per §C.4
 the counts are consensus-locked anti-grief weights, not CPU predictors; whether to
-lower `path_segment` is a deferred Tier-2 decision, not a freeze blocker.
+lower `path_segment` is a deferred Tier-2 decision, not a freeze blocker (parked as
+`PATH_SEGMENT_WEIGHT_REVIEW`, `docs/notes/tier2-path-segment-weight-review.md`).
 
 #### C.4 Parity discipline
 
