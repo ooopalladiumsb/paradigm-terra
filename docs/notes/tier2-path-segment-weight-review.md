@@ -1,8 +1,9 @@
 # Tier-2 review proposal — PATH_SEGMENT_WEIGHT_REVIEW
 
-**Status:** OPEN — parked for the PFC-1 quiet period. No change made; this is a proposal, not an
-amendment. Decision deferred to quiet-period close (see PFC-1 gate #5). If no contradicting data
-appears in 30 days, decide then.
+**Status:** CLOSED → **Option 1 (no change)**, decided 2026-06-03 on empirical grounds (OVT-3 / H3.4
+griefing analysis — see "Empirical verdict" below). No change made; `path_segment` stays at weight 2
+as an advisory/semantic weight. Originally parked for the PFC-1 quiet period; the decision criteria
+are now satisfied by adversarial-CAL data rather than elapsed time.
 
 **Origin:** Gate #2 ns/op baseline, 2026-06-02 (`gate2-baseline-results.md`, Annex C.3, commit
 `a86857e`). The MEASURE-not-optimize discipline forbade changing anything at measurement time; this
@@ -49,6 +50,26 @@ vector. That cost is real; the benefit (CPU realism of an advisory column) is no
 - Is there a pending Annex C.1 amendment already touching DSL weights for another reason? → fold the
   re-balance in then (Option 2), never as a standalone churn.
 - Default if neither: **Option 1, no change** — advisory mismatch is acceptable under §C.4.
+
+## Empirical verdict — OVT-3 / H3.4 griefing analysis (2026-06-03)
+
+`scripts/repro.sh ovt3-griefing` ran the deferred "concrete griefing analysis" the criteria asked
+for. Finding: **deep-path expressions ARE bounded as an abuse vector — but by the structural
+`MAX_PATH_SEGMENTS = 6` parse limit, not by the per-segment gas weight 2.** A maximal legal path (6
+segments) costs only **13** of the 1000-unit `MAX_EXPRESSION_COST` budget; an over-deep path is
+rejected at parse (`PATH_TOO_DEEP`) before it ever evaluates or is priced. So weight 2 is *not* the
+load-bearing anti-grief defense against path-depth abuse — the segment-COUNT cap is. (The cost weight
+still legitimately contributes to `MAX_EXPRESSION_COST` and to `OUT_OF_GAS` on *executed* CALs, but
+those paths are independently escrow-bounded.)
+
+This resolves the first decision criterion: the answer to "is weight 2 *actively defending* a
+griefing vector?" is **no — the structural limit is**. There is also no pending Annex C.1 amendment to
+fold a re-balance into. Therefore **Option 1 (no change) is confirmed**, now on empirical grounds
+rather than as a default: keep `path_segment = 2` as an advisory/semantic weight under §C.4, and
+annotate Annex C.3 that the real path-depth abuse bound is the structural `MAX_PATH_SEGMENTS` limit.
+Lowering the weight (Option 2) would buy an advisory-column cosmetic at the cost of a consensus-locked
+count change + full gas-vector regeneration + a diff-fuzzer re-run — not justified. **Status: CLOSED →
+Option 1.**
 
 ## Related
 

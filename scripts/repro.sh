@@ -12,6 +12,7 @@
 #   scripts/repro.sh ovt2             # OVT-2 — node as a process: crash → replay → same STATE_ROOT
 #   scripts/repro.sh ovt-sg           # OVT-SG — state-growth / recovery-cost curve (slow: ~9 min)
 #   scripts/repro.sh ovt3-soak        # OVT-3 — continuous TS==Go parity over a long multi-agent stream
+#   scripts/repro.sh ovt3-griefing    # OVT-3 — griefing/economic-bound: every attack class is bounded
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -72,6 +73,11 @@ ovt3_soak() {
   (cd orchestrator-go && go run ./cmd/soak)
 }
 
+# OVT-3 (H3.4): flood every malformed/expensive CAL class through the node and prove the
+# economics (escrow/spam-fee) + DSL structural limits bound each one. Also emits the
+# empirical datum for PATH_SEGMENT_WEIGHT_REVIEW.
+ovt3_griefing() { echo "→ OVT-3: griefing / economic-bound validation"; (cd orchestrator && "$NODE" --import tsx scripts/ovt3-griefing.mjs); }
+
 case "${1:-help}" in
   verify-proof-ts) verify_proof_ts ;;
   verify-proof-go) verify_proof_go ;;
@@ -86,6 +92,7 @@ case "${1:-help}" in
   ovt2)            ovt2 ;;
   ovt-sg)          ovt_sg ;;
   ovt3-soak)       ovt3_soak ;;
+  ovt3-griefing)   ovt3_griefing ;;
   freeze-check)    freeze_check ;;
   help|*)          grep -E '^#   scripts/repro.sh ' "$0" | sed 's/^#   /  /' ;;
 esac

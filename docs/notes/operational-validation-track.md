@@ -123,6 +123,28 @@ on-chain leg; the durability + determinism core is proven.
 H3.4 also feeds `PATH_SEGMENT_WEIGHT_REVIEW`: it yields the empirical griefing data that decides
 whether weight 2 is a needed anti-grief bound or an over-weight.
 
+**Status (2026-06-03): H3.4 PASS (economics + structural limits bound every attack class).**
+`scripts/repro.sh ovt3-griefing` (`orchestrator/scripts/ovt3-griefing.mjs`). Floods each malformed /
+expensive CAL class through the frozen validator + reducer (sig verdicts are inputs — the crypto is
+Gate #1's; this tests the *charging*) and classifies how each is contained:
+- **Charged classes** — `CAPABILITY_DENIED` / `PRECOND_FALSE` (spam-fee §9.4), `FINALIZED` /
+  `OUT_OF_GAS` (fee + gas capped at escrow §9.3): the attacker *pays*. Headline: a sustained
+  charged-failure flood drains a 350,000-nano attacker `250k → 150k → 50k → 0` and then charges
+  `min(fee, balance) = 0` — **total griefing damage ≤ initial balance, conservation exact** (every
+  debited unit lands in the treasury). An attacker with balance B funds at most ⌊B/fee⌋ charged
+  failures, then is bankrupt.
+- **Free classes** — `UNKNOWN_ACTION` / `NONCE_MISMATCH` / `INSUFFICIENT_ESCROW` (O(1) gates,
+  pre-evaluation) and `PRECOND_ERROR` (a path/cost/depth bomb): charge 0, but bounded **structurally,
+  not economically**. The DSL parser hard-caps per-CAL work *before* anything runs — `MAX_NODES=100`,
+  `MAX_DEPTH=10`, `MAX_PATH_SEGMENTS=6`, `MAX_EXPRESSION_COST=1000`; the harness confirms an 8-segment
+  path, a 120-node AND, and depth-14 nesting are all rejected at parse. So a zero-cost failure flood
+  imposes only bounded per-CAL work (the floor defense), exactly where economics can't bite.
+
+No unbounded griefing vector found (criterion 7 holds). **The honest result:** economics bound the
+value-extracting / escrow-requiring / state-growing attacks; the *floor* against zero-cost failure
+spam is the structural per-CAL work cap, not the fee. This also answers
+`PATH_SEGMENT_WEIGHT_REVIEW` — see that note's recorded verdict.
+
 **Status (2026-06-03): H3.2 / H3.3 PASS (continuous TS↔Go parity).** `scripts/repro.sh ovt3-soak`.
 The golden vectors prove TS == Go *point-wise* on a handful of curated programs (a Freeze-Surface
 axiom); this falsifies the *different* claim that the two runtimes could agree point-wise yet **drift**
