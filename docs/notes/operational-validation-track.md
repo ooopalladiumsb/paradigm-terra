@@ -233,6 +233,12 @@ procedural safeguard, but freeze promotion is gated by the OVT Definition of Don
 time alone. The freeze stops being "N days elapsed while nobody watched" and becomes "N units of real
 operational observation with zero new contradictions."
 
+**Promotion decision (2026-06-03):** acted on — see [`pfc1-status-review.md`](./pfc1-status-review.md).
+PFC-1 is declared a **Consensus Freeze Candidate**: Freeze Surface Risk retired (DoD #1/#2/#4/#7),
+H3.1-live / H3.5-live / OVT-SG checkpointing moved to the Production Readiness Track, and final
+`Candidate → Consensus Freeze` promotion gated on the one remaining offline falsification surface (the
+`canonical_to_inner` codec design) + reproducibility hardening.
+
 ## Explicitly out of OVT scope (anti-backlog clause)
 
 These belong to **Production Readiness** (the phase *after* OVT), never to OVT itself:
