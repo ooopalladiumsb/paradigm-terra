@@ -123,6 +123,24 @@ on-chain leg; the durability + determinism core is proven.
 H3.4 also feeds `PATH_SEGMENT_WEIGHT_REVIEW`: it yields the empirical griefing data that decides
 whether weight 2 is a needed anti-grief bound or an over-weight.
 
+**Status (2026-06-03): H3.2 / H3.3 PASS (continuous TS↔Go parity).** `scripts/repro.sh ovt3-soak`.
+The golden vectors prove TS == Go *point-wise* on a handful of curated programs (a Freeze-Surface
+axiom); this falsifies the *different* claim that the two runtimes could agree point-wise yet **drift**
+under a long, continuous, multi-agent load. `orchestrator/scripts/ovt3-soak-stream.ts` generates a
+soak stream with the OVT agent (real signed CALs + the OVT-1-proven trace shape — many agents, one
+finalizing CAL per agent per tick), folds it through the TS reference node, self-checks (`verifyReplay`),
+then pins the stream + the TS-produced roots; `orchestrator-go/cmd/soak` re-folds the **identical**
+stream through the Go node. Recorded run (default 150 ticks × 8 agents = **1,200 FINALIZED**
+submissions, **7,349 events**): the Go node reproduced **every** per-tick STATE_ROOT, every per-tick
+CE §6.3 global Merkle root, the final STATE_ROOT, the event count, **and** a SHA-256 over the whole
+canonical event log — **0 divergences**. (Roots themselves vary per generation — each agent gets a
+fresh keypair — so what is *recorded* is the falsifiable property "0 divergences," not a fixed hash;
+`SOAK_TICKS` / `SOAK_AGENTS` scale the load to an hours-grade run.) Honest scope: this proves H3.3 in
+full and the **determinism core** of H3.2 (no drift under sustained operation); the truly *live*
+on-chain stream (submissions arriving over the network for hours) rides on H3.1's network leg, still
+open. An incidental OVT-SG echo: per-event STATE_ROOT cost grows with state size (≈ agent count),
+re-confirming the heavy re-hash constant from the OVT-SG checkpointing finding (below).
+
 ---
 
 ## OVT-SG — State Growth Validation (gap #8; cross-cutting OVT-2 / OVT-3)
@@ -174,8 +192,10 @@ OVT is **not** done when all tasks are finished. It is done when **all of these 
 1. ✅ a real executor generates the trace (not asserted) — *OVT-1*
 2. ✅ `crash → replay → identical STATE_ROOT`, repeatably — *OVT-2*
 3. ⬜ ≥1 testnet Proof Package (#2), `tx_hash ≠ null` — *OVT-3* (needs network)
-4. ⬜ TS and Go pass a long soak with **zero** divergence — *OVT-3*
-5. ⬜ an external observer reproduces results independently — *OVT-3*
+4. ✅ TS and Go pass a long soak with **zero** divergence — *OVT-3* (H3.2/H3.3: 1,200 finalized
+   submissions / 7,349 events over a continuous multi-agent stream, root-for-root + event-log SHA-256
+   identical, 0 divergences; the *live/on-chain* stream rides on H3.1, still open)
+5. ⬜ an external observer reproduces results independently — *OVT-3* (needs network)
 6. 🟡 state-growth curves keep replay/recovery practical at scale — *OVT-SG*: growth is linear, but
    meeting "practical at scale" requires **state checkpointing** (cold re-fold is ~2 h for 1M CALs)
 7. ✅ (so far) **no Freeze Surface defect found during OVT**

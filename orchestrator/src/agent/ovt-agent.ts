@@ -102,14 +102,14 @@ export class OvtAgent {
     await this.executor.close();
   }
 
-  private buildCal(nonce: bigint) {
+  private buildCal(nonce: bigint, expirationTick: bigint = 100n) {
     const id = this.agentId();
     return {
       cal_version: "0.1.0",
       action: "wallet.send_ton",
       agent_id: id,
       nonce,
-      expiration_tick: 100n,
+      expiration_tick: expirationTick,
       preconditions: { op: "gte", lhs: { var: `state.ptra.balances.${id}` }, rhs: { const: 1n } },
       invariants: [],
       steps: [{ verb: "wallet.send_ton", params: {}, post_conditions: [] }],
@@ -187,8 +187,8 @@ export class OvtAgent {
   /** Mint a submission WITHOUT the MCP round-trip, using the OVT-1-proven trace shape directly.
    * For throughput in OVT-SG state-growth measurement (the executor trace-generation path is
    * validated separately in OVT-1; SG measures the node, not the executor). */
-  async mintSubmissionFast(nonce: bigint, tick: bigint): Promise<{ cal: Json; trace: Json }> {
-    const cal = this.buildCal(nonce);
+  async mintSubmissionFast(nonce: bigint, tick: bigint, expirationTick?: bigint): Promise<{ cal: Json; trace: Json }> {
+    const cal = this.buildCal(nonce, expirationTick);
     const calJson = (await this.sign(cal)) as unknown as Json;
     const reg = { operator_pubkey: this.operatorPubkeyHex(), owner_pubkey: this.owner.ownerPubkeyHex() };
     const verdict = verifyIngress(calJson, reg);

@@ -11,6 +11,7 @@
 #   scripts/repro.sh ovt1             # OVT-1 — MCP executor (H1.1-H1.3) + autonomous agent loop (H1.4)
 #   scripts/repro.sh ovt2             # OVT-2 — node as a process: crash → replay → same STATE_ROOT
 #   scripts/repro.sh ovt-sg           # OVT-SG — state-growth / recovery-cost curve (slow: ~9 min)
+#   scripts/repro.sh ovt3-soak        # OVT-3 — continuous TS==Go parity over a long multi-agent stream
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -61,6 +62,16 @@ ovt2() { echo "→ OVT-2: persistent node — crash → replay → same STATE_RO
 
 ovt_sg() { echo "→ OVT-SG: state-growth / recovery-cost curve (slow: ~9 min)"; (cd orchestrator && "$NODE" --import tsx scripts/ovt-sg-growth.mjs); }
 
+# OVT-3 (H3.2/H3.3): generate a long multi-agent stream through the TS node, then re-fold
+# the identical stream through the Go node — must reproduce every root + the event-log
+# SHA-256 with 0 divergences. SOAK_TICKS / SOAK_AGENTS tune the load (defaults 120 × 40).
+ovt3_soak() {
+  echo "→ OVT-3: continuous parity soak — TS reference stream"
+  (cd orchestrator && "$NODE" --import tsx scripts/ovt3-soak-stream.ts)
+  echo "→ OVT-3: re-fold the identical stream through the Go node (0 divergences required)"
+  (cd orchestrator-go && go run ./cmd/soak)
+}
+
 case "${1:-help}" in
   verify-proof-ts) verify_proof_ts ;;
   verify-proof-go) verify_proof_go ;;
@@ -74,6 +85,7 @@ case "${1:-help}" in
   ovt1)            ovt1 ;;
   ovt2)            ovt2 ;;
   ovt-sg)          ovt_sg ;;
+  ovt3-soak)       ovt3_soak ;;
   freeze-check)    freeze_check ;;
   help|*)          grep -E '^#   scripts/repro.sh ' "$0" | sed 's/^#   /  /' ;;
 esac
