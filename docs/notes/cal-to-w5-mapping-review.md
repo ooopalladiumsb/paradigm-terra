@@ -167,7 +167,24 @@ that needs an explicit ruling before code:
 My read: publication-layer (the §7 rule is sufficient and does not touch frozen code). If accepted,
 Annex F can be written + implemented (OutList arm) offline; full validation remains on-chain (H3.1).
 
-## 10. Related
+## 10. Implementation status (2026-06-03)
+
+Architect ruling received: the tick↔wall-clock mapping is accepted as a **publication-layer
+constraint** (`TON-valid ⊆ CAL-valid` — publication may shorten, never extend authorization), Freeze
+Candidate intact. Annex F OutList arm implemented + tested offline:
+- `orchestrator/src/w5/canonical-to-inner.ts` — `canonicalToInner(cal) → InnerRequest` (IR form, per
+  §3.1: typed OutList of `action_send_msg`, **not** serialized BoC — `ir_to_boc` is the network leg).
+  Verb-class dispatch; only `wallet.send_ton` has a v0.1.0 body encoder; exact-value send mode (no
+  carry bits); config/unknown verbs rejected; read/`cancel` are no-ops; ≤255-action guard.
+- `orchestrator/test/w5-codec.test.ts` — 10/10 invariant tests: faithful value+dest, no fan-out, no
+  authorization widening, explicit rejection of unknown/config/unimplemented/malformed verbs,
+  read/cancel no-ops. Typecheck clean; full orchestrator suite 25/25.
+
+DRAFT-tier (publication layer, §8.3 out-of-scope of the freeze). Rust/Go parity ports + golden
+vectors come if/when Annex F is promoted past DRAFT — gated on the on-chain leg (H3.1) that validates
+the deferred `ir_to_boc` serialization.
+
+## 11. Related
 - `ton-connect-ingress-design.md` §6.1 (the sketch this resolves), §6/§8 (W5/V5 refs).
 - `cal-validator-design.md` §10 (authorization isomorphism — extended here to the action layer).
 - `pfc1-status-review.md` (the promotion decision this feeds).

@@ -118,11 +118,13 @@ offline," but "Candidate now → resolve the last offline falsification surface 
 
 ### Promotion criteria (`Candidate → Consensus Freeze`)
 
-1. `canonical_to_inner` design decision resolved (OutList vs ActionList) and written as a normative
-   draft, with the CAL↔W5 mapping reviewed for any model gap. (If a gap is found → freeze re-opens.)
-2. A `canonical_to_inner` reference implementation passing its offline invariant tests.
-3. Reproducibility hardening landed (§5, step 3) so the §2 evidence is independently reproducible.
-4. No Freeze Surface defect surfaced by 1–3.
+1. ✅ `canonical_to_inner` design decision resolved and reviewed for model gaps —
+   `cal-to-w5-mapping-review.md` (OutList-vs-ActionList was a false dichotomy → verb-class dispatch;
+   one model finding, tick↔wall-clock, ruled a publication-layer constraint, freeze intact).
+2. ✅ `canonical_to_inner` reference implementation (OutList arm) passing offline invariant tests —
+   `orchestrator/src/w5/canonical-to-inner.ts` + `test/w5-codec.test.ts` (10/10; suite 25/25).
+3. ⬜ Reproducibility hardening landed (§5, step 3) so the §2 evidence is independently reproducible.
+4. ✅ (so far) No Freeze Surface defect surfaced by 1–2 (the one finding was publication-layer).
 
 H3.1-live (testnet `tx_hash`) and H3.5-live remain Production-Readiness gates *after* promotion; a
 failure there would still re-open the freeze (criterion 7 is permanent), but it does not block the
