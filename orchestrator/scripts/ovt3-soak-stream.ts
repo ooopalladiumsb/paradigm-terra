@@ -43,12 +43,19 @@ const AGENTS = Number(process.env["SOAK_AGENTS"] ?? 8);
 // finalizing load); the OVT agent defaults to 100, so for long soaks we lift it.
 const EXPIRATION = BigInt(TICKS + 10);
 
+// Reproducibility mode (H3.5): with OVT_SEED set, every key is derived deterministically from the
+// seed, so an external observer reproduces the SAME roots; without it, keys are fresh (the run still
+// proves the property — 0 divergences — but its roots vary per run). See reproducibility-guide.md.
+const SEED_HEX = process.env["OVT_SEED"] ?? process.env["SOAK_SEED"];
+const master = SEED_HEX ? crypto.createHash("sha256").update(SEED_HEX).digest() : null;
+const subSeed = (tag: string): Buffer => crypto.createHash("sha256").update(master!).update(tag).digest();
+
 // Distinct agents: each gets its own operator keypair (OvtAgent) + owner signer
-// (LocalTestOwnerSigner generates its own ed25519 key) + a distinct workchain-0 agent id.
+// (LocalTestOwnerSigner) + a distinct workchain-0 agent id. Seeded deterministically when OVT_SEED set.
 const agents = Array.from({ length: AGENTS }, (_, i) => {
   const id = "0:" + i.toString(16).padStart(64, "0");
-  const owner = new LocalTestOwnerSigner();
-  const agent = new OvtAgent(owner, { serverCmd: process.execPath, serverArgs: [], agentId: id }); // no MCP connect — fast mint
+  const owner = new LocalTestOwnerSigner(master ? { seed: subSeed(`owner:${i}`) } : undefined);
+  const agent = new OvtAgent(owner, { serverCmd: process.execPath, serverArgs: [], agentId: id, ...(master ? { seed: subSeed(`op:${i}`) } : {}) }); // no MCP connect — fast mint
   return { id, owner, agent };
 });
 
@@ -78,7 +85,7 @@ for (let t = 0; t < TICKS; t++) {
   ticks.push({ tick: BigInt(t), submissions });
 }
 
-console.log(`OVT-3 soak: generating ${TICKS} ticks × ${AGENTS} agents = ${TICKS * AGENTS} submissions …`);
+console.log(`OVT-3 soak: generating ${TICKS} ticks × ${AGENTS} agents = ${TICKS * AGENTS} submissions (keys: ${master ? `seeded[OVT_SEED] — reproducible roots` : "random — property only"}) …`);
 const t0 = process.hrtime.bigint();
 const transcript = run({ genesisState, ticks });
 const runMs = Number(process.hrtime.bigint() - t0) / 1e6;

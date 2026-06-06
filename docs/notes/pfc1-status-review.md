@@ -123,8 +123,10 @@ offline," but "Candidate now → resolve the last offline falsification surface 
    one model finding, tick↔wall-clock, ruled a publication-layer constraint, freeze intact).
 2. ✅ `canonical_to_inner` reference implementation (OutList arm) passing offline invariant tests —
    `orchestrator/src/w5/canonical-to-inner.ts` + `test/w5-codec.test.ts` (10/10; suite 25/25).
-3. ⬜ Reproducibility hardening landed (§5, step 3) so the §2 evidence is independently reproducible.
-4. ✅ (so far) No Freeze Surface defect surfaced by 1–2 (the one finding was publication-layer).
+3. ✅ Reproducibility hardening landed — `reproducibility-guide.md` + `scripts/setup.sh` (clean-room
+   bootstrap in dep order) + `OVT_SEED` deterministic-seed mode + the deterministic-root vs
+   property-target split documented (and pinned PP#1 roots to diff against).
+4. ✅ (so far) No Freeze Surface defect surfaced by 1–3 (the one finding was publication-layer).
 
 H3.1-live (testnet `tx_hash`) and H3.5-live remain Production-Readiness gates *after* promotion; a
 failure there would still re-open the freeze (criterion 7 is permanent), but it does not block the
@@ -135,16 +137,20 @@ Candidate→Freeze step given the offline ceiling in §3.1.
 ## 5. Forward plan
 
 ```
-1. (done — this document)  Status review + Consensus Freeze Candidate decision
-2. (offline, highest ROI)  canonical_to_inner codec: resolve OutList/ActionList, write the normative
-                           draft (the model-mismatch probe), implement + offline invariant tests
-3. (offline, cheap)        reproducibility hardening: pin toolchain (Node/Go/tsx) versions, clean-room
-                           guide, deterministic-seed mode for the generative OVT scripts, document the
-                           deterministic-root vs property-target split (§2 caveat) — strengthens H3.5
-4. → PROMOTION DECISION    Candidate → Consensus Freeze, on the criteria above
+1. ✅ (this document)      Status review + Consensus Freeze Candidate decision
+2. ✅ (offline)            canonical_to_inner codec — model review (false dichotomy → verb-class
+                           dispatch) + OutList-arm reference impl + 10 offline invariants
+3. ✅ (offline)            reproducibility hardening — reproducibility-guide.md, scripts/setup.sh,
+                           OVT_SEED deterministic-seed mode, deterministic-root vs property split
+4. → PROMOTION DECISION    Candidate → Consensus Freeze — ALL offline criteria (#1–#4) now ✅; this
+                           step is the architect's call to make (the offline ceiling §3.1 is reached)
 5. (deferred → Prod-Ready) OVT-SG checkpointing (when the long-running daemon is built)
 6. (network, when avail.)  PP#2 live leg (H3.1) + external-observer live reproduction (H3.5)
 ```
+
+**All offline promotion criteria (#1–#4) are satisfied.** Nothing offline remains that can move the
+freeze decision; the next action is the architect's `Candidate → Consensus Freeze` ruling, after
+which all residual risk is network-side (H3.1/H3.5-live).
 
 ## 6. Related
 

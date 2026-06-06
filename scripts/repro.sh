@@ -13,6 +13,7 @@
 #   scripts/repro.sh ovt-sg           # OVT-SG — state-growth / recovery-cost curve (slow: ~9 min)
 #   scripts/repro.sh ovt3-soak        # OVT-3 — continuous TS==Go parity over a long multi-agent stream
 #   scripts/repro.sh ovt3-griefing    # OVT-3 — griefing/economic-bound: every attack class is bounded
+#   scripts/repro.sh setup            # clean-room bootstrap: install + build TS packages in dep order
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -79,6 +80,7 @@ ovt3_soak() {
 ovt3_griefing() { echo "→ OVT-3: griefing / economic-bound validation"; (cd orchestrator && "$NODE" --import tsx scripts/ovt3-griefing.mjs); }
 
 case "${1:-help}" in
+  setup)           bash "$ROOT/scripts/setup.sh" ;;
   verify-proof-ts) verify_proof_ts ;;
   verify-proof-go) verify_proof_go ;;
   verify-proof)    verify_proof ;;

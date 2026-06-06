@@ -22,6 +22,18 @@ const rawPub = (pk: crypto.KeyObject): string => {
   return d.subarray(d.length - 32).toString("hex");
 };
 
+/**
+ * Deterministic Ed25519 keypair from a 32-byte seed (PKCS8-wrap the raw seed). For
+ * reproducibility-mode runs (OVT_SEED) so an external observer reproduces the same roots; with no
+ * seed the agent / owner use fresh random keys — byte-identical to the prior default behavior.
+ */
+const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+export function ed25519FromSeed(seed: Buffer): crypto.KeyPairKeyObjectResult {
+  if (seed.length !== 32) throw new Error(`ed25519 seed must be 32 bytes, got ${seed.length}`);
+  const privateKey = crypto.createPrivateKey({ key: Buffer.concat([ED25519_PKCS8_PREFIX, seed]), format: "der", type: "pkcs8" });
+  return { privateKey, publicKey: crypto.createPublicKey(privateKey) };
+}
+
 export interface OwnerEnvelope {
   readonly signature: string;
   readonly domain: string;
@@ -38,10 +50,11 @@ export interface OwnerSigner {
 }
 
 export class LocalTestOwnerSigner implements OwnerSigner {
-  private kp = crypto.generateKeyPairSync("ed25519");
+  private kp: crypto.KeyPairKeyObjectResult;
   private addressHashHex: string;
   private domain: string;
-  constructor(opts?: { domain?: string; addressHashHex?: string }) {
+  constructor(opts?: { domain?: string; addressHashHex?: string; seed?: Buffer }) {
+    this.kp = opts?.seed ? ed25519FromSeed(opts.seed) : crypto.generateKeyPairSync("ed25519");
     this.domain = opts?.domain ?? "ovt.local";
     this.addressHashHex = opts?.addressHashHex ?? "aa".repeat(32);
   }
@@ -81,12 +94,14 @@ export interface AgentOutcome {
 }
 
 export class OvtAgent {
-  private opKp = crypto.generateKeyPairSync("ed25519");
+  private opKp: crypto.KeyPairKeyObjectResult;
   private executor = new McpExecutor();
   constructor(
     private owner: OwnerSigner,
-    private opts: { serverCmd: string; serverArgs: string[]; agentId?: string },
-  ) {}
+    private opts: { serverCmd: string; serverArgs: string[]; agentId?: string; seed?: Buffer },
+  ) {
+    this.opKp = opts.seed ? ed25519FromSeed(opts.seed) : crypto.generateKeyPairSync("ed25519");
+  }
 
   operatorPubkeyHex(): string {
     return "0x" + rawPub(this.opKp.publicKey);
