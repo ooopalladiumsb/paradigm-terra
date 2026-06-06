@@ -1,0 +1,27 @@
+{
+  "phase": "PP#2-B.0 (identity — no on-chain write)",
+  "network": "ton-testnet",
+  "wallet_version": "v5r1",
+  "workchain": 0,
+  "operator_pubkey_hex": "03eee2e623b7a9532c540b141accc12cffee6fea97be3fa29f5c54b197034fc8",
+  "wallet_id": {
+    "networkGlobalId": -3,
+    "context": {
+      "walletVersion": "v5r1",
+      "workchain": 0,
+      "subwalletNumber": 0
+    }
+  },
+  "address": {
+    "raw": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+    "testnet_bounceable": "kQDKLzsxK0SFTZ9ucs0MLjikhpe0RvIPzjCYdE_BanfbgC3S",
+    "testnet_nonbounceable_FUND_THIS": "0QDKLzsxK0SFTZ9ucs0MLjikhpe0RvIPzjCYdE_BanfbgHAX"
+  },
+  "toolchain": {
+    "@ton/ton": "16.3.0",
+    "@ton/core": "0.63.1"
+  },
+  "secret_location": ".secrets/operator-seed.hex (gitignored, 0600 — NOT in this artifact)",
+  "generated_at": "2026-06-06T21:06:57.741Z",
+  "note": "§10.2 operator_pubkey == deployed wallet public_key holds by construction. No transaction sent; this only derives the address. Next (after funding): deploy → read live seqno → build external (cal.nonce == seqno+1, tight valid_until) → sendBoc → tx_hash → effect check. Verdict rule: proof-package-2-spec.md §3.1."
+}
