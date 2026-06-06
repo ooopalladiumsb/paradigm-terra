@@ -1,9 +1,38 @@
 # Proof Package #2 — pre-registration (spec + success criteria, set BEFORE the run)
 
 **Date:** 2026-06-06 · Post-freeze (PFC-1 Consensus Freeze, tag `pfc1-consensus-freeze` @ `54e1864`).
-**Status:** requirements-level pre-registration. No testnet run yet; this fixes *what PP#2 must
-contain* and *what counts as success/failure* **in advance**, so the verdict can't be rationalized
-post-hoc. (Same discipline as the OVT hypotheses: a falsifiable claim stated before the experiment.)
+**Status:** requirements-level pre-registration. This fixes *what PP#2 must contain* and *what counts
+as success/failure* **in advance**, so the verdict can't be rationalized post-hoc. (Same discipline as
+the OVT hypotheses: a falsifiable claim stated before the experiment.)
+
+## 0. RESULT — PP#2 PASSED (verdict A.SUCCESS, 2026-06-06, ton-testnet)
+
+The full chain ran on real TON testnet and met **every pre-registered success criterion (§2)**:
+
+```
+CAL (wallet.send_ton, nonce 1) → canonical_to_inner → ir_to_boc → W5R1 external → sendBoc → tx → effect
+```
+- **`tx_hash`** = `8d4b96e6439f8719947a07030c8a21d15ed0442816e775730f522eb01e03eb84` (the external-driven
+  deploy+send tx; finalized, account now active).
+- **Effect fidelity (§2.2/§2.3):** the wallet emitted exactly the CAL's authorized action — one
+  internal message to `0:ca2f3b…7db80` (self) for `50000000` nano = faithful dest + value, no widening.
+- **`valid_until` (§2.4):** accepted inside a 120 s window → `TON-valid ⊆ CAL-valid` held.
+- **No Freeze Surface contradiction (§2.5):** reproduced reality with zero change to the frozen core.
+- **A.5 invariant confirmed live:** `cal.nonce(1) == wallet_seqno(0) + 1` (the deploy rode seqno 0).
+- **Encoding fidelity, verified offline + on-chain:** the recorded `external.boc` reconstructs
+  **byte-identically** to the broadcast external (hash `a8d5863a…`), and the inner round-trips (PP#2-A).
+
+A first-pass observer-script bug (it grabbed the follow-on *incoming* leg of the self-send, which has
+0 out-msgs, → a spurious `effect: null`) was caught by the §3.1 rule "**inspect before classifying**":
+direct chain inspection showed the real proof tx with the correct out-msg → it was a **B-class
+observer bug, not a C model gap**. The §3.1 discriminator worked exactly as designed (it prevented a
+false freeze re-open). Verdict recorded in `pp2/artifacts/pp2b/verdict.json`; full trail
+(`cal.json / inner.json / inner.boc / external.boc / sendboc-response.json / tx.json / verdict.json`)
+in `pp2/artifacts/pp2b/`. Re-derive read-only: `cd pp2 && node scripts/pp2b-verify.mjs`.
+
+**Consequence:** Integration Reality Risk for the `wallet.send_ton` path is now confirmed against the
+real network. The freeze stands (success = model confirmed, not reopened). Remaining: H3.5 live
+observer + production readiness; broader verbs (jetton/nft, ExtendedActions) when needed.
 
 ## Why pre-register
 

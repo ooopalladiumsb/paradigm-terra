@@ -34,11 +34,11 @@ its own freeze line (`pfc2-consensus-freeze`, …).
 ```
 PFC-1 Consensus Freeze         ✅  (2026-06-06, tag pfc1-consensus-freeze @ 54e1864)
 
-PP#2 — Testnet Validation      ⬜  ← NEXT major milestone (highest information value)
-  - ir_to_boc (BoC serialization of the Annex F InnerRequest)
-  - W5 external message (sendTransaction)
-  - Registry contract deployment
-  - tx_hash capture (the on-chain falsification)
+PP#2 — Testnet Validation      ✅  (2026-06-06, ton-testnet, verdict A.SUCCESS)
+  - ir_to_boc (Annex F InnerRequest)         ✅ PP#2-A round-trip
+  - W5 external message (WalletContractV5R1) ✅ PP#2-A.5 review + live build
+  - tx_hash + on-chain effect == CAL action  ✅ tx 8d4b96e6…, effect faithful (self, 50000000)
+  - (Registry contract deployment            ⬜ deferred — not needed for the send_ton proof)
 
 Live Observer (H3.5)           ⬜
   - independent reproduction of a running node's roots

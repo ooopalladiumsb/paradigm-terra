@@ -1,0 +1,18 @@
+{
+  "phase": "PP#2-B/C",
+  "network": "ton-testnet",
+  "address": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+  "tx_hash_hex": "8d4b96e6439f8719947a07030c8a21d15ed0442816e775730f522eb01e03eb84",
+  "expected_effect": {
+    "dest": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+    "value_nano": "50000000"
+  },
+  "on_chain_effect": {
+    "dest": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+    "value_nano": "50000000"
+  },
+  "dest_match": true,
+  "value_match": true,
+  "verdict": "A.SUCCESS",
+  "note": "tx_hash != null, finalized, on-chain effect == CAL action (faithful dest+value). TON-valid ⊆ CAL-valid held. No Freeze Surface contradiction."
+}

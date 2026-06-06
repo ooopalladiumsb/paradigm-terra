@@ -114,7 +114,7 @@ on-chain leg; the durability + determinism core is proven.
 
 | Sub-hypothesis | Falsified if… | Gap# |
 |---|---|---|
-| H3.1 **Proof Package #2** — on-chain testnet leg (`sendTransaction` via W5 + Annex F codec) | the finalized effect cannot be published; `tx_hash` stays null | 2 |
+| H3.1 **Proof Package #2** — on-chain testnet leg (`sendTransaction` via W5 + Annex F codec) | the finalized effect cannot be published; `tx_hash` stays null | 2 — **✅ PASS (2026-06-06):** ton-testnet `wallet.send_ton` published via W5R1 external, `tx_hash` `8d4b96e6…`, on-chain effect == CAL action (faithful dest+value). See `proof-package-2-spec.md §0`. |
 | H3.2 Soak: TS node == Go node over a **live stream** for hours | any divergence over continuous operation | 6 |
 | H3.3 Parity is *continuous*, not point-wise | roots match on golden vectors but drift under live load | 6 |
 | H3.4 Griefing: economics **bound** the attack as predicted | a flood of malformed/expensive CALs is not contained by gas/escrow/spam-fee | 5 |
