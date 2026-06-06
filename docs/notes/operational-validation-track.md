@@ -226,6 +226,13 @@ Criterion **7 is the most important.** If OVT *does* surface a Freeze-Surface de
 succeeded — and the Freeze must be revisited rather than promoted. This is exactly the observation
 the calendar quiet period was a hollow proxy for.
 
+**Freeze ruling (2026-06-06):** criterion **7 holds** and criteria 1, 2, 4 are ✅. Criteria **3 and 5
+were reclassified as post-freeze** (Integration Reality Risk — they need a live network and cannot
+falsify the consensus core offline) and **6 as Production Readiness** (OVT-SG checkpointing, an
+operational requirement, not a Freeze Surface defect). On that basis PFC-1 was promoted to **Consensus
+Freeze** — see `pfc1-status-review.md §0`. The criteria above remain the bar for the *live* OVT-3
+work; a defect found there still re-opens the freeze (criterion 7 is permanent).
+
 ## Relationship to Gate #5
 
 OVT **replaces the calendar-only freeze criterion.** A minimum 5-day cooling-off period remains as a

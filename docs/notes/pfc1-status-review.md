@@ -1,12 +1,38 @@
-# PFC-1 status review — Consensus Freeze Candidate decision
+# PFC-1 status review — Consensus Freeze ruling
 
-**Date:** 2026-06-03 · **Branch:** `feat/tc-v2-sig-verify-v1` · **HEAD:** `936c4fb` (local).
+**Date:** 2026-06-03 (Candidate decision) → 2026-06-06 (Freeze ruling) · **Branch:**
+`feat/tc-v2-sig-verify-v1` · **frozen state HEAD:** `2fd4b8a` (local).
 
 **Purpose.** A project-level decision artifact, written *before* the next line of code. It does two
 things: (1) makes the **Consensus Freeze ÷ Production Readiness** stratification official, and (2)
 records the freeze-promotion decision and what gates the final promotion. It supersedes the
 calendar-only freeze criterion (Gate #5) with an evidence-based one, consistent with the OVT charter
 (`operational-validation-track.md`).
+
+---
+
+## 0. Freeze Ruling (2026-06-06)
+
+> **PFC-1 Consensus Freeze is fixed.** All known remaining risks are classified as **Integration
+> Reality Risk** or **Production Readiness Risk**. **No known open Freeze Surface risk remains.**
+
+- **Scope of the ruling.** This freezes the **consensus core** (§2). It is *not* a statement of
+  product, mainnet, or launch readiness — the deliberate distinction the project has held throughout
+  (see §1). "Frozen" means: no further free editing of the Freeze Surface; changes go through
+  compatibility review.
+- **Basis.** All promotion criteria (§4) are ✅: the `canonical_to_inner` model review found the one
+  residual model question (tick↔wall-clock) to be publication-layer, not core; the Annex F OutList
+  reference impl + invariants pass; reproducibility hardening landed; and across the entire OVT no
+  Freeze Surface defect was found — the charter's "most important" criterion (criterion 7).
+- **What would have blocked it (and did not).** Only a belief that PP#2 could force a change to the
+  CAL model / validator / reducer / canonicalization / economics. Every risk surfaced in OVT lay in
+  the publication layer / `valid_until` mapping / W5 integration / external transport — none requires
+  a Freeze Surface change.
+- **Frozen state:** HEAD `2fd4b8a`. **Recorded across:** this §0, `freeze-manifest-pfc1.md §0/§1`,
+  and `README.md`.
+- **Post-freeze open items** (do not block the freeze; tracked at §3 / §5 / the freeze manifest §6):
+  PP#2 testnet validation, H3.1 live W5 integration (`ir_to_boc` + on-chain), H3.5 live external
+  observer, OVT-SG checkpointing, and the Production Readiness track at large.
 
 ---
 

@@ -1,25 +1,36 @@
 # Freeze Manifest — PFC-1
 
-**Purpose.** A single authoritative record of *what is frozen* as the PFC-1 → Consensus-Freeze
-candidate enters the quiet period — so that a month from now there is no argument about what counted
-as frozen, what was deliberately deferred, and how to reproduce the status. This is an index, not a
-re-derivation; every line points at the artifact that holds the truth.
+**Purpose.** A single authoritative record of *what is frozen* now that PFC-1 is **promoted to
+Consensus Freeze** — so that a month from now there is no argument about what counted as frozen, what
+was deliberately deferred, and how to reproduce the status. This is an index, not a re-derivation;
+every line points at the artifact that holds the truth.
 
-**Provenance.** Branch `feat/tc-v2-sig-verify-v1`, HEAD `4a5eba2` (local; the published PFC-1 tag is
-`8d9881f` on `github.com/ooopalladiumsb/paradigm-terra`). Reproduce any claim below with
-`scripts/repro.sh <target>` (or `make <target>`) — see §5.
+**Provenance.** Branch `feat/tc-v2-sig-verify-v1`, frozen state at HEAD `2fd4b8a` (local; the earlier
+published PFC-1 tag is `8d9881f` on `github.com/ooopalladiumsb/paradigm-terra`). Reproduce any claim
+below with `scripts/repro.sh <target>` (or `make <target>`) — see §5; clean-room walkthrough in
+`docs/notes/reproducibility-guide.md`.
 
 ---
 
-## 1. Gate status
+## 0. PFC-1 Status: **Consensus Freeze** (ruled 2026-06-06)
+
+> PFC-1 Consensus Freeze is fixed. All known remaining risks are classified as **Integration Reality
+> Risk** or **Production Readiness Risk**. **No known open Freeze Surface risk remains.**
+
+This is a freeze of the **consensus core**, not a statement of product/launch readiness. The freeze
+criteria are the OVT Definition of Done + the `pfc1-status-review.md` promotion criteria (all met);
+the ruling and its rationale live in `pfc1-status-review.md §0`. Post-freeze open items (PP#2 / H3.1
+live / H3.5 live observer / OVT-SG checkpointing / Production Readiness) are §6 + that review.
+
+## 1. Gate status — ALL SATISFIED
 
 | Gate | Status | Evidence |
 |---|---|---|
-| #1 Real Ed25519 | **satisfied-for-freeze** (Rust ingress deferred-by-constraint) | §2.4, §3 |
-| #2 ns/op benchmark baseline | **closed** (1 advisory Tier-2 item parked) | §2.3, §4 |
-| #3 Staged validator | **closed** | §2.2 |
-| #4 Transport / happy-path (PFC-1 bounds) | **closed** (proven in TS + Go) | §2.5 |
-| #5 Observation (was: quiet period) | **observation-based — gated by OVT DoD; +5-day cooling-off safeguard** | §7 |
+| #1 Real Ed25519 | ✅ **satisfied-for-freeze** (Rust ingress deferred-by-constraint) | §2.4, §3 |
+| #2 ns/op benchmark baseline | ✅ **closed** (1 advisory Tier-2 item — `path_segment` — closed → Option 1) | §2.3, §4 |
+| #3 Staged validator | ✅ **closed** | §2.2 |
+| #4 Transport / happy-path (PFC-1 bounds) | ✅ **closed** (proven in TS + Go) | §2.5 |
+| #5 Observation (was: quiet period) | ✅ **satisfied** — OVT DoD met (OVT-1/2/3 + griefing; no Freeze Surface defect); cooling-off elapsed | §7 |
 
 Gate #1 is recorded as *satisfied-for-freeze*, not unconditionally *closed*: the requirement met is
 "the owner/operator authorization model is independently confirmed by ≥2 reference implementations

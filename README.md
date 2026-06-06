@@ -7,7 +7,7 @@ verified reference implementations** of the canonical encoding in three language
 
 ## Status
 
-> **Protocol Freeze Candidate — PFC-1 (2026-05-29).** The normative core is structurally complete: canonical encoding, DSL, CAL (skeleton + reducer + gas + validator), orchestrator, MCP schema-hash pin (TS / Rust / Go parity), TON Connect owner-sig ingress, and a TON mainnet economic anchor are all in place with NORMATIVE golden vectors. New protocol changes are now expected to go through compatibility review rather than free editing; implementation pressure is the primary source of remaining truth. Criteria for promotion to actual Consensus Freeze are listed under **PFC-1 → Freeze gates** below.
+> **Consensus Freeze — PFC-1 (ruled 2026-06-06).** The consensus core is **frozen**: canonical encoding, DSL, CAL (skeleton + reducer + gas + validator), orchestrator, MCP schema-hash pin (TS / Rust / Go parity), TON Connect owner-sig ingress, and a TON mainnet economic anchor, all with NORMATIVE golden vectors — and across the entire Operational Validation Track (OVT-1/2/3 + griefing) **no Freeze Surface defect was found**. All known remaining risks are classified as **Integration Reality Risk** or **Production Readiness Risk**; **no known open Freeze Surface risk remains.** This is a freeze of the *consensus core* — **not** a statement of mainnet / launch / product readiness. Freeze Surface changes now go through compatibility review, not free editing. Ruling + rationale: [`docs/notes/pfc1-status-review.md §0`](docs/notes/pfc1-status-review.md); what is frozen: [`docs/spec/freeze-manifest-pfc1.md`](docs/spec/freeze-manifest-pfc1.md); reproduce: [`docs/notes/reproducibility-guide.md`](docs/notes/reproducibility-guide.md). Post-freeze open items are listed below.
 
 - **Canonical Encoding Specification v1.3** — *Consensus-Freeze* (frozen normative).
 - **Conformance gate: CLEAN** (2026-05-24) — 0 divergences across TS / Rust / Go on
@@ -73,9 +73,11 @@ and are not expected to change before promotion except via the gates below:
 - **Canonical encoding** — CE v1.3 in Consensus-Freeze since 2026-05-24.
 - **Orchestrator** — Track B node, NORMATIVE goldens, replay-clean.
 
-## PFC-1 → Freeze gates
+## PFC-1 → Freeze gates — ALL SATISFIED (Consensus Freeze ruled 2026-06-06)
 
-Promotion from PFC-1 to actual Consensus Freeze requires **all** of:
+Promotion from PFC-1 to actual Consensus Freeze required **all** of the following — **all are now
+satisfied**, and the OVT Definition of Done is met (OVT-1/2/3 + griefing, no Freeze Surface defect).
+The freeze ruling and rationale: [`docs/notes/pfc1-status-review.md §0`](docs/notes/pfc1-status-review.md).
 
 1. **Real Ed25519 — CONTOUR CLOSED (2026-06-01).** `operator_sig` = raw Ed25519 over `canonical_bytes`; `owner_sig` = TON Connect v2 Contract A commit (`TC_V2_SIGNDATA_VERIFY_V1`, D1 finding, confirmed on 2 wallets). TS/Rust/Go cross-language parity green, NORMATIVE vectors `spec/vectors/tc_v2_sig_verify_v1/`, Exec-spec §8.3 wired via the §8.4 Tier-2 amendment. Node-side derivation is `verifyIngress()` (`orchestrator/src/ingress.ts` + `orchestrator-go/ingress.go`): `CAL → {operatorSigPresent, ownerSigPresent} → ExecutionTrace → validate()`, proven end-to-end with real test keys to `cal.finalized` (`orchestrator/test/ingress.test.ts`); `validate()` stays a pure function over the booleans by design. **Asterisk:** the Rust node is deferred-by-constraint (no no-build-script Ed25519; its pure `validate()` is parity-green on the booleans).
 2. **§C.3 ns/op CPU benchmarks — BASELINE MEASURED (2026-06-02).** Eval-isolated harnesses in all three runtimes (`cal-gas/bench/gas-bench.mjs`, `cal-gas-rs` bin `gas_bench`, `cal-gas-go` `cmd/gasbench`); Annex C.3 table populated; conditions + findings in `docs/notes/gate2-baseline-results.md`. **Not yet fully green by the literal criterion:** `path_segment` (weight 2) is out of band low in all three tree-walkers (0.05–0.46×) — the one systematic Tier-2-amendment candidate; remaining single-runtime misses are data-dependence (`size` is `O(n)`, n=3) or peg noise. Per §C.4 the unit *counts* are consensus-locked anti-grief weights (untouched), not CPU predictors, so wall-clock is advisory — the deferred Tier-2 decision on `path_segment` is not a freeze blocker. **No weight changed by the baseline** (MEASURE-not-optimize discipline).
@@ -83,12 +85,22 @@ Promotion from PFC-1 to actual Consensus Freeze requires **all** of:
 4. **End-to-end smoke flow — DONE (2026-06-01).** **Proof Package #1** (`docs/proofs/proof-package-1.json`, status `LIVE`): a real Tonkeeper 4.7.0 testnet `signData`/`binary` signature over the CAL's canonical bytes → `verifyIngress()` (`ownerSigPresent: true`) → `validate()` → `cal.finalized` (events `created→signed→validated→executed→settled→finalized`, with STATE_ROOTs + event-log root). On-chain `sendTransaction` publication stubbed (`transport.tx_hash: null`, §8.3 out-of-scope). Reproducible via `orchestrator/scripts/assemble-proof.mjs`; capture provenance in `docs/proofs/captures/`.
 5. **5-day cooling-off period + OVT completion** — no new normative changes to PFC-1 contents during the gating period; freeze promotion is gated by the Operational Validation Track Definition of Done, with a minimum 5-day cooling-off as a procedural safeguard.
 
-Out of PFC-1 scope (intentionally — addressed post-Freeze):
+## Post-Freeze open items
 
-- W5 external publication (`sendTransaction`) + on-chain Registry contract + Annex F `canonical_to_inner` codec.
-- TEP for Agentic Wallet SBT (standardization comes after a battle-tested reference, not before).
-- Tolk normative on-chain artifacts.
-- Multi-owner (Multisig v2.1) wallet flows.
+Classified **Integration Reality Risk** or **Production Readiness Risk** — none requires a Freeze
+Surface change; none blocked the freeze.
+
+- **PP#2 — testnet validation** (the last falsification opportunity against a live chain).
+- **H3.1 — live W5 integration:** `ir_to_boc` (BoC serialization of the Annex F `InnerRequest`) +
+  `sendTransaction` external + on-chain Registry contract. The CAL→W5 *mapping* is reviewed and the
+  OutList arm implemented offline (`docs/notes/cal-to-w5-mapping-review.md`); the BoC + chain leg is
+  network-gated.
+- **H3.5 — live external observer** reproducing a running node's roots independently (the offline
+  half — reproducing the pinned artifacts — is done; see the reproducibility guide).
+- **OVT-SG — state checkpointing** (cold re-fold is linear but heavy; snapshot+replay is an
+  operational requirement, deferred to the long-running daemon — not a Freeze Surface defect).
+- **Production Readiness track** at large: TEP for the Agentic Wallet SBT, Tolk normative on-chain
+  artifacts, multi-owner (Multisig v2.1) flows, launch-grade daemon, monitoring, deployment surface.
 
 ## Layout
 
