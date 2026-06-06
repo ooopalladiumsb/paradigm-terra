@@ -80,6 +80,17 @@ vice-versa).
 - **Network-gated:** `sendTransaction`, `tx_hash`, on-chain result, replay proof, and criteria 1–3's
   real validation. These wait for testnet access.
 
+### PP#2-A — DONE (2026-06-06, offline)
+
+`ir_to_boc` + round-trip validation landed in `pp2/` (branch `post-freeze/pp2`, package
+`@paradigm-terra/pp2`, DRAFT, depends on `@ton/core` for cell/BoC primitives only). The new layer
+`canonical_to_inner → ir_to_boc → W5 cells → decode` round-trips **exactly** (`IR == IR'`) across bare
+transfer / multi-action / text-comment / empty OutList, with the `⊆` rule enforced at the cell layer
+(faithful value/dest, no carry-mode bits, ≤255 actions, empty ExtendedActions). 10/10, typecheck
+clean. **No publication-layer defect found offline.** Run: `cd pp2 && npm install && npm test`.
+Remaining for PP#2 is PP#2-B (network): the full external envelope + `sendBoc`/TON Connect + a real
+`tx_hash` + the on-chain effect check.
+
 ## 5. Branch policy
 
 Create the working branch (`post-freeze/pp2`) **only when real testnet access exists** — not before.
