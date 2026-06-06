@@ -88,8 +88,18 @@ vice-versa).
 transfer / multi-action / text-comment / empty OutList, with the `⊆` rule enforced at the cell layer
 (faithful value/dest, no carry-mode bits, ≤255 actions, empty ExtendedActions). 10/10, typecheck
 clean. **No publication-layer defect found offline.** Run: `cd pp2 && npm install && npm test`.
-Remaining for PP#2 is PP#2-B (network): the full external envelope + `sendBoc`/TON Connect + a real
-`tx_hash` + the on-chain effect check.
+### PP#2-A.5 — Envelope Review — DONE (2026-06-06, no publication)
+
+Design review of `InnerRequest → SignedRequest → ExternalMessage`: `pp2-envelope-review.md`. Decision:
+the envelope (opcode/`wallet_id`/`valid_until`/`seqno`/signature layout) comes from the reference
+`@ton/ton` `WalletContractV5R1` builder (not hand-transcribed); we supply the field *values* + the
+inner body. One seam found and resolved offline — the **nonce↔seqno origin offset** (CAL nonce is
+1-based, W5 seqno 0-based; rule: use the wallet's *live* seqno, `cal.nonce == seqno + 1`;
+publication-layer, freeze intact). `valid_until` set as a tight window so `TON-valid ⊆ CAL-valid`
+holds by construction. No further design-level contradiction → cleared for PP#2-B.
+
+Remaining for PP#2 is **PP#2-B** (network): assemble the external via the W5R1 builder + `sendBoc` +
+a real `tx_hash`, then **PP#2-C** effect-fidelity (on-chain effect == CAL action).
 
 ## 5. Branch policy
 
