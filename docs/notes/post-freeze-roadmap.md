@@ -40,9 +40,10 @@ PP#2 — Testnet Validation      ✅  (2026-06-06, ton-testnet, verdict A.SUCCES
   - tx_hash + on-chain effect == CAL action  ✅ tx 8d4b96e6…, effect faithful (self, 50000000)
   - (Registry contract deployment            ⬜ deferred — not needed for the send_ton proof)
 
-Live Observer (H3.5)           ⬜
-  - independent reproduction of a running node's roots
-  - published artifacts
+Live Observer (H3.5)           🟡  offline half DONE (2026-06-06)
+  - independent re-derivation of pinned verdicts (golden, PP#1, PP#2) from repo + live chain ✅
+    (pp2/scripts/pp2-observer.mjs ⇒ INDEPENDENT A.SUCCESS; reproducibility-guide.md §6)
+  - tailing a continuously-running node's root in real time ⬜ (needs the daemon → Production Readiness)
 
 Production Readiness:
   - Daemon                     ⬜  (mempool, scheduler, polling, monitoring)

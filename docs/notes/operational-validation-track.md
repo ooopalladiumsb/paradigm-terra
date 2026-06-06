@@ -118,7 +118,7 @@ on-chain leg; the durability + determinism core is proven.
 | H3.2 Soak: TS node == Go node over a **live stream** for hours | any divergence over continuous operation | 6 |
 | H3.3 Parity is *continuous*, not point-wise | roots match on golden vectors but drift under live load | 6 |
 | H3.4 Griefing: economics **bound** the attack as predicted | a flood of malformed/expensive CALs is not contained by gas/escrow/spam-fee | 5 |
-| H3.5 An external observer reproduces a live node's root independently | the root cannot be verified without insider state | 7 |
+| H3.5 An external observer reproduces a live node's root independently | the root cannot be verified without insider state | 7 — **🟡 offline half DONE (2026-06-06):** `pp2/scripts/pp2-observer.mjs` re-derives the PP#2 verdict from repo + live chain (no `verdict.json` trust), and `freeze-check` reproduces golden+PP#1 TS==Go; the *live-node* half (tailing a running node) is deferred to the daemon (Production Readiness). See `reproducibility-guide.md §6`. |
 
 H3.4 also feeds `PATH_SEGMENT_WEIGHT_REVIEW`: it yields the empirical griefing data that decides
 whether weight 2 is a needed anti-grief bound or an over-weight.
