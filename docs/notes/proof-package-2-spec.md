@@ -70,6 +70,44 @@ Not every PP#2 failure means the freeze was wrong. Classify before reacting:
 Stating this split now prevents a publication-layer bug from being mistaken for a freeze defect (and
 vice-versa).
 
+## 3.1 Verdict — the pre-registered decision rule (apply IN ORDER, before reacting)
+
+The run yields exactly one of three verdicts. Pinned now so the outcome is *classified*, not
+rationalized.
+
+**A. SUCCESS** — iff the FULL chain holds (not merely `tx_hash != null`):
+```
+sendBoc → tx_hash != null → transaction finalized on-chain → on_chain_effect == expected_effect
+```
+i.e. all of §2.1–§2.5. A `tx_hash` with a wrong/absent effect is **not** success.
+
+**B. PUBLICATION-LAYER FAILURE** (freeze stays intact; fix PP#2/W5 code; re-run) — the failure is
+localized to something WE assemble, with the frozen core untouched (criterion 5 holds). Canonical
+cases: bad `seqno` (the §3-finding offset), bad `valid_until`, bad signature, malformed envelope
+encoding, a mis-encoded inner body. **Discriminator:** the chain did something other than expected
+**AND our encoding ≠ the CAL's intent** (we mis-built the message) → publication-layer.
+
+**C. FREEZE RE-OPEN TRIGGER** (status flips to **Consensus Freeze Reopened** — automatic, NOT
+"another PP#2 bug"; criterion 7 is permanent). Any ONE of:
+1. CAL reached `cal.finalized` off-chain, but the chain executes a **different effect** than the CAL's
+   authorized action — **and our encoding == the CAL's intent** (we built it faithfully; the chain
+   still diverged → the model assumed TON semantics that do not hold).
+2. The on-chain effect **exceeds** CAL authorization (value/dest/scope beyond what the CAL authorized)
+   — authorization *widening* on-chain (`⊆` violated in the extending direction).
+3. **`TON-valid ⊄ CAL-valid`**: the chain **accepts** an external corresponding to a CAL the validator
+   would **reject or expire** (the forbidden direction of §ⓘ).
+4. Reproducing the on-chain reality requires changing CAL / validator / reducer / canonicalization /
+   economics (criterion 5 fails).
+
+**The discriminator that separates B from C** is the single most important pre-registration: *did we
+encode the CAL faithfully?* A faithful encoding the chain executes differently ⇒ **C (model gap)**. An
+unfaithful encoding ⇒ **B (our bug)**. PP#2 therefore always records, alongside `tx_hash`, the
+encoding-fidelity check (§2.2) so B-vs-C is decidable from the artifact, not from argument.
+
+**On a C verdict:** record it in the PP#2 artifact, flip `pfc1-status-review.md §0` and
+`freeze-manifest-pfc1.md §0` to *Reopened*, and treat it as OVT criterion-7 falsification — the freeze
+is revisited, not patched. (This is OVT succeeding, per the charter, not failing.)
+
 ## 4. What is offline-buildable now vs network-gated
 
 - **Offline now:** `ir_to_boc` (BoC serialization of the InnerRequest per the W5/V5 TL-B layout) +
