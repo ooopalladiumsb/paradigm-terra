@@ -52,13 +52,18 @@ test("submissions finalize through ticks; post-shutdown recovery is exact", asyn
   let n = 0;
   for (let r = 1; r <= 2; r++) for (const { agent } of agents) { d.submit(await agent.mintSubmissionFast(BigInt(r), 0n, 1_000_000n)); n++; }
   for (let i = 0; i < 100 && d.status().mempoolDepth > 0; i++) await sleep(20);
-  const m = d.shutdown();
+  const m = d.shutdown(); // graceful shutdown snapshots ⇒ a normal recovery has an empty tail
 
+  // normal recovery: snapshot + (empty) tail, root exact
   const recovered = OvtNode.open(dir);
-  let finalized = 0;
-  for (const tk of recovered.getTranscript().ticks) for (const s of tk.submissions) if (s.terminalStage === "FINALIZED") finalized++;
-  assert.equal(finalized, n, "every submission FINALIZED");
   assert.equal(recovered.stateRoot(), m.lastStateRoot, "recovery root == live root");
+  assert.equal(recovered.recoveryMode(), "SNAPSHOT_TAIL", "graceful shutdown ⇒ restart restores from snapshot");
+  // full-replay audit (ignore snapshots) rebuilds the COMPLETE transcript to confirm all finalized
+  const audit = OvtNode.open(dir, { ignoreSnapshots: true });
+  let finalized = 0;
+  for (const tk of audit.getTranscript().ticks) for (const s of tk.submissions) if (s.terminalStage === "FINALIZED") finalized++;
+  assert.equal(finalized, n, "every submission FINALIZED");
+  assert.equal(audit.stateRoot(), m.lastStateRoot, "full-replay audit root == live root");
   assert.equal(m.totalSubmissions, n);
   fs.rmSync(dir, { recursive: true, force: true });
 });

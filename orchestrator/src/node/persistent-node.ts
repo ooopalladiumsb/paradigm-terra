@@ -133,6 +133,11 @@ function offsetOnBoundary(walPath: string, offset: number): boolean {
   }
 }
 
+/** How this node's live state was obtained — diagnostics for the daemon restart gates (PR-1.1b).
+ *  FRESH = built empty / batch; FULL_REPLAY = recovered by re-folding the whole WAL; SNAPSHOT_TAIL =
+ *  recovered via snapshot + WAL tail (the fast path whose use PR-1.1b Gate 2 asserts). */
+export type RecoveryMode = "FRESH" | "FULL_REPLAY" | "SNAPSHOT_TAIL";
+
 export class OvtNode {
   private constructor(
     private readonly dir: string,
@@ -144,6 +149,9 @@ export class OvtNode {
     private liveIncr: IncrementalState,
     private tickResults: TickResult[],
     private eventLogArr: Event[],
+    // PR-1.1b recovery diagnostics: how live state was obtained, and how many tail ticks were replayed.
+    private readonly recoveredVia: RecoveryMode,
+    private readonly recoveredTail: number,
   ) {}
 
   private static paths(dir: string) {
@@ -157,7 +165,7 @@ export class OvtNode {
     fs.writeFileSync(p.genesis, enc(genesisState));
     fs.writeFileSync(p.wal, "");
     const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, []);
-    const node = new OvtNode(dir, genesisState, 0, incr, tickResults, eventLog);
+    const node = new OvtNode(dir, genesisState, 0, incr, tickResults, eventLog, "FRESH", 0);
     node.writeHead();
     return node;
   }
@@ -170,7 +178,7 @@ export class OvtNode {
     fs.writeFileSync(p.genesis, enc(genesisState));
     fs.writeFileSync(p.wal, tickBlocks.map((b) => enc(b)).join("\n") + (tickBlocks.length ? "\n" : ""));
     const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, tickBlocks);
-    const node = new OvtNode(dir, genesisState, tickBlocks.length, incr, tickResults, eventLog);
+    const node = new OvtNode(dir, genesisState, tickBlocks.length, incr, tickResults, eventLog, "FRESH", tickBlocks.length);
     node.writeHead();
     return node;
   }
@@ -180,7 +188,7 @@ export class OvtNode {
    *  (the O(history) baseline, always correct). Either way `liveIncr` is authoritative — the snapshot
    *  is a discardable accelerator (Rule 1). Throws SnapshotCorruptionError on an ahead-of-WAL snapshot
    *  (a write-model violation — hard abort, never self-heal). */
-  static open(dir: string): OvtNode {
+  static open(dir: string, opts?: { ignoreSnapshots?: boolean }): OvtNode {
     const p = OvtNode.paths(dir);
     const genesisState = dec(fs.readFileSync(p.genesis, "utf8")) as State;
     const walSize = fs.existsSync(p.wal) ? fs.statSync(p.wal).size : 0;
@@ -188,17 +196,19 @@ export class OvtNode {
     // Tail-seek path (PR-1.3-A): a valid snapshot lets recovery read+parse ONLY the WAL tail
     // [wal_offset, end) — O(state + tail), not O(history). loadLatestValidSnapshot skips checksum-bad
     // snapshots (Rule 1) and hard-aborts on an ahead-of-WAL one (wal_offset > walSize, Rule 3).
-    const snap = loadLatestValidSnapshot(dir, walSize);
+    // `ignoreSnapshots` forces the full re-fold — an audit/verification path that rebuilds the COMPLETE
+    // transcript (the snapshot path materialises only the tail), and a manual fallback.
+    const snap = opts?.ignoreSnapshots ? null : loadLatestValidSnapshot(dir, walSize);
     if (snap && offsetOnBoundary(p.wal, Number(snap.wal_offset))) {
       const tail = parseWalLines(readWalRange(p.wal, Number(snap.wal_offset), walSize));
       const { incr, tickResults, eventLog } = foldBlocks(snap.incr, tail);
-      return new OvtNode(dir, genesisState, Number(snap.covered_tick) + tail.length, incr, tickResults, eventLog);
+      return new OvtNode(dir, genesisState, Number(snap.covered_tick) + tail.length, incr, tickResults, eventLog, "SNAPSHOT_TAIL", tail.length);
     }
     // No usable snapshot (none, or wal_offset off a line boundary ⇒ discard per Rule 1): full re-fold
     // of the whole committed WAL from genesis — the O(history) baseline, always correct.
     const blocks = parseWalLines(walSize > 0 ? fs.readFileSync(p.wal, "utf8") : "");
     const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, blocks);
-    return new OvtNode(dir, genesisState, blocks.length, incr, tickResults, eventLog);
+    return new OvtNode(dir, genesisState, blocks.length, incr, tickResults, eventLog, "FULL_REPLAY", blocks.length);
   }
 
   /** Submit a tick's worth of submissions: durably WAL it (write-ahead), then apply it INCREMENTALLY
@@ -257,6 +267,14 @@ export class OvtNode {
   }
   tickCount(): number {
     return this.committedTicks;
+  }
+  /** How this node obtained its live state (PR-1.1b diagnostics): FRESH / FULL_REPLAY / SNAPSHOT_TAIL. */
+  recoveryMode(): RecoveryMode {
+    return this.recoveredVia;
+  }
+  /** WAL tail ticks replayed during recovery — the quantity the SLA budget is a function of. */
+  recoveredTailTicks(): number {
+    return this.recoveredTail;
   }
 
   private writeHead(): void {

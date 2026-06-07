@@ -1,15 +1,15 @@
-// PR-1.1a — daemon skeleton: the node as a long-running PROCESS (a thing that lives for hours), not
-// a batch fold. Operations layer, ABOVE the Freeze Surface — it wraps the proven OVT-2 `OvtNode`
-// (durable WAL + deterministic re-fold) and adds lifecycle, a wall-clock tick driver, an async
-// submission mempool, and an observation surface. No network / p2p / RPC / monitoring (those are
-// later PR-1 stages); this stage exists to make the daemon's real behavior OBSERVABLE.
+// PR-1.1a/b — daemon: the node as a long-running PROCESS, not a batch fold. Operations layer, ABOVE the
+// Freeze Surface — it wraps `OvtNode` and adds lifecycle, a wall-clock tick driver, an async submission
+// mempool, and an observation surface. No network / p2p / RPC / monitoring (later PR-1 stages).
 //
-// Known property surfaced here (NOT fixed at this stage — that is PR-1.2): `OvtNode.submit()` re-folds
-// the whole WAL from genesis each tick (O(n)/tick), the same root cause as the ~2 h/1M cold-recovery
-// bound. The metrics below MEASURE the resulting per-tick latency growth, so PR-1.2 (snapshot + tail
-// replay + maintained live state) optimizes against data, not a forecast.
+// PR-1.1b closes the crash/restart loop against the FINAL recovery pipeline: the tick loop snapshots on
+// a cadence (maybeSnapshot ⇒ PR-1.3 SLA), graceful shutdown snapshots, and a restart recovers via
+// snapshot + WAL tail (PR-1.2c/1.3-A). The daemon exposes recovery diagnostics (mode + tail) so a
+// restart can be checked against the real criterion: recovered state == uninterrupted AND recovery ≤ SLA.
+// (Per-tick latency is now O(tick), not O(history) — the 1.2b incremental applyTick removed that wall.)
 
-import { OvtNode } from "./persistent-node.js";
+import { OvtNode, type RecoveryMode } from "./persistent-node.js";
+import { OPERATIONAL_CADENCE_TICKS } from "./recovery-sla.js";
 import type { Submission, Program } from "../index.js";
 
 type State = NonNullable<Program["genesisState"]>;
@@ -21,6 +21,8 @@ export interface DaemonStatus {
   readonly mempoolDepth: number;
   readonly stateRoot: string;
   readonly uptimeMs: number;
+  readonly recoveryMode: RecoveryMode; // how this process obtained its state at start (PR-1.1b Gate 2)
+  readonly recoveredTailTicks: number; // WAL tail replayed at start (PR-1.1b Gate 3, vs the cadence)
 }
 export interface DaemonMetrics {
   readonly uptimeMs: number;
@@ -28,11 +30,14 @@ export interface DaemonMetrics {
   readonly idleTicks: number; // scheduler fires with an empty mempool
   readonly totalSubmissions: number;
   readonly maxMempoolDepth: number;
-  readonly recoveryLatencyMs: number; // cold-start re-fold (the known ~2h/1M bound at scale)
+  readonly recoveryLatencyMs: number; // cold-start: snapshot + WAL tail replay (PR-1.2c/1.3-A)
   readonly shutdownLatencyMs: number;
   readonly tickLatencyMsAvg: number;
-  readonly tickLatencyMsMax: number; // grows with history at this stage (O(n) re-fold) — PR-1.2 target
+  readonly tickLatencyMsMax: number; // O(tick), flat vs history (PR-1.2b incremental applyTick)
   readonly tickDriftMsMax: number; // scheduled vs actual fire time
+  readonly snapshotsTaken: number; // cadence + graceful-shutdown snapshots published (PR-1.1b)
+  readonly recoveryMode: RecoveryMode;
+  readonly recoveredTailTicks: number;
   readonly lastStateRoot: string;
 }
 
@@ -48,9 +53,14 @@ export class Pr1Daemon {
   private timer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
   private nextFireAt = 0;
-  private m = { committedTicks: 0, idleTicks: 0, totalSubmissions: 0, maxMempoolDepth: 0, recoveryLatencyMs: 0, shutdownLatencyMs: 0, tickLatSum: 0, tickLatN: 0, tickLatMax: 0, driftMax: 0 };
+  private m = { committedTicks: 0, idleTicks: 0, totalSubmissions: 0, maxMempoolDepth: 0, recoveryLatencyMs: 0, shutdownLatencyMs: 0, tickLatSum: 0, tickLatN: 0, tickLatMax: 0, driftMax: 0, snapshotsTaken: 0 };
 
-  constructor(private readonly opts: { dir: string; genesisState: State; tickIntervalMs: number }) {}
+  constructor(private readonly opts: { dir: string; genesisState: State; tickIntervalMs: number; snapshotCadence?: number }) {}
+
+  /** Snapshot cadence (committed ticks between snapshots). Defaults to the PR-1.3 SLA-derived value. */
+  private get cadence(): number {
+    return this.opts.snapshotCadence ?? OPERATIONAL_CADENCE_TICKS;
+  }
 
   /** BOOTING → RECOVERING (cold re-fold from the WAL, measured) → CATCHING_UP → RUNNING. */
   start(): void {
@@ -92,7 +102,8 @@ export class Pr1Daemon {
     const batch = this.drainOnePerAgent();
     if (batch.length === 0) { this.m.idleTicks++; return; }
     const t0 = performance.now();
-    this.node.submit(batch); // durable WAL + re-fold (O(n)/tick at this stage)
+    this.node.submit(batch); // durable WAL + incremental applyTick (O(tick))
+    if (this.node.maybeSnapshot(this.cadence)) this.m.snapshotsTaken++; // SLA cadence (PR-1.3-B)
     const lat = performance.now() - t0;
     this.m.committedTicks++;
     this.m.tickLatN++; this.m.tickLatSum += lat; if (lat > this.m.tickLatMax) this.m.tickLatMax = lat;
@@ -112,7 +123,8 @@ export class Pr1Daemon {
     return batch;
   }
 
-  /** SHUTTING_DOWN: stop the clock, flush remaining mempool into a final tick, then STOPPED. */
+  /** SHUTTING_DOWN: stop the clock, flush remaining mempool into final ticks, snapshot (so the next
+   *  start restores with an empty tail — instant restart), then STOPPED. */
   shutdown(): DaemonMetrics {
     const t0 = performance.now();
     this.state = "SHUTTING_DOWN";
@@ -123,13 +135,32 @@ export class Pr1Daemon {
       this.node.submit(batch);
       this.m.committedTicks++;
     }
+    this.node.snapshot(); // graceful-shutdown snapshot (PR-1.2a §3): next restart has an empty tail
+    this.m.snapshotsTaken++;
     this.m.shutdownLatencyMs = performance.now() - t0;
     this.state = "STOPPED";
     return this.metrics();
   }
 
+  /** Fault injection (tests): simulate a crash — stop the clock and abandon the process WITHOUT
+   *  flushing the mempool or snapshotting. Only the durably-WAL'd committed ticks survive; the next
+   *  start() must recover to exactly those (PR-1.1b Gate 1). NOT a graceful path. */
+  simulateCrash(): void {
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.mempool = [];
+    this.state = "STOPPED";
+  }
+
   status(): DaemonStatus {
-    return { state: this.state, committedTicks: this.node?.tickCount() ?? 0, mempoolDepth: this.mempool.length, stateRoot: this.node?.stateRoot() ?? "", uptimeMs: this.startedAt ? Date.now() - this.startedAt : 0 };
+    return {
+      state: this.state,
+      committedTicks: this.node?.tickCount() ?? 0,
+      mempoolDepth: this.mempool.length,
+      stateRoot: this.node?.stateRoot() ?? "",
+      uptimeMs: this.startedAt ? Date.now() - this.startedAt : 0,
+      recoveryMode: this.node?.recoveryMode() ?? "FRESH",
+      recoveredTailTicks: this.node?.recoveredTailTicks() ?? 0,
+    };
   }
 
   metrics(): DaemonMetrics {
@@ -144,6 +175,9 @@ export class Pr1Daemon {
       tickLatencyMsAvg: this.m.tickLatN ? this.m.tickLatSum / this.m.tickLatN : 0,
       tickLatencyMsMax: this.m.tickLatMax,
       tickDriftMsMax: this.m.driftMax,
+      snapshotsTaken: this.m.snapshotsTaken,
+      recoveryMode: this.node?.recoveryMode() ?? "FRESH",
+      recoveredTailTicks: this.node?.recoveredTailTicks() ?? 0,
       lastStateRoot: this.node?.stateRoot() ?? "",
     };
   }

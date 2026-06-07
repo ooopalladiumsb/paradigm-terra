@@ -82,6 +82,19 @@ but steady-state runtime is O(n²) cumulatively — confirming that PR-1.2 needs
 is exactly "observe the new layer before optimizing": the optimization target is now measured, not
 forecast. Re-run: `cd orchestrator && node --import tsx scripts/pr1-daemon-demo.mjs`.
 
+### PR-1.1b — DONE (2026-06-07): crash / restart against the final recovery pipeline
+
+The daemon now closes the loop `RUNNING → crash → start() → restore(snapshot) → replay_tail → RUNNING`.
+The tick loop snapshots on the PR-1.3 cadence (`maybeSnapshot`); graceful shutdown snapshots (empty-tail
+restart); `OvtNode.open()` exposes `recoveryMode` (FRESH / FULL_REPLAY / SNAPSHOT_TAIL) + `recoveredTailTicks`,
+and gained an `ignoreSnapshots` audit path (full-replay, complete transcript). `Pr1Daemon.simulateCrash()`
+abandons the process without flush/snapshot (fault injection). Tests (`test/pr1-daemon-restart.test.ts`)
+— **Gate 1** crashed+recovered == uninterrupted (STATE_ROOT + GLOBAL_ROOT, the latter binding eventCount
++ lastEventHash); **Gate 2** the restart used SNAPSHOT_TAIL (not a silent full re-fold); **Gate 3** the
+recovered tail ≤ cadence and modelled recovery ≤ SLA (model-based, CI-stable) — plus the worst case
+(crash at the cadence boundary ⇒ maximal tail N−1, still byte-exact). Suite 60/60. The restart criterion
+is now **restart ∧ recovery ≤ SLA**, not merely "the process came up."
+
 ## Definition of done (PR-1 complete when all hold)
 
 1. The node runs as a continuous **process** (clock ticks + mempool + async intake), not a batch fold.

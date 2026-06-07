@@ -61,12 +61,13 @@ await sleep(TICK_MS * 2);
 const m = daemon.shutdown();
 console.log(`  shutdown → STOPPED\n`);
 
-// durability check: re-fold the WAL from genesis → must equal the live root (OVT-2)
+// durability check: a normal recovery (snapshot + tail) must equal the live root (OVT-2 / PR-1.2c);
+// a full-replay audit (ignore snapshots) rebuilds the COMPLETE transcript to count terminal stages.
 const recovered = OvtNode.open(dir);
-const tr = recovered.getTranscript();
-let finalized = 0, other = 0;
-for (const tk of tr.ticks) for (const s of tk.submissions) (s.terminalStage === "FINALIZED" ? finalized++ : other++);
 const rootMatch = recovered.stateRoot() === m.lastStateRoot;
+const audit = OvtNode.open(dir, { ignoreSnapshots: true });
+let finalized = 0, other = 0;
+for (const tk of audit.getTranscript().ticks) for (const s of tk.submissions) (s.terminalStage === "FINALIZED" ? finalized++ : other++);
 
 console.log("FIRST OPERATIONAL PROFILE (PR-1.1a):");
 console.log(`  uptime                : ${m.uptimeMs} ms`);
@@ -75,7 +76,7 @@ console.log(`  total submissions     : ${m.totalSubmissions}  → finalized ${fi
 console.log(`  max mempool depth     : ${m.maxMempoolDepth}`);
 console.log(`  tick latency avg/max  : ${m.tickLatencyMsAvg.toFixed(1)} / ${m.tickLatencyMsMax.toFixed(1)} ms  (flat — PR-1.2b incremental applyTick; the O(n)/tick re-fold is gone)`);
 console.log(`  max tick drift        : ${m.tickDriftMsMax} ms`);
-console.log(`  cold recovery latency : ${m.recoveryLatencyMs.toFixed(1)} ms  (empty WAL here; full re-fold still O(history) — PR-1.2c snapshot target)`);
+console.log(`  cold recovery latency : ${m.recoveryLatencyMs.toFixed(1)} ms  (empty WAL here; snapshot + tail = O(state+tail), PR-1.2c/1.3 — recovery mode ${recovered.recoveryMode()})`);
 console.log(`  shutdown latency      : ${m.shutdownLatencyMs.toFixed(1)} ms`);
 console.log(`  post-shutdown recover : root ${rootMatch ? "MATCHES" : "DIVERGES"} live (OVT-2 durability)`);
 
