@@ -59,13 +59,14 @@ test("GateA: decode(encode(x)) == x on all four carried quantities, lastEventHas
   assert.ok(incr.eventCount > 0 && incr.currentTick > 0n, "precondition: non-trivial live state");
   assert.ok(!incr.lastEventHash.every((b) => b === 0), "precondition: lastEventHash is not all-zero");
 
-  const body = makeSnapshotBody(incr, 4n);
+  const body = makeSnapshotBody(incr, 4n, 8192n);
   const round = decodeSnapshot(encodeSnapshot(body));
 
   assert.deepEqual(round.incr.state, incr.state, "state round-trips");
   assert.equal(round.incr.currentTick, incr.currentTick, "currentTick round-trips (bigint)");
   assert.equal(round.incr.eventCount, incr.eventCount, "eventCount round-trips");
   assert.equal(round.covered_tick, 4n, "covered_tick round-trips (bigint)");
+  assert.equal(round.wal_offset, 8192n, "wal_offset round-trips (bigint)");
   assert.equal(round.snapshot_version, body.snapshot_version, "version round-trips");
   assert.equal(round.state_root, body.state_root, "state_root round-trips");
   assert.equal(round.event_log_root, body.event_log_root, "event_log_root round-trips");
@@ -83,14 +84,14 @@ test("GateA: a naive JSON pass would corrupt lastEventHash — the codec is why 
   const naive = JSON.parse(JSON.stringify(incr, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
   assert.ok(!(naive.lastEventHash instanceof Uint8Array), "naive JSON loses the Uint8Array type (the defect class)");
   // the snapshot codec preserves it
-  const ok = decodeSnapshot(encodeSnapshot(makeSnapshotBody(incr, 2n)));
+  const ok = decodeSnapshot(encodeSnapshot(makeSnapshotBody(incr, 2n, 0n)));
   assert.ok(ok.incr.lastEventHash instanceof Uint8Array && bytesEqual(ok.incr.lastEventHash, incr.lastEventHash), "codec preserves it byte-for-byte");
 });
 
 test("GateA: genesis edge (eventCount 0, all-zero lastEventHash) round-trips", () => {
   const incr = initIncremental(fundedGenesis());
   assert.equal(incr.eventCount, 0);
-  const round = decodeSnapshot(encodeSnapshot(makeSnapshotBody(incr, 0n)));
+  const round = decodeSnapshot(encodeSnapshot(makeSnapshotBody(incr, 0n, 0n)));
   assert.equal(round.incr.eventCount, 0);
   assert.ok(round.incr.lastEventHash instanceof Uint8Array && round.incr.lastEventHash.length === 32);
   assert.ok(bytesEqual(round.incr.lastEventHash, incr.lastEventHash), "all-zero lastEventHash byte-for-byte");
@@ -98,7 +99,7 @@ test("GateA: genesis edge (eventCount 0, all-zero lastEventHash) round-trips", (
 });
 
 test("GateA: a tampered byte fails the checksum (discardable corruption)", () => {
-  const enc = encodeSnapshot(makeSnapshotBody(liveAfter(4), 3n));
+  const enc = encodeSnapshot(makeSnapshotBody(liveAfter(4), 3n, 0n));
   // flip one hex char inside the embedded body string (find a digit and bump it)
   const idx = enc.indexOf('"body":"') + 8 + 20;
   const tampered = enc.slice(0, idx) + (enc[idx] === "a" ? "b" : "a") + enc.slice(idx + 1);
@@ -109,7 +110,7 @@ test("GateA: a tampered byte fails the checksum (discardable corruption)", () =>
 test("GateA: an unsupported snapshot_version is rejected (even with a valid checksum)", () => {
   // hand-build an envelope at version 999 with a CORRECT checksum, to prove the version gate is
   // independent of the checksum gate.
-  const body = makeSnapshotBody(liveAfter(2), 1n);
+  const body = makeSnapshotBody(liveAfter(2), 1n, 0n);
   const bad = encodeSnapshot({ ...body, snapshot_version: 999 });
   assert.throws(() => decodeSnapshot(bad), /unsupported snapshot_version 999/, "version gate fires");
 });

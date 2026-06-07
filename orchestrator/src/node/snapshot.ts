@@ -16,7 +16,7 @@
 import { fromHex, sha256, toHex } from "@paradigm-terra/canonical";
 import { incrementalGlobalRoot, incrementalStateRoot, type IncrementalState } from "../index.js";
 
-export const SNAPSHOT_VERSION = 1;
+export const SNAPSHOT_VERSION = 2; // v2 (PR-1.3-A): adds wal_offset for tail-seek recovery
 
 export class SnapshotCorruptionError extends Error {
   constructor(message: string) {
@@ -29,8 +29,11 @@ export class SnapshotCorruptionError extends Error {
  *  roots are redundant (derivable from `incr`) — a fast integrity cross-check, not a second truth. */
 export interface SnapshotBody {
   readonly snapshot_version: number;
-  /** WAL tick index this snapshot folds THROUGH (inclusive). Tail = WAL ticks after it (PR-1.2c-B). */
+  /** Number of WAL ticks this snapshot covers. Tail = the WAL ticks after it (PR-1.2c-B). */
   readonly covered_tick: bigint;
+  /** WAL byte offset at the end of the covered ticks — the seek point for O(tail) recovery (PR-1.3-A).
+   *  Recovery reads only `[wal_offset, end)`; `covered_tick` ticks occupy exactly `wal_offset` bytes. */
+  readonly wal_offset: bigint;
   readonly state_root: string; // hex 0x — = incrementalStateRoot(incr)
   readonly event_log_root: string; // hex 0x — = incrementalGlobalRoot(incr) (CE §6.3)
   readonly incr: IncrementalState;
@@ -57,11 +60,13 @@ function reviver(_key: string, value: unknown): unknown {
 
 const utf8 = new TextEncoder();
 
-/** Assemble a snapshot body from live state and the WAL tick it covers (roots filled from `incr`). */
-export function makeSnapshotBody(incr: IncrementalState, coveredTick: bigint): SnapshotBody {
+/** Assemble a snapshot body from live state, the WAL tick count it covers, and the WAL byte offset at
+ *  that point (the tail-seek point). Roots are filled from `incr`. */
+export function makeSnapshotBody(incr: IncrementalState, coveredTick: bigint, walOffset: bigint): SnapshotBody {
   return {
     snapshot_version: SNAPSHOT_VERSION,
     covered_tick: coveredTick,
+    wal_offset: walOffset,
     state_root: incrementalStateRoot(incr),
     event_log_root: incrementalGlobalRoot(incr),
     incr,

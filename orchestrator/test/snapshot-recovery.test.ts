@@ -14,7 +14,7 @@ import { genesis, type Json, type State } from "@paradigm-terra/cal-reducer";
 import type { ExecutionTrace } from "@paradigm-terra/cal-validator";
 import { applyTick, initIncremental, type Submission } from "../src/index.js";
 import { OvtNode } from "../src/node/persistent-node.js";
-import { makeSnapshotBody, SnapshotCorruptionError } from "../src/node/snapshot.js";
+import { decodeSnapshot, encodeSnapshot, makeSnapshotBody, SnapshotCorruptionError } from "../src/node/snapshot.js";
 import { listSnapshots, writeSnapshotFile } from "../src/node/snapshot-store.js";
 
 const A = "0:" + "cc".repeat(32);
@@ -52,6 +52,11 @@ function buildNode(dir: string, ticks: number): OvtNode {
   for (let i = 0; i < ticks; i++) node.submit([sendSub(BigInt(i + 1))]);
   return node;
 }
+function incrAfter(k: number) {
+  let incr = initIncremental(fundedGenesis());
+  for (let i = 0; i < k; i++) incr = applyTick(incr, { tick: BigInt(i), submissions: [sendSub(BigInt(i + 1))] }).next;
+  return incr;
+}
 
 test("recovery uses snapshot + tail (not full re-fold) and reaches the same roots", () => {
   const dir = tmp("uses");
@@ -72,28 +77,45 @@ test("recovery uses snapshot + tail (not full re-fold) and reaches the same root
 
 test("snapshot covering a PREFIX restores + replays the remaining tail to the same roots", () => {
   const dir = tmp("prefix");
-  const node = buildNode(dir, 10); // WAL has 10 ticks
-  // hand-write a snapshot that covers only the first 6 ticks, then submit nothing more
-  let incr = initIncremental(fundedGenesis());
-  for (let i = 0; i < 6; i++) incr = applyTick(incr, { tick: BigInt(i), submissions: [sendSub(BigInt(i + 1))] }).next;
-  writeSnapshotFile(dir, makeSnapshotBody(incr, 6n));
+  const node = OvtNode.create(dir, fundedGenesis());
+  for (let i = 0; i < 6; i++) node.submit([sendSub(BigInt(i + 1))]);
+  node.snapshot(); // covers 6, wal_offset = WAL bytes @ tick 6
+  for (let i = 6; i < 10; i++) node.submit([sendSub(BigInt(i + 1))]); // 4 more ticks appended after the snapshot
 
   const recovered = OvtNode.open(dir);
   assert.equal(recovered.stateRoot(), node.stateRoot(), "restore(@6) + replay tail[6..10) == full");
-  assert.equal(recovered.getTranscript().ticks.length, 4, "exactly the 4 tail ticks were replayed");
+  assert.equal(recovered.getTranscript().ticks.length, 4, "exactly the 4 tail ticks were replayed (tail-seek)");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("ahead-of-WAL snapshot is a HARD ABORT, not self-heal", () => {
   const dir = tmp("ahead");
-  buildNode(dir, 5); // WAL has 5 ticks
-  // a checksum-VALID snapshot claiming to cover tick-count 99 (> 5): write-model violation
-  let incr = initIncremental(fundedGenesis());
-  incr = applyTick(incr, { tick: 0n, submissions: [sendSub(1n)] }).next;
-  writeSnapshotFile(dir, makeSnapshotBody(incr, 99n));
+  buildNode(dir, 5); // WAL has 5 ticks (~a few KB)
+  // a checksum-VALID snapshot whose wal_offset (10 MB) exceeds the WAL size: write-model violation
+  writeSnapshotFile(dir, makeSnapshotBody(incrAfter(1), 1n, 10_000_000n));
 
   assert.throws(() => OvtNode.open(dir), SnapshotCorruptionError, "ahead-of-WAL snapshot aborts the load");
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("negative control: wal_offset bumped off a line boundary → detected (not a silent wrong recovery)", () => {
+  const dir = tmp("offplus1");
+  // prefix snapshot (covers 6, wal_offset < walSize) so +1 lands MID-LINE in the tail — isolating the
+  // boundary check from the ahead-of-WAL check (which would fire if wal_offset exceeded the WAL).
+  const node = OvtNode.create(dir, fundedGenesis());
+  for (let i = 0; i < 6; i++) node.submit([sendSub(BigInt(i + 1))]);
+  const file = node.snapshot();
+  for (let i = 6; i < 12; i++) node.submit([sendSub(BigInt(i + 1))]);
+  const liveRoot = node.stateRoot();
+  // re-publish a CHECKSUM-VALID snapshot whose wal_offset is off by one byte (now mid-line, not after \n)
+  const body = decodeSnapshot(fs.readFileSync(file, "utf8"));
+  fs.writeFileSync(file, encodeSnapshot({ ...body, wal_offset: body.wal_offset + 1n }));
+
+  const recovered = OvtNode.open(dir); // boundary validation must fire → discard snapshot → full re-fold
+  assert.equal(recovered.stateRoot(), liveRoot, "recovered correctly via the full WAL, NOT a silent empty tail");
+  assert.equal(recovered.getTranscript().ticks.length, 12, "full re-fold ⇒ boundary check rejected the bad offset");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });

@@ -13,13 +13,14 @@ recovery is `OvtNode.open()`, and `open()` still `readFileSync`s the **whole** W
 even with a perfect snapshot. Measured (snapshot covering ALL ticks ⇒ empty tail ⇒ zero fold):
 
 ```
-N ticks     WAL size    open()      tail
-   2,000      1.3 MB      424 ms       0
-   8,000      5.1 MB    1,541 ms       0
+N ticks     WAL size    open()      tail     ms/tick
+   2,000      1.3 MB      424 ms       0       0.212
+   8,000      5.1 MB    1,541 ms       0       0.193
+  20,000     12.7 MB    3,727 ms       0       0.186
 ```
 
-Marginal parse cost ≈ **0.19 ms/tick**, linear (×4 ticks → ×3.6 time). Extrapolated: **1M ticks ≈ ~190 s
-recovery despite a perfect snapshot.** A 60 s SLA is **not** met by 1.2c alone. The snapshot bounds the
+Marginal parse cost ≈ **0.184 ms/tick**, dead linear (R²≈1). Extrapolated: **1M ticks ≈ ~184 s recovery
+despite a perfect snapshot.** A 60 s SLA is **not** met by 1.2c alone. The snapshot bounds the
 fold; it does not bound the read/parse. That is the wall PR-1.3 removes.
 
 ## Cost model
@@ -99,6 +100,33 @@ PR-1.3-B  SLA + cadence        — measure per_tick_recovery_cost + snapshot_loa
                                 expose the cadence policy + a profiler; a guard test asserting recovery
                                 from a cadence-bounded tail stays < budget regardless of history.
 ```
+
+### PR-1.3-A — DONE (2026-06-07): tail-seek, recovery O(state + tail)
+
+Snapshot envelope → **v2** with `wal_offset` (WAL byte offset through `covered_tick`).
+`OvtNode.snapshot()` records it (current WAL byte size); `OvtNode.open()` loads the newest valid
+snapshot, validates the offset (`offsetOnBoundary`), then `readWalRange(wal_offset, end)` + `parseWalLines`
+to fold **only the tail** — `readFileSync`/`parse` of the whole WAL survives only as the no-snapshot
+fallback. The node no longer holds WAL blocks in memory (`ticks: WalTick[]` → `committedTicks: number`).
+Ahead-of-WAL is now the O(1) byte check `wal_offset > walSize` (hard abort); a `wal_offset` off a line
+boundary → discard the snapshot (Rule 1) + full re-fold, so a mid-line offset can never yield a
+silently-empty tail.
+
+**Gate A ✅.** Recovery correctness unchanged (suite 53/53, typecheck clean). Measured `open()` with a
+snapshot covering all ticks (empty tail) — flat vs history, vs the O(history) full parse before:
+
+```
+N ticks    open() BEFORE (full parse)    open() AFTER (tail-seek)
+  2,000              424 ms                       8.6 ms
+  8,000            1,541 ms                       3.0 ms
+ 20,000            3,727 ms                       1.3 ms      (~2900× at 20k; ms-scale, FLAT — not O(history))
+```
+
+New/changed tests: `snapshot-recovery.test.ts` gains the requested negative control (a checksum-valid
+snapshot with `wal_offset += 1` → boundary check fires → full re-fold, NOT a silent wrong recovery);
+prefix-snapshot scenarios reworked to real `node.snapshot()`-at-prefix so `wal_offset` is genuine; the
+crash matrix's ahead-of-WAL row is now byte-level. **Next: PR-1.3-B** — measure `per_tick_recovery_cost`
++ `snapshot_load`, derive cadence N for T_SLA = 60 s, ship a profiler + an SLA guard test.
 
 ## Risk-map position
 

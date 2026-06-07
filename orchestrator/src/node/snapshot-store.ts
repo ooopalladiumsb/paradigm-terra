@@ -51,11 +51,12 @@ export function listSnapshots(dir: string): SnapEntry[] {
 
 /**
  * The newest VALID snapshot at or below the committed WAL, or null if none is usable.
- * `walTickCount` = number of committed WAL ticks. Throws SnapshotCorruptionError (hard abort) on a
- * checksum-valid snapshot whose covered_tick exceeds the WAL — that is a write-model violation, not a
- * recoverable case. Checksum-invalid snapshots are silently skipped (Rule 1 fallback).
+ * `walSize` = current WAL size in bytes. Throws SnapshotCorruptionError (hard abort) on a checksum-valid
+ * snapshot whose `wal_offset` exceeds the WAL size — a snapshot newer than the WAL is a write-model
+ * violation, not a recoverable case (the byte-level analogue of covered_tick > committed; O(1) via stat,
+ * no need to count ticks). Checksum-invalid snapshots are silently skipped (Rule 1 fallback).
  */
-export function loadLatestValidSnapshot(dir: string, walTickCount: number): SnapshotBody | null {
+export function loadLatestValidSnapshot(dir: string, walSize: number): SnapshotBody | null {
   for (const entry of listSnapshots(dir)) {
     let body: SnapshotBody;
     try {
@@ -64,9 +65,9 @@ export function loadLatestValidSnapshot(dir: string, walTickCount: number): Snap
       if (e instanceof SnapshotCorruptionError) continue; // discardable: try the next-oldest
       throw e;
     }
-    if (body.covered_tick > BigInt(walTickCount)) {
+    if (body.wal_offset > BigInt(walSize)) {
       throw new SnapshotCorruptionError(
-        `snapshot ${entry.file} covers tick-count ${body.covered_tick} > committed WAL ticks ${walTickCount} — snapshot newer than WAL (write-model violation)`,
+        `snapshot ${entry.file} wal_offset ${body.wal_offset} > WAL size ${walSize} bytes — snapshot newer than WAL (write-model violation)`,
       );
     }
     return body; // newest valid

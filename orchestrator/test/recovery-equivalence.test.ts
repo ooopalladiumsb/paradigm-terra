@@ -89,7 +89,7 @@ test("GateB: restore(snapshot@k) + tail == full_replay for every cut-point, all 
     for (const k of cuts) {
       // snapshot the state after folding the first k blocks, persist + reload via the REAL codec
       const snapIncr = foldOnto(initIncremental(g), blocks.slice(0, k));
-      const decoded = decodeSnapshot(encodeSnapshot(makeSnapshotBody(snapIncr, BigInt(k))));
+      const decoded = decodeSnapshot(encodeSnapshot(makeSnapshotBody(snapIncr, BigInt(k), 0n)));
       assert.equal(decoded.covered_tick, BigInt(k), `${id} cut@${k}: covered_tick round-trips`);
 
       // restore + replay the tail

@@ -91,7 +91,7 @@ test("row3 — crash after fsync(tmp) before rename (COMPLETE .tmp, unpublished)
   const dir = tmp("row3");
   buildNode(dir, 12);
   // a fully-valid snapshot, but left as .tmp (the rename never happened)
-  fs.writeFileSync(path.join(dir, "snapshot-12.json.tmp"), encodeSnapshot(makeSnapshotBody(incrAfter(12), 12n)));
+  fs.writeFileSync(path.join(dir, "snapshot-12.json.tmp"), encodeSnapshot(makeSnapshotBody(incrAfter(12), 12n, 0n)));
   const recovered = OvtNode.open(dir);
   assert.equal(recovered.stateRoot(), fullRoot(12), "an unpublished (.tmp) snapshot is never used");
   assert.equal(recovered.getTranscript().ticks.length, 12, "full re-fold");
@@ -110,8 +110,10 @@ test("row4 — crash after rename, before next WAL append (C == T) → restore(C
 
 test("row5 — crash after WAL append+fsync, before next snapshot (C < T) → restore(C) + replay tail", () => {
   const dir = tmp("row5");
-  buildNode(dir, 12); // WAL has 12
-  writeSnapshotFile(dir, makeSnapshotBody(incrAfter(7), 7n)); // last snapshot only covered 7
+  const node = OvtNode.create(dir, fundedGenesis());
+  for (let i = 0; i < 7; i++) node.submit([sendSub(BigInt(i + 1))]);
+  node.snapshot(); // last snapshot covered 7 (wal_offset @ 7)
+  for (let i = 7; i < 12; i++) node.submit([sendSub(BigInt(i + 1))]); // 5 more, no later snapshot
   const recovered = OvtNode.open(dir);
   assert.equal(recovered.stateRoot(), fullRoot(12), "restore(@7) + replay tail [7..12) == full");
   assert.equal(recovered.getTranscript().ticks.length, 5, "exactly the 5 tail ticks replayed");
@@ -119,23 +121,29 @@ test("row5 — crash after WAL append+fsync, before next snapshot (C < T) → re
 });
 
 test("row6 — crash mid WAL append (torn trailing line) → drop torn line, recover the committed prefix", () => {
-  const dir = tmp("row6");
-  buildNode(dir, 10);
-  fs.appendFileSync(walPath(dir), '{"tick":{"$bigint":"10"},"submi'); // torn 11th line, no newline
   // (a) no snapshot: full re-fold of the surviving prefix
-  assert.equal(OvtNode.open(dir).stateRoot(), fullRoot(10), "torn line dropped; prefix recovered");
-  // (b) with a snapshot at 6 (≤ surviving 10): restore + replay surviving tail
-  writeSnapshotFile(dir, makeSnapshotBody(incrAfter(6), 6n));
-  const recovered = OvtNode.open(dir);
+  const dirA = tmp("row6a");
+  buildNode(dirA, 10);
+  fs.appendFileSync(walPath(dirA), '{"tick":{"$bigint":"10"},"submi'); // torn 11th line, no newline
+  assert.equal(OvtNode.open(dirA).stateRoot(), fullRoot(10), "torn line dropped; prefix recovered");
+  fs.rmSync(dirA, { recursive: true, force: true });
+  // (b) snapshot at 6 (≤ surviving 10), then a torn tail: restore + replay the surviving tail
+  const dirB = tmp("row6b");
+  const node = OvtNode.create(dirB, fundedGenesis());
+  for (let i = 0; i < 6; i++) node.submit([sendSub(BigInt(i + 1))]);
+  node.snapshot();
+  for (let i = 6; i < 10; i++) node.submit([sendSub(BigInt(i + 1))]);
+  fs.appendFileSync(walPath(dirB), '{"tick":{"$bigint":"10"},"submi'); // torn line in the tail region
+  const recovered = OvtNode.open(dirB);
   assert.equal(recovered.stateRoot(), fullRoot(10), "snapshot@6 + tail[6..10] over the surviving WAL");
   assert.equal(recovered.getTranscript().ticks.length, 4);
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dirB, { recursive: true, force: true });
 });
 
 test("forbidden state — a published snapshot newer than the WAL is a HARD ABORT (never wrong state)", () => {
   const dir = tmp("forbidden");
   buildNode(dir, 5);
-  writeSnapshotFile(dir, makeSnapshotBody(incrAfter(5), 99n)); // covered_tick 99 > 5 committed
+  writeSnapshotFile(dir, makeSnapshotBody(incrAfter(5), 5n, 10_000_000n)); // wal_offset 10MB > WAL size
   assert.throws(() => OvtNode.open(dir), SnapshotCorruptionError, "deterministic refusal, not branch (3)");
   fs.rmSync(dir, { recursive: true, force: true });
 });

@@ -5,12 +5,13 @@
 // the ordered submission stream (the inputs); recovery re-folds the WAL from genesis. The event log is
 // derived output, so the inputs are the source of truth.
 //
-// PR-1.2b: the node now MAINTAINS live state. `submit()` advances a carried `IncrementalState` by one
-// tick via `applyTick` (work = O(submissions in the tick)), instead of re-folding the whole WAL from
-// genesis every tick (the old O(n)/tick wall the PR-1.1a profile measured). Full re-folds survive only
-// where they belong: `open()` (cold recovery — one O(history) fold at boot, until PR-1.2c snapshots
-// shorten it) and `bulkCreate()` (one-shot batch build). The carried (eventCount, lastEventHash) ride
-// inside IncrementalState — the same source of truth as STATE_ROOT — so no daemon-side counter can drift.
+// PR-1.2b: the node MAINTAINS live state. `submit()` advances a carried `IncrementalState` by one tick
+// via `applyTick` (work = O(submissions in the tick)), not a whole-WAL re-fold (the old O(n)/tick wall).
+// PR-1.3-A: cold recovery is O(state + tail) too — a snapshot records `wal_offset`, so `open()` seeks
+// past the covered prefix and reads+parses ONLY the WAL tail (the O(history) full read survives only as
+// the no-snapshot fallback / `bulkCreate` batch build). The node no longer holds the WAL blocks in
+// memory — just a committed-tick count. The carried (eventCount, lastEventHash) ride inside
+// IncrementalState — the same source of truth as STATE_ROOT — so no daemon-side counter can drift.
 //
 // Durability model: one NDJSON line per committed tick, fsync'd before the tick is applied in-memory
 // (write-ahead). A crash mid-write tears only the trailing line; on restart the loader keeps the
@@ -87,11 +88,57 @@ function foldBlocks(startIncr: IncrementalState, blocks: readonly WalTick[]): {
 
 const foldFromGenesis = (genesisState: State, blocks: readonly WalTick[]) => foldBlocks(initIncremental(genesisState), blocks);
 
+/** Parse NDJSON WAL text into tick blocks, dropping a torn trailing line (a crash mid-write — OVT-2). */
+function parseWalLines(raw: string): WalTick[] {
+  const out: WalTick[] = [];
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      out.push(dec(t) as WalTick);
+    } catch {
+      break; // torn/partial trailing line = a crash mid-write; keep the committed prefix only
+    }
+  }
+  return out;
+}
+
+/** Read only the byte range `[offset, size)` of the WAL — the tail, for O(tail) recovery (PR-1.3-A). */
+function readWalRange(walPath: string, offset: number, size: number): string {
+  const len = size - offset;
+  if (len <= 0) return "";
+  const fd = fs.openSync(walPath, "r");
+  try {
+    const buf = Buffer.allocUnsafe(len);
+    fs.readSync(fd, buf, 0, len, offset);
+    return buf.toString("utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** True iff `offset` lands on a WAL line boundary (start of file, or the preceding byte is '\n'). A
+ *  snapshot whose wal_offset fails this is inconsistent with the WAL → discard it (Rule 1) and full-parse,
+ *  so a mid-line offset can never silently yield an empty tail / wrong state (the unreachable branch 3). */
+function offsetOnBoundary(walPath: string, offset: number): boolean {
+  if (offset === 0) return true;
+  const fd = fs.openSync(walPath, "r");
+  try {
+    const buf = Buffer.allocUnsafe(1);
+    const n = fs.readSync(fd, buf, 0, 1, offset - 1);
+    return n === 1 && buf[0] === 0x0a; // '\n'
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export class OvtNode {
   private constructor(
     private readonly dir: string,
     private readonly genesisState: State,
-    private ticks: WalTick[],
+    // count of committed WAL ticks (NOT the blocks — those live on disk; PR-1.3-A dropped the O(history)
+    // in-memory array). Drives the next tick index + tickCount().
+    private committedTicks: number,
     // PR-1.2b maintained live state (carried across ticks — never re-derived on the hot path):
     private liveIncr: IncrementalState,
     private tickResults: TickResult[],
@@ -109,7 +156,7 @@ export class OvtNode {
     fs.writeFileSync(p.genesis, enc(genesisState));
     fs.writeFileSync(p.wal, "");
     const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, []);
-    const node = new OvtNode(dir, genesisState, [], incr, tickResults, eventLog);
+    const node = new OvtNode(dir, genesisState, 0, incr, tickResults, eventLog);
     node.writeHead();
     return node;
   }
@@ -121,9 +168,8 @@ export class OvtNode {
     const p = OvtNode.paths(dir);
     fs.writeFileSync(p.genesis, enc(genesisState));
     fs.writeFileSync(p.wal, tickBlocks.map((b) => enc(b)).join("\n") + (tickBlocks.length ? "\n" : ""));
-    const ticks = tickBlocks.slice();
-    const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, ticks);
-    const node = new OvtNode(dir, genesisState, ticks, incr, tickResults, eventLog);
+    const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, tickBlocks);
+    const node = new OvtNode(dir, genesisState, tickBlocks.length, incr, tickResults, eventLog);
     node.writeHead();
     return node;
   }
@@ -136,36 +182,31 @@ export class OvtNode {
   static open(dir: string): OvtNode {
     const p = OvtNode.paths(dir);
     const genesisState = dec(fs.readFileSync(p.genesis, "utf8")) as State;
-    const raw = fs.existsSync(p.wal) ? fs.readFileSync(p.wal, "utf8") : "";
-    const ticks: WalTick[] = [];
-    for (const line of raw.split("\n")) {
-      const t = line.trim();
-      if (!t) continue;
-      let blk: WalTick;
-      try {
-        blk = dec(t) as WalTick;
-      } catch {
-        break; // torn/partial trailing line = a crash mid-write; keep the committed prefix only
-      }
-      ticks.push(blk);
-    }
+    const walSize = fs.existsSync(p.wal) ? fs.statSync(p.wal).size : 0;
 
-    // snapshot path: restore(snapshot) + replay_tail(WAL after covered_tick). loadLatestValidSnapshot
-    // skips checksum-bad snapshots (Rule 1) and hard-aborts on an ahead-of-WAL one (Rule 3).
-    const snap = loadLatestValidSnapshot(dir, ticks.length);
-    const start = snap ? snap.incr : initIncremental(genesisState);
-    const tail = snap ? ticks.slice(Number(snap.covered_tick)) : ticks;
-    const { incr, tickResults, eventLog } = foldBlocks(start, tail);
-    return new OvtNode(dir, genesisState, ticks, incr, tickResults, eventLog);
+    // Tail-seek path (PR-1.3-A): a valid snapshot lets recovery read+parse ONLY the WAL tail
+    // [wal_offset, end) — O(state + tail), not O(history). loadLatestValidSnapshot skips checksum-bad
+    // snapshots (Rule 1) and hard-aborts on an ahead-of-WAL one (wal_offset > walSize, Rule 3).
+    const snap = loadLatestValidSnapshot(dir, walSize);
+    if (snap && offsetOnBoundary(p.wal, Number(snap.wal_offset))) {
+      const tail = parseWalLines(readWalRange(p.wal, Number(snap.wal_offset), walSize));
+      const { incr, tickResults, eventLog } = foldBlocks(snap.incr, tail);
+      return new OvtNode(dir, genesisState, Number(snap.covered_tick) + tail.length, incr, tickResults, eventLog);
+    }
+    // No usable snapshot (none, or wal_offset off a line boundary ⇒ discard per Rule 1): full re-fold
+    // of the whole committed WAL from genesis — the O(history) baseline, always correct.
+    const blocks = parseWalLines(walSize > 0 ? fs.readFileSync(p.wal, "utf8") : "");
+    const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, blocks);
+    return new OvtNode(dir, genesisState, blocks.length, incr, tickResults, eventLog);
   }
 
   /** Submit a tick's worth of submissions: durably WAL it (write-ahead), then apply it INCREMENTALLY
    *  to the carried live state. Work is O(submissions in this tick) — NOT O(history): no re-fold. */
   submit(submissions: readonly Submission[]): TickResult {
-    const tick = BigInt(this.ticks.length);
+    const tick = BigInt(this.committedTicks);
     const block: WalTick = { tick, submissions };
     appendLineDurable(OvtNode.paths(this.dir).wal, enc(block)); // durable BEFORE applied
-    this.ticks.push(block);
+    this.committedTicks += 1;
     const step = applyTick(this.liveIncr, block as TickBlock); // O(tick), composes the frozen validator+reducer
     this.liveIncr = step.next;
     this.tickResults.push(step.tickResult);
@@ -174,12 +215,14 @@ export class OvtNode {
     return step.tickResult;
   }
 
-  /** Persist the current live state as a snapshot (atomic publish; retain ≥`keep`). `covered_tick` =
-   *  the count of committed WAL ticks folded in (tail replay on the next open starts at this index).
-   *  Off the commit path: the WAL is already durable, so this only accelerates a future recovery and
-   *  can never lose data (Rule 1). Returns the published snapshot file path. */
+  /** Persist the current live state as a snapshot (atomic publish; retain ≥`keep`). Records `covered_tick`
+   *  = committed tick count, and `wal_offset` = current WAL byte size — the tail-seek point, so the next
+   *  open() reads only the bytes appended after this snapshot. Off the commit path: the WAL is already
+   *  durable, so this only accelerates a future recovery and can never lose data (Rule 1). Returns the
+   *  published snapshot file path. */
   snapshot(keep = 2): string {
-    const file = writeSnapshotFile(this.dir, makeSnapshotBody(this.liveIncr, BigInt(this.ticks.length)));
+    const walOffset = BigInt(fs.existsSync(OvtNode.paths(this.dir).wal) ? fs.statSync(OvtNode.paths(this.dir).wal).size : 0);
+    const file = writeSnapshotFile(this.dir, makeSnapshotBody(this.liveIncr, BigInt(this.committedTicks), walOffset));
     pruneSnapshots(this.dir, keep);
     return file;
   }
@@ -205,13 +248,13 @@ export class OvtNode {
     };
   }
   tickCount(): number {
-    return this.ticks.length;
+    return this.committedTicks;
   }
 
   private writeHead(): void {
     fs.writeFileSync(
       OvtNode.paths(this.dir).head,
-      JSON.stringify({ tickCount: this.ticks.length, finalStateRoot: this.stateRoot(), eventLogRoot: this.eventLogRoot() }, null, 2),
+      JSON.stringify({ tickCount: this.committedTicks, finalStateRoot: this.stateRoot(), eventLogRoot: this.eventLogRoot() }, null, 2),
     );
   }
 }
