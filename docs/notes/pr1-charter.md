@@ -63,6 +63,25 @@ the root *values* are correct; this is operational cost.)
 **Leverage:** PR-1.1 (daemon) is the one structural piece that unlocks the three deferred tails at
 once — **daemon → checkpointing (1.2) → H3.5-live (1.8)** — so it is the highest-ROI first step.
 
+### PR-1.1a — DONE (2026-06-07): daemon skeleton + first operational profile
+
+`orchestrator/src/node/pr1-daemon.ts` (`Pr1Daemon`) wraps `OvtNode` with the lifecycle
+`BOOTING→RECOVERING→CATCHING_UP→RUNNING→SHUTTING_DOWN`, a wall-clock tick driver, an async mempool
+(drains ≤1 submission per agent per tick, respecting §6.1 single-in-flight), and `submit/status/
+metrics/shutdown`. No network/RPC/monitoring. Demo `scripts/pr1-daemon-demo.mjs` (4 agents × 12
+rounds); tests `test/pr1-daemon.test.ts` (lifecycle + finalize + recovery), suite 27/27.
+
+**First operational profile (4×12, tick 200 ms):** 48/48 FINALIZED; post-shutdown re-fold == live
+STATE_ROOT (OVT-2 durability holds for the process); shutdown latency ~0 ms; cold recovery 18 ms
+(empty WAL). **The measured finding — the wall PR-1.2 must remove:** per-tick latency climbed to
+**~465 / 812 ms avg/max against a 200 ms interval** because `OvtNode.submit()` re-folds the whole WAL
+from genesis each tick (O(n)/tick). Once per-tick work exceeds the interval (~tick 40), the synchronous
+handler blocks the event loop and tick drift blows out to **~11 s**. So the daemon is a real process,
+but steady-state runtime is O(n²) cumulatively — confirming that PR-1.2 needs **maintained live state
+(incremental O(1) apply)** for runtime, *in addition to* snapshot+tail-replay for cold recovery. This
+is exactly "observe the new layer before optimizing": the optimization target is now measured, not
+forecast. Re-run: `cd orchestrator && node --import tsx scripts/pr1-daemon-demo.mjs`.
+
 ## Definition of done (PR-1 complete when all hold)
 
 1. The node runs as a continuous **process** (clock ticks + mempool + async intake), not a batch fold.
