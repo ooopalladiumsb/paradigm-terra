@@ -128,13 +128,47 @@ prefix-snapshot scenarios reworked to real `node.snapshot()`-at-prefix so `wal_o
 crash matrix's ahead-of-WAL row is now byte-level. **Next: PR-1.3-B** — measure `per_tick_recovery_cost`
 + `snapshot_load`, derive cadence N for T_SLA = 60 s, ship a profiler + an SLA guard test.
 
+### PR-1.3-B — DONE (2026-06-07): cost model validated, cadence derived, SLA guarded
+
+**B1 — cost model validated** (`scripts/pr1-3-recovery-profile.mjs`). `T_recovery ≈ snapshot_load +
+tail × per_tick`:
+- `per_tick_recovery ≈ 11.6 → 16 ms/tick` (tail 300→1200). The dominant cost is the tail **replay**
+  (full validate+reduce, STATE_ROOT recomputed per event) — **not** parsing. It creeps up with tail
+  length (in-memory tail accumulation ⇒ GC), and grows sharply with **state size** (STATE_ROOT is
+  O(state), the OVT-SG dimension): ~16 ms/tick at 1 agent vs **~195 ms/tick at 200 agents**. A key
+  consequence: because the WAL stores *submissions* (not derived events), recovery must re-run the
+  pipeline, so the cadence is ~thousands of ticks, not millions — and the daemon must re-derive (tighten)
+  the cadence as the agent set grows (at 200 agents N_operational drops to ~140).
+- `snapshot_load ≈ 2.3 ms`, flat across history (5.1/0.8/0.8 ms at 300/600/1200) — confirms it is
+  f(state), not f(tail).
+
+**B2 — cadence derived** (`src/node/recovery-sla.ts`). Reference constants (conservative):
+`per_tick = 18 ms`, `snapshot_load = 10 ms`, `margin = 5 s`, `SAFETY_FACTOR = 2`.
+```
+N_max         = (60000 − 10 − 5000) / 18           ≈ 3055 ticks
+N_operational = N_max / 2                           ≈ 1527 ticks   ⇐ OPERATIONAL_CADENCE_TICKS
+predicted recovery @ tail = N_operational ≈ 10 + 1527×18 + 5000 ≈ 32.5 s  ≤ 60 s ✓
+```
+`OvtNode.maybeSnapshot(N)` snapshots when `snapshotDue` — the per-tick call the daemon makes (PR-1.1b);
+keeping the cadence bounds the worst-case recovery tail to N.
+
+**B3 — SLA guard** (`test/recovery-sla.test.ts`), asserting the **model**, never wall-clock (CI-stable):
+- *mechanism*: running cadence N ⇒ the recovered tail is ≤ N at any crash point (+ root == full);
+- *budget*: the shipped cadence's predicted worst-case recovery ≤ the SLA under the reference constants;
+- *model fns*: `maxTailForSla` / `operationalCadence` / `predictedRecoveryMs` / `snapshotDue` correct.
+
+Suite 57/57, typecheck clean. **The recovery/readiness line is now a closed chain:** snapshot protocol
+→ tail-seek recovery → validated cost model → cadence policy → 60 s SLA. **PR-1.3 is closed.** Next:
+**PR-1.1b** (daemon crash/restart) can now use the real criterion *restart ∧ recovery ≤ SLA*, wiring
+`maybeSnapshot` into the tick loop.
+
 ## Risk-map position
 
 ```
 Runtime Scalability   ✅ (1.2b)
 Recovery Equivalence  ✅ (1.2c-B)
 Crash Safety          ✅ (1.2c-C)
-Cold Recovery TIME    ◀ PR-1.3 (correctness done; this bounds the latency to an SLA)
+Cold Recovery TIME    ✅ (1.3-A tail-seek + 1.3-B cadence/SLA = 60s)  ⇒ PR-1.3 closed; next PR-1.1b (restart ∧ recovery ≤ SLA)
 ```
 
 ## Related

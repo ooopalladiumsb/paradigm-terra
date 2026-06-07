@@ -36,6 +36,7 @@ import {
 } from "../index.js";
 import { makeSnapshotBody } from "./snapshot.js";
 import { loadLatestValidSnapshot, pruneSnapshots, writeSnapshotFile } from "./snapshot-store.js";
+import { OPERATIONAL_CADENCE_TICKS, snapshotDue } from "./recovery-sla.js";
 
 type State = NonNullable<Program["genesisState"]>;
 
@@ -225,6 +226,13 @@ export class OvtNode {
     const file = writeSnapshotFile(this.dir, makeSnapshotBody(this.liveIncr, BigInt(this.committedTicks), walOffset));
     pruneSnapshots(this.dir, keep);
     return file;
+  }
+
+  /** Snapshot iff one is due at the current committed-tick count for cadence `everyNTicks` (PR-1.3-B
+   *  SLA policy). The daemon calls this each tick (PR-1.1b); keeping the cadence bounds the worst-case
+   *  recovery tail to `everyNTicks`. Returns the published file path, or null when not due. */
+  maybeSnapshot(everyNTicks: number = OPERATIONAL_CADENCE_TICKS, keep = 2): string | null {
+    return snapshotDue(this.committedTicks, everyNTicks) ? this.snapshot(keep) : null;
   }
 
   stateRoot(): string {
