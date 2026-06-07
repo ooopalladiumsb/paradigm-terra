@@ -10,6 +10,7 @@
 
 import { OvtNode, type RecoveryMode } from "./persistent-node.js";
 import { OPERATIONAL_CADENCE_TICKS } from "./recovery-sla.js";
+import { estimatedRecoveryBudgetMs, Window, type MetricsReport } from "./metrics.js";
 import type { Submission, Program } from "../index.js";
 
 type State = NonNullable<Program["genesisState"]>;
@@ -54,6 +55,8 @@ export class Pr1Daemon {
   private startedAt = 0;
   private nextFireAt = 0;
   private m = { committedTicks: 0, idleTicks: 0, totalSubmissions: 0, maxMempoolDepth: 0, recoveryLatencyMs: 0, shutdownLatencyMs: 0, tickLatSum: 0, tickLatN: 0, tickLatMax: 0, driftMax: 0, snapshotsTaken: 0 };
+  // PR-1.4 class-C performance windows (bounded; observational only).
+  private win = { tickDur: new Window(), tickDrift: new Window(), submitLat: new Window(), snapDur: new Window() };
 
   constructor(private readonly opts: { dir: string; genesisState: State; tickIntervalMs: number; snapshotCadence?: number }) {}
 
@@ -85,9 +88,11 @@ export class Pr1Daemon {
   /** Async intake: enqueue a submission (mempool). Accepted only while live. */
   submit(s: Submission): void {
     if (this.state !== "RUNNING" && this.state !== "CATCHING_UP") throw new Error(`not accepting submissions in ${this.state}`);
+    const t0 = performance.now();
     this.mempool.push(s);
     this.m.totalSubmissions++;
     if (this.mempool.length > this.m.maxMempoolDepth) this.m.maxMempoolDepth = this.mempool.length;
+    this.win.submitLat.add(performance.now() - t0);
   }
 
   /** One scheduler fire: drift, then drain ≤1 submission per agent (respecting §6.1 single-in-flight)
@@ -96,6 +101,7 @@ export class Pr1Daemon {
     if (this.state !== "RUNNING") return;
     const now = Date.now();
     const drift = Math.abs(now - this.nextFireAt);
+    this.win.tickDrift.add(drift);
     if (drift > this.m.driftMax) this.m.driftMax = drift;
     this.nextFireAt += this.opts.tickIntervalMs;
 
@@ -103,10 +109,12 @@ export class Pr1Daemon {
     if (batch.length === 0) { this.m.idleTicks++; return; }
     const t0 = performance.now();
     this.node.submit(batch); // durable WAL + incremental applyTick (O(tick))
-    if (this.node.maybeSnapshot(this.cadence)) this.m.snapshotsTaken++; // SLA cadence (PR-1.3-B)
-    const lat = performance.now() - t0;
+    const tickMs = performance.now() - t0;
+    this.win.tickDur.add(tickMs);
+    const s0 = performance.now();
+    if (this.node.maybeSnapshot(this.cadence)) { this.m.snapshotsTaken++; this.win.snapDur.add(performance.now() - s0); } // SLA cadence (PR-1.3-B)
     this.m.committedTicks++;
-    this.m.tickLatN++; this.m.tickLatSum += lat; if (lat > this.m.tickLatMax) this.m.tickLatMax = lat;
+    this.m.tickLatN++; this.m.tickLatSum += tickMs; if (tickMs > this.m.tickLatMax) this.m.tickLatMax = tickMs;
   }
 
   private drainOnePerAgent(): Submission[] {
@@ -179,6 +187,23 @@ export class Pr1Daemon {
       recoveryMode: this.node?.recoveryMode() ?? "FRESH",
       recoveredTailTicks: this.node?.recoveredTailTicks() ?? 0,
       lastStateRoot: this.node?.stateRoot() ?? "",
+    };
+  }
+
+  /** PR-1.4 metrics surface: observation (A correctness-adjacent + B capacity) + performance (C) + the
+   *  live recovery budget. Purely observational — reading it mutates nothing and affects no root. */
+  metricsReport(): MetricsReport {
+    const observation = this.node.observe();
+    return {
+      observation,
+      performance: {
+        tickDurationMs: this.win.tickDur.stat(),
+        tickDriftMs: this.win.tickDrift.stat(),
+        submitLatencyMs: this.win.submitLat.stat(),
+        snapshotDurationMs: this.win.snapDur.stat(),
+        recoveryDurationMs: this.m.recoveryLatencyMs,
+      },
+      estimatedRecoveryBudgetMs: estimatedRecoveryBudgetMs(observation.tailTicksSinceSnapshot),
     };
   }
 }

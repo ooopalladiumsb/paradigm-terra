@@ -35,7 +35,7 @@ import {
   type Transcript,
 } from "../index.js";
 import { makeSnapshotBody } from "./snapshot.js";
-import { loadLatestValidSnapshot, pruneSnapshots, writeSnapshotFile } from "./snapshot-store.js";
+import { listSnapshots, loadLatestValidSnapshot, pruneSnapshots, writeSnapshotFile } from "./snapshot-store.js";
 import { OPERATIONAL_CADENCE_TICKS, snapshotDue } from "./recovery-sla.js";
 
 type State = NonNullable<Program["genesisState"]>;
@@ -137,6 +137,25 @@ function offsetOnBoundary(walPath: string, offset: number): boolean {
  *  FRESH = built empty / batch; FULL_REPLAY = recovered by re-folding the whole WAL; SNAPSHOT_TAIL =
  *  recovered via snapshot + WAL tail (the fast path whose use PR-1.1b Gate 2 asserts). */
 export type RecoveryMode = "FRESH" | "FULL_REPLAY" | "SNAPSHOT_TAIL";
+
+/** A read-only observation of the node (PR-1.4 metrics). PURELY OBSERVATIONAL — computed from live
+ *  state + disk, mutates nothing, and never feeds back into consensus / recovery / publication
+ *  ("metrics are observers, never authorities"). Correctness-adjacent (A) + capacity (B) classes. */
+export interface NodeObservation {
+  // A — correctness-adjacent (diagnostics, not alerts):
+  readonly stateRoot: string;
+  readonly globalRoot: string;
+  readonly eventCount: number;
+  readonly currentTick: bigint;
+  readonly recoveryMode: RecoveryMode;
+  readonly recoveredTailTicks: number;
+  // B — capacity (where the known risks live):
+  readonly committedTicks: number;
+  readonly stateAgentCount: number;
+  readonly walSizeBytes: number;
+  readonly snapshotCount: number;
+  readonly tailTicksSinceSnapshot: number; // the control parameter of the Recovery SLA (PR-1.3)
+}
 
 export class OvtNode {
   private constructor(
@@ -275,6 +294,28 @@ export class OvtNode {
   /** WAL tail ticks replayed during recovery — the quantity the SLA budget is a function of. */
   recoveredTailTicks(): number {
     return this.recoveredTail;
+  }
+
+  /** A read-only metrics observation (PR-1.4). Computes A/B-class values from live state + disk; mutates
+   *  nothing. Observers only — no value here is ever an authority for recovery/consensus/publication. */
+  observe(): NodeObservation {
+    const agents = (this.liveIncr.state as unknown as { registry?: { agents?: Record<string, unknown> } }).registry?.agents;
+    const walPath = OvtNode.paths(this.dir).wal;
+    const snaps = listSnapshots(this.dir);
+    const newestCovered = snaps.length > 0 ? Number(snaps[0]!.coveredTick) : 0;
+    return {
+      stateRoot: incrementalStateRoot(this.liveIncr),
+      globalRoot: incrementalGlobalRoot(this.liveIncr),
+      eventCount: this.liveIncr.eventCount,
+      currentTick: this.liveIncr.currentTick,
+      recoveryMode: this.recoveredVia,
+      recoveredTailTicks: this.recoveredTail,
+      committedTicks: this.committedTicks,
+      stateAgentCount: agents ? Object.keys(agents).length : 0,
+      walSizeBytes: fs.existsSync(walPath) ? fs.statSync(walPath).size : 0,
+      snapshotCount: snaps.length,
+      tailTicksSinceSnapshot: this.committedTicks - newestCovered,
+    };
   }
 
   private writeHead(): void {
