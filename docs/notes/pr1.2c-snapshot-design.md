@@ -184,11 +184,41 @@ a corrupted snapshot is skipped and the full WAL still recovers; ≥2 retention.
 clean; daemon demo + profile unregressed. **Next: PR-1.2c-C** (crash matrix — the six rows + the
 forbidden-state assertion, generalising OVT-2's crash→replay test).
 
+### PR-1.2c-C — DONE (2026-06-07): crash matrix → PR-1.2c closed
+
+Crash safety of the publication protocol, framed as the central invariant: after any admissible crash
+point, `open()` either recovers state == `full_replay(committed WAL)` **or** deterministically refuses
+(`SnapshotCorruptionError`) — never starts with a wrong state. `test/snapshot-crash-matrix.test.ts`
+simulates each crash point as the exact on-disk state it would leave and runs `open()` against it:
+
+| Row | Crash point | Outcome asserted |
+|---|---|---|
+| 1 | before any snapshot | full re-fold == full_replay |
+| 2 | mid snapshot write (partial `.tmp`) | `.tmp` ignored → full re-fold |
+| 3 | after fsync(tmp), before rename (complete `.tmp`) | unpublished `.tmp` never used → full re-fold |
+| 4 | after rename, before next WAL append (C==T) | restore(C) + empty tail |
+| 5 | after WAL append+fsync, before next snapshot (C<T) | restore(C) + replay tail |
+| 6 | mid WAL append (torn line) | drop torn line → recover committed prefix (± snapshot) |
+| — | forbidden: snapshot newer than WAL | hard abort (SnapshotCorruptionError) |
+| — | operational: latest snapshot corrupt, previous valid | roll back to previous + replay tail |
+
+8/8 green. The two extra rows beyond the six are the forbidden-state assertion (branch 3 unreachable)
+and the requested operational negative-control for `loadLatestValidSnapshot` (real-world fs
+degradation, not a crash). Suite 52/52, typecheck clean.
+
+**PR-1.2c is closed.** Cold Recovery now has a proven mechanism (A: codec), proven equivalence (B:
+restore+tail == full at every cut), and proven crash safety (C). The remaining cold-recovery work is
+no longer correctness but cost — the **PR-1.3 recovery SLA** (snapshot cadence tuned so the tail
+re-fold stays ≪ SLA at ≥1M CALs) — and **PR-1.1b** wires daemon crash/restart against this final
+pipeline. Work shifts from recovery correctness to SLA / monitoring / long-run operation (PR-1.3+).
+
 ## Risk-map position (after this stage)
 
 ```
 Freeze Surface       ✅      Publication Layer    ✅      Integration Reality  ✅
-Runtime Scalability  ✅ (PR-1.2b)                 Cold Recovery        ◀ PR-1.2c closes
+Runtime Scalability  ✅ (PR-1.2b)
+Recovery Equivalence ✅ (PR-1.2c-B)
+Crash Safety         ✅ (PR-1.2c-C)   ⇒ Cold Recovery correctness CLOSED; remaining work is SLA (PR-1.3)
 ```
 
 ## Related
