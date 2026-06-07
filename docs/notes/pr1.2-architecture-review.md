@@ -98,6 +98,36 @@ PR-1.1b  daemon crash/restart           — wired against the FINAL recovery pip
                                           not an intermediate one (why 1.1b moved after 1.2).
 ```
 
+### PR-1.2b — DONE (2026-06-07): incremental live state, the O(n)/tick wall removed
+
+`run()`'s per-tick body is extracted into a pure `applyTick(incr, block) → { next, tickResult,
+events }` (`orchestrator/src/node.ts`); `run()` is now its left fold (single source of fold logic, no
+duplication). The carried `IncrementalState = { state, currentTick, eventCount, lastEventHash }` makes
+the CE §6.3 `(eventCount, lastEventHash)` ride in the **same** result that produced `state` —
+`globalMerkleRoot` is rebuilt from those scalars, not from a full log array, so no daemon-side counter
+can drift (the §2 concern). `OvtNode.submit()` advances the carried live state by one tick via
+`applyTick` instead of `run(allTicks)` — the O(n)/tick re-fold is gone from the hot path; full re-folds
+survive only in `open()` (cold recovery) and `bulkCreate()` (batch).
+
+**Gate 1 (equivalence, the central post-freeze invariant) ✅** — `test/incremental-equivalence.test.ts`
+over the whole OVT corpus (golden classes + a synthetic long program), with two non-tautological
+oracles: carried-scalar global root == root recomputed from the materialised log; and split/resume
+through `structuredClone(incr)` == whole-program batch. A negative control (inject a carry bug) trips
+the right subtests. NORMATIVE golden + replay-determinism unchanged (`golden-vectors.test.ts` green).
+
+**Gate 2 (wired path) ✅** — `test/incremental-node.test.ts`: a node built via `submit()` == one built
+via `bulkCreate()` == `run()` byte-for-byte; plus a flat-marginal-cost sentinel against re-fold
+regression.
+
+**Gate 3 (curve shape) ✅** — `scripts/pr1-2-profile.mjs`: per-submit latency ≈ const across
+50→400 ticks (growth ×1.46, fsync jitter, not algorithmic). Re-running the PR-1.1a 4×12 daemon profile:
+tick latency avg/max **88 / 114 ms** (was ~465 / 812) and max drift **71 ms** (was ~11 s). Cold
+recovery is still O(history) (~7.9 s / 400 ticks here) — the remaining wall PR-1.2c closes with
+snapshots. Re-run: `node --import tsx scripts/pr1-2-profile.mjs`.
+
+Suite 32/32, typecheck clean. **Next: PR-1.2c** (snapshot + tail replay) builds on this proven
+`IncrementalState` (already shown serialisable by the Gate-1 split/resume test).
+
 ## The risk this closes
 
 After PP#2 + H3.5 the dominant unknown is no longer model correctness but:

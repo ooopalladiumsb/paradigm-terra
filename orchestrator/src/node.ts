@@ -124,26 +124,80 @@ function currentTickOf(state: State): bigint {
  * CE §6.3 global Merkle root. v0.1.0 models the node as one canonical stream
  * (`"global"`) over its single reducer State; the constitution's fixed multi-stream
  * list (CE §6.2) drops in here later by emitting one leaf per stream.
+ *
+ * Built from the *carried* cumulative `(eventCount, lastEventHash)` rather than from a
+ * full event-log array: `lastSeqno = eventCount` (= log length) and `lastEventHash =
+ * eventHash(last event)`, so it is identical to the old `globalMerkleRoot(state, log)`
+ * but needs no O(history) log on the hot path. These two scalars are produced by the
+ * SAME `applyTick` that produced the State (single source of truth — see PR-1.2a §2).
  */
-function globalMerkleRoot(state: State, log: readonly Event[]): string {
-  const last = log[log.length - 1];
+function globalMerkleRoot(state: State, eventCount: number, lastEventHash: Uint8Array): string {
   const leaf: StreamLeaf = {
     streamId: "global",
     stateHash: stateRootOf(state),
-    lastEventHash: last ? eventHash(last) : ZERO32,
-    lastSeqno: BigInt(log.length),
+    lastEventHash: eventCount === 0 ? ZERO32 : lastEventHash,
+    lastSeqno: BigInt(eventCount),
   };
   return hex(streamTreeRoot([leaf]));
 }
 
-/** Run a program to a transcript. Throws OrchestratorError on a tick regression or
- *  on a validator-emitted event the reducer rejects (an integration defect). */
-export function run(program: Program): Transcript {
-  const genesisState: State = program.genesisState ?? genesis();
-  let state: State = genesisState;
-  const log: Event[] = [];
-  const ticks: TickResult[] = [];
-  let currentTick = currentTickOf(state);
+/**
+ * The node's maintained live state (PR-1.2a §2). `run()` is the fold of `applyTick` over
+ * this accumulator; the OVT daemon carries the same value across ticks so steady-state
+ * runtime is O(submissions in the tick), NOT O(history). It carries everything the next
+ * tick needs and nothing derivable cheaply from `state`:
+ *   - `state`          the evolving reducer State (STATE_ROOT is a pure function of it);
+ *   - `currentTick`    the node's authoritative tick (non-decreasing);
+ *   - `eventCount`     cumulative event-log length (CE §6.3 `lastSeqno`);
+ *   - `lastEventHash`  eventHash of the most recent event (CE §6.3 `lastEventHash`).
+ * `eventCount`/`lastEventHash` ride here — not as daemon-side counters — so the global
+ * Merkle root can never disagree with the State that produced it.
+ */
+export interface IncrementalState {
+  readonly state: State;
+  readonly currentTick: bigint;
+  readonly eventCount: number;
+  readonly lastEventHash: Uint8Array;
+}
+
+/** The fresh accumulator for a genesis state — the start point of the `applyTick` fold. */
+export function initIncremental(genesisState?: State): IncrementalState {
+  const g = genesisState ?? genesis();
+  return { state: g, currentTick: currentTickOf(g), eventCount: 0, lastEventHash: ZERO32 };
+}
+
+/** STATE_ROOT (hex) of a live accumulator, without materialising a transcript. */
+export function incrementalStateRoot(incr: IncrementalState): string {
+  return hex(stateRootOf(incr.state));
+}
+
+/** The CE §6.3 global Merkle root (hex) of a live accumulator. */
+export function incrementalGlobalRoot(incr: IncrementalState): string {
+  return globalMerkleRoot(incr.state, incr.eventCount, incr.lastEventHash);
+}
+
+export interface TickStep {
+  /** The accumulator AFTER this tick — feed it to the next `applyTick`. */
+  readonly next: IncrementalState;
+  /** The per-tick result (identical shape to a `Transcript` tick). */
+  readonly tickResult: TickResult;
+  /** Exactly the events this tick appended to the log, in order (for the derived event log / WAL). */
+  readonly events: readonly Event[];
+}
+
+/**
+ * Apply one tick block to the live accumulator — the single source of fold logic
+ * (`run()` is its left fold). Composes the FROZEN validator + reducer and adds no
+ * consensus (PR-1.2a discipline). Pure: `(incr, block) -> { next, tickResult, events }`,
+ * mutating nothing the caller holds. Throws OrchestratorError on a tick regression or on
+ * a validator-emitted event the reducer rejects (an integration defect) — same as before.
+ */
+export function applyTick(incr: IncrementalState, block: TickBlock): TickStep {
+  let state: State = incr.state;
+  let currentTick = incr.currentTick;
+  let eventCount = incr.eventCount;
+  let lastEventHash = incr.lastEventHash;
+  const events: Event[] = [];
 
   const fold = (ev: Event, onErr: (code: string) => void): boolean => {
     const r = apply(state, ev);
@@ -152,117 +206,136 @@ export function run(program: Program): Transcript {
       return false;
     }
     state = r.state;
-    log.push(ev);
+    events.push(ev);
+    eventCount += 1;
+    lastEventHash = eventHash(ev);
     return true;
   };
 
-  for (const block of program.ticks) {
-    if (block.tick < currentTick) {
-      throw new OrchestratorError("TICK_REGRESSION", `block tick ${block.tick} < current ${currentTick}`);
-    }
-    if (block.tick > currentTick) {
-      const adv: Event = { event_type: "tick.advanced", new_tick: block.tick };
-      fold(adv, (code) => {
-        throw new OrchestratorError("TICK_REJECTED", code);
-      });
-      currentTick = block.tick;
-    }
+  if (block.tick < currentTick) {
+    throw new OrchestratorError("TICK_REGRESSION", `block tick ${block.tick} < current ${currentTick}`);
+  }
+  if (block.tick > currentTick) {
+    const adv: Event = { event_type: "tick.advanced", new_tick: block.tick };
+    fold(adv, (code) => {
+      throw new OrchestratorError("TICK_REJECTED", code);
+    });
+    currentTick = block.tick;
+  }
 
-    const subs: SubmissionResult[] = [];
-    for (const sub of block.submissions) {
-      const calHashHex = hex(calHash(sub.cal));
-      const agentId = strField(sub.cal, "agent_id");
-      const events: Event[] = [];
-      const stateRoots: string[] = [];
-      const record = (ev: Event): void => {
-        events.push(ev);
-        stateRoots.push(hex(stateRootOf(state)));
-      };
+  const subs: SubmissionResult[] = [];
+  for (const sub of block.submissions) {
+    const calHashHex = hex(calHash(sub.cal));
+    const agentId = strField(sub.cal, "agent_id");
+    const subEvents: Event[] = [];
+    const stateRoots: string[] = [];
+    const record = (ev: Event): void => {
+      subEvents.push(ev);
+      stateRoots.push(hex(stateRootOf(state)));
+    };
 
-      const mode = sub.mode ?? "atomic";
+    const mode = sub.mode ?? "atomic";
 
-      // resume (Gate #3): the CAL is already in-flight at VALIDATED (left there by an
-      // earlier-tick validate-only). No ingress events; drive it to terminal. At a tick
-      // past expiration_tick this yields EXPIRED_POST.
-      if (mode === "resume") {
-        const trace: ExecutionTrace = { ...sub.trace, currentTick };
-        const res = resumeFromValidated(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
-        for (const evV of res.events) {
-          const ev = evV as unknown as Event;
-          fold(ev, (code) => {
-            throw new OrchestratorError("APPLY_FAILED", `${res.terminalStage} resume event ${String(ev["event_type"])} rejected: ${code}`);
-          });
-          record(ev);
-        }
-        subs.push({ calHash: calHashHex, agentId, terminalStage: res.terminalStage, reasonCode: res.reasonCode, events, stateRoots });
-        continue;
-      }
-
-      // Ingress: cal.created then cal.signed. The reducer enforces §6.1
-      // (one in-flight CAL per agent → AGENT_BUSY) and CAL uniqueness here.
-      let ingressError: { code: string } | undefined;
-      const created: Event = { event_type: "cal.created", cal_hash: calHashHex, agent_id: agentId };
-      if (!fold(created, (code) => { ingressError = { code }; })) {
-        subs.push({ calHash: calHashHex, agentId, terminalStage: null, reasonCode: null, events, stateRoots, ingressError });
-        continue;
-      }
-      record(created);
-      const signed: Event = { event_type: "cal.signed", cal_hash: calHashHex };
-      if (!fold(signed, (code) => { ingressError = { code }; })) {
-        subs.push({ calHash: calHashHex, agentId, terminalStage: null, reasonCode: null, events, stateRoots, ingressError });
-        continue;
-      }
-      record(signed);
-
-      // Validate against the live State, then fold the lifecycle events it emits.
-      // The node is authoritative on the tick: pin trace.currentTick to its own
-      // currentTick so a submission cannot misreport the tick and dodge expiration.
+    // resume (Gate #3): the CAL is already in-flight at VALIDATED (left there by an
+    // earlier-tick validate-only). No ingress events; drive it to terminal. At a tick
+    // past expiration_tick this yields EXPIRED_POST.
+    if (mode === "resume") {
       const trace: ExecutionTrace = { ...sub.trace, currentTick };
-
-      // validate-only (Gate #3): stage 1 — leave the CAL in-flight at VALIDATED (or surface a
-      // pre-validation failure as terminal). No execution/finalization this tick.
-      if (mode === "validate-only") {
-        const s1 = validateToValidated(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
-        const evs = s1.terminal ? s1.terminal.events : s1.events;
-        for (const evV of evs) {
-          const ev = evV as unknown as Event;
-          fold(ev, (code) => {
-            throw new OrchestratorError("APPLY_FAILED", `validate-only event ${String(ev["event_type"])} rejected: ${code}`);
-          });
-          record(ev);
-        }
-        // terminalStage null = staged-pending (CAL in-flight at VALIDATED, not yet terminal).
-        subs.push({ calHash: calHashHex, agentId, terminalStage: s1.terminal ? s1.terminal.terminalStage : null, reasonCode: s1.terminal ? s1.terminal.reasonCode : null, events, stateRoots });
-        continue;
-      }
-
-      const res = validate(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
+      const res = resumeFromValidated(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
       for (const evV of res.events) {
         const ev = evV as unknown as Event;
         fold(ev, (code) => {
-          throw new OrchestratorError("APPLY_FAILED", `${res.terminalStage} event ${String(ev["event_type"])} rejected: ${code}`);
+          throw new OrchestratorError("APPLY_FAILED", `${res.terminalStage} resume event ${String(ev["event_type"])} rejected: ${code}`);
         });
         record(ev);
       }
-      subs.push({
-        calHash: calHashHex,
-        agentId,
-        terminalStage: res.terminalStage,
-        reasonCode: res.reasonCode,
-        events,
-        stateRoots,
-      });
+      subs.push({ calHash: calHashHex, agentId, terminalStage: res.terminalStage, reasonCode: res.reasonCode, events: subEvents, stateRoots });
+      continue;
     }
 
-    ticks.push({
-      tick: currentTick,
-      submissions: subs,
-      stateRoot: hex(stateRootOf(state)),
-      globalMerkleRoot: globalMerkleRoot(state, log),
+    // Ingress: cal.created then cal.signed. The reducer enforces §6.1
+    // (one in-flight CAL per agent → AGENT_BUSY) and CAL uniqueness here.
+    let ingressError: { code: string } | undefined;
+    const created: Event = { event_type: "cal.created", cal_hash: calHashHex, agent_id: agentId };
+    if (!fold(created, (code) => { ingressError = { code }; })) {
+      subs.push({ calHash: calHashHex, agentId, terminalStage: null, reasonCode: null, events: subEvents, stateRoots, ingressError });
+      continue;
+    }
+    record(created);
+    const signed: Event = { event_type: "cal.signed", cal_hash: calHashHex };
+    if (!fold(signed, (code) => { ingressError = { code }; })) {
+      subs.push({ calHash: calHashHex, agentId, terminalStage: null, reasonCode: null, events: subEvents, stateRoots, ingressError });
+      continue;
+    }
+    record(signed);
+
+    // Validate against the live State, then fold the lifecycle events it emits.
+    // The node is authoritative on the tick: pin trace.currentTick to its own
+    // currentTick so a submission cannot misreport the tick and dodge expiration.
+    const trace: ExecutionTrace = { ...sub.trace, currentTick };
+
+    // validate-only (Gate #3): stage 1 — leave the CAL in-flight at VALIDATED (or surface a
+    // pre-validation failure as terminal). No execution/finalization this tick.
+    if (mode === "validate-only") {
+      const s1 = validateToValidated(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
+      const evs = s1.terminal ? s1.terminal.events : s1.events;
+      for (const evV of evs) {
+        const ev = evV as unknown as Event;
+        fold(ev, (code) => {
+          throw new OrchestratorError("APPLY_FAILED", `validate-only event ${String(ev["event_type"])} rejected: ${code}`);
+        });
+        record(ev);
+      }
+      // terminalStage null = staged-pending (CAL in-flight at VALIDATED, not yet terminal).
+      subs.push({ calHash: calHashHex, agentId, terminalStage: s1.terminal ? s1.terminal.terminalStage : null, reasonCode: s1.terminal ? s1.terminal.reasonCode : null, events: subEvents, stateRoots });
+      continue;
+    }
+
+    const res = validate(sub.cal as VJson, calHashHex, state as unknown as VJson, trace);
+    for (const evV of res.events) {
+      const ev = evV as unknown as Event;
+      fold(ev, (code) => {
+        throw new OrchestratorError("APPLY_FAILED", `${res.terminalStage} event ${String(ev["event_type"])} rejected: ${code}`);
+      });
+      record(ev);
+    }
+    subs.push({
+      calHash: calHashHex,
+      agentId,
+      terminalStage: res.terminalStage,
+      reasonCode: res.reasonCode,
+      events: subEvents,
+      stateRoots,
     });
   }
 
-  return { genesisState, ticks, eventLog: log, finalStateRoot: hex(stateRootOf(state)) };
+  const tickResult: TickResult = {
+    tick: currentTick,
+    submissions: subs,
+    stateRoot: hex(stateRootOf(state)),
+    globalMerkleRoot: globalMerkleRoot(state, eventCount, lastEventHash),
+  };
+  return { next: { state, currentTick, eventCount, lastEventHash }, tickResult, events };
+}
+
+/** Run a program to a transcript — the left fold of `applyTick` over the program's ticks
+ *  (the single fold logic lives in `applyTick`; this only accumulates). Throws
+ *  OrchestratorError on a tick regression or on a validator-emitted event the reducer
+ *  rejects (an integration defect). */
+export function run(program: Program): Transcript {
+  const genesisState: State = program.genesisState ?? genesis();
+  let incr = initIncremental(genesisState);
+  const ticks: TickResult[] = [];
+  const log: Event[] = [];
+
+  for (const block of program.ticks) {
+    const step = applyTick(incr, block);
+    incr = step.next;
+    ticks.push(step.tickResult);
+    for (const ev of step.events) log.push(ev);
+  }
+
+  return { genesisState, ticks, eventLog: log, finalStateRoot: hex(stateRootOf(incr.state)) };
 }
 
 export interface ReplayResult {

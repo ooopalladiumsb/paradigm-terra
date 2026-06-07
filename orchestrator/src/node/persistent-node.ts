@@ -1,20 +1,37 @@
 // OVT-2 — persistent node: the orchestrator fold as a PROCESS, not a function.
 //
-// Agent-runtime / operations layer, ABOVE the Freeze Surface — it reuses the proven `run()` fold
-// unchanged and only adds durability + recovery around it. The durable write-ahead log (WAL) is the
-// ordered submission stream (the inputs); recovery re-folds the WAL from genesis. The event log is
-// derived output (reproducible via `replay()`), so the inputs are the source of truth.
+// Agent-runtime / operations layer, ABOVE the Freeze Surface — it composes the proven `applyTick`
+// fold unchanged and only adds durability + recovery around it. The durable write-ahead log (WAL) is
+// the ordered submission stream (the inputs); recovery re-folds the WAL from genesis. The event log is
+// derived output, so the inputs are the source of truth.
 //
-// Durability model: one NDJSON line per committed tick, fsync'd before the tick is applied
-// in-memory (write-ahead). A crash mid-write tears only the trailing line; on restart the loader
-// keeps the parseable prefix (the committed ticks) and drops the torn tail — so recovery yields the
-// STATE_ROOT as of the last durably-committed tick. OVT-2 hypotheses: H2.1 (process: submit +
-// tick advance), H2.2 (persist), H2.3 (replay recovery), H2.4 (crash recovery), H2.5 (deterministic
-// re-fold).
+// PR-1.2b: the node now MAINTAINS live state. `submit()` advances a carried `IncrementalState` by one
+// tick via `applyTick` (work = O(submissions in the tick)), instead of re-folding the whole WAL from
+// genesis every tick (the old O(n)/tick wall the PR-1.1a profile measured). Full re-folds survive only
+// where they belong: `open()` (cold recovery — one O(history) fold at boot, until PR-1.2c snapshots
+// shorten it) and `bulkCreate()` (one-shot batch build). The carried (eventCount, lastEventHash) ride
+// inside IncrementalState — the same source of truth as STATE_ROOT — so no daemon-side counter can drift.
+//
+// Durability model: one NDJSON line per committed tick, fsync'd before the tick is applied in-memory
+// (write-ahead). A crash mid-write tears only the trailing line; on restart the loader keeps the
+// parseable prefix (the committed ticks) and drops the torn tail — so recovery yields the STATE_ROOT
+// as of the last durably-committed tick. OVT-2 hypotheses: H2.1 (process: submit + tick advance),
+// H2.2 (persist), H2.3 (replay recovery), H2.4 (crash recovery), H2.5 (deterministic re-fold).
 
 import fs from "node:fs";
 import path from "node:path";
-import { run, type Program, type Submission, type TickResult, type Transcript } from "../index.js";
+import {
+  applyTick,
+  incrementalStateRoot,
+  initIncremental,
+  type Event,
+  type IncrementalState,
+  type Program,
+  type Submission,
+  type TickBlock,
+  type TickResult,
+  type Transcript,
+} from "../index.js";
 
 type State = NonNullable<Program["genesisState"]>;
 
@@ -43,12 +60,34 @@ function appendLineDurable(file: string, line: string): void {
   }
 }
 
+/** Fold a list of committed tick blocks from genesis — the O(history) path (boot recovery / batch
+ *  build only, NOT the per-tick hot path). Returns the maintained live state the node carries. */
+function foldFromGenesis(genesisState: State, blocks: readonly WalTick[]): {
+  incr: IncrementalState;
+  tickResults: TickResult[];
+  eventLog: Event[];
+} {
+  let incr = initIncremental(genesisState);
+  const tickResults: TickResult[] = [];
+  const eventLog: Event[] = [];
+  for (const b of blocks) {
+    const step = applyTick(incr, b as TickBlock);
+    incr = step.next;
+    tickResults.push(step.tickResult);
+    for (const e of step.events) eventLog.push(e);
+  }
+  return { incr, tickResults, eventLog };
+}
+
 export class OvtNode {
   private constructor(
     private readonly dir: string,
     private readonly genesisState: State,
     private ticks: WalTick[],
-    private transcript: Transcript,
+    // PR-1.2b maintained live state (carried across ticks — never re-derived on the hot path):
+    private liveIncr: IncrementalState,
+    private tickResults: TickResult[],
+    private eventLogArr: Event[],
   ) {}
 
   private static paths(dir: string) {
@@ -61,7 +100,8 @@ export class OvtNode {
     const p = OvtNode.paths(dir);
     fs.writeFileSync(p.genesis, enc(genesisState));
     fs.writeFileSync(p.wal, "");
-    const node = new OvtNode(dir, genesisState, [], run({ genesisState, ticks: [] }));
+    const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, []);
+    const node = new OvtNode(dir, genesisState, [], incr, tickResults, eventLog);
     node.writeHead();
     return node;
   }
@@ -74,12 +114,14 @@ export class OvtNode {
     fs.writeFileSync(p.genesis, enc(genesisState));
     fs.writeFileSync(p.wal, tickBlocks.map((b) => enc(b)).join("\n") + (tickBlocks.length ? "\n" : ""));
     const ticks = tickBlocks.slice();
-    const node = new OvtNode(dir, genesisState, ticks, run({ genesisState, ticks }));
+    const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, ticks);
+    const node = new OvtNode(dir, genesisState, ticks, incr, tickResults, eventLog);
     node.writeHead();
     return node;
   }
 
-  /** Recover a node from disk: re-fold the committed WAL prefix from genesis (the headline path). */
+  /** Recover a node from disk: re-fold the committed WAL prefix from genesis (the cold-recovery path —
+   *  one O(history) fold at boot; PR-1.2c snapshots shorten it to snapshot + tail). */
   static open(dir: string): OvtNode {
     const p = OvtNode.paths(dir);
     const genesisState = dec(fs.readFileSync(p.genesis, "utf8")) as State;
@@ -96,33 +138,42 @@ export class OvtNode {
       }
       ticks.push(blk);
     }
-    const transcript = run({ genesisState, ticks });
-    return new OvtNode(dir, genesisState, ticks, transcript);
+    const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, ticks);
+    return new OvtNode(dir, genesisState, ticks, incr, tickResults, eventLog);
   }
 
-  /** Submit a tick's worth of submissions: durably WAL it (write-ahead), then apply (re-fold). */
+  /** Submit a tick's worth of submissions: durably WAL it (write-ahead), then apply it INCREMENTALLY
+   *  to the carried live state. Work is O(submissions in this tick) — NOT O(history): no re-fold. */
   submit(submissions: readonly Submission[]): TickResult {
     const tick = BigInt(this.ticks.length);
     const block: WalTick = { tick, submissions };
     appendLineDurable(OvtNode.paths(this.dir).wal, enc(block)); // durable BEFORE applied
     this.ticks.push(block);
-    this.transcript = run({ genesisState: this.genesisState, ticks: this.ticks });
+    const step = applyTick(this.liveIncr, block as TickBlock); // O(tick), composes the frozen validator+reducer
+    this.liveIncr = step.next;
+    this.tickResults.push(step.tickResult);
+    for (const e of step.events) this.eventLogArr.push(e);
     this.writeHead();
-    return this.transcript.ticks[this.transcript.ticks.length - 1]!;
+    return step.tickResult;
   }
 
   stateRoot(): string {
-    return this.transcript.finalStateRoot;
+    return incrementalStateRoot(this.liveIncr);
   }
   /** Cumulative event-log Merkle root (CE §6.3) as of the latest tick. */
   eventLogRoot(): string {
-    return this.ticks.length === 0 ? "" : this.transcript.ticks[this.transcript.ticks.length - 1]!.globalMerkleRoot;
+    return this.tickResults.length === 0 ? "" : this.tickResults[this.tickResults.length - 1]!.globalMerkleRoot;
   }
   eventLog(): Transcript["eventLog"] {
-    return this.transcript.eventLog;
+    return this.eventLogArr;
   }
   getTranscript(): Transcript {
-    return this.transcript;
+    return {
+      genesisState: this.genesisState,
+      ticks: this.tickResults,
+      eventLog: this.eventLogArr,
+      finalStateRoot: incrementalStateRoot(this.liveIncr),
+    };
   }
   tickCount(): number {
     return this.ticks.length;

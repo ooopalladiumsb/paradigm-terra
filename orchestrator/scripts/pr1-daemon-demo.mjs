@@ -73,9 +73,9 @@ console.log(`  uptime                : ${m.uptimeMs} ms`);
 console.log(`  committed ticks       : ${m.committedTicks}  (idle ticks: ${m.idleTicks})`);
 console.log(`  total submissions     : ${m.totalSubmissions}  → finalized ${finalized}, other ${other}`);
 console.log(`  max mempool depth     : ${m.maxMempoolDepth}`);
-console.log(`  tick latency avg/max  : ${m.tickLatencyMsAvg.toFixed(1)} / ${m.tickLatencyMsMax.toFixed(1)} ms  (grows with history — O(n) re-fold; PR-1.2 target)`);
+console.log(`  tick latency avg/max  : ${m.tickLatencyMsAvg.toFixed(1)} / ${m.tickLatencyMsMax.toFixed(1)} ms  (flat — PR-1.2b incremental applyTick; the O(n)/tick re-fold is gone)`);
 console.log(`  max tick drift        : ${m.tickDriftMsMax} ms`);
-console.log(`  cold recovery latency : ${m.recoveryLatencyMs.toFixed(1)} ms  (empty WAL here; ~2h/1M at scale — PR-1.2)`);
+console.log(`  cold recovery latency : ${m.recoveryLatencyMs.toFixed(1)} ms  (empty WAL here; full re-fold still O(history) — PR-1.2c snapshot target)`);
 console.log(`  shutdown latency      : ${m.shutdownLatencyMs.toFixed(1)} ms`);
 console.log(`  post-shutdown recover : root ${rootMatch ? "MATCHES" : "DIVERGES"} live (OVT-2 durability)`);
 
