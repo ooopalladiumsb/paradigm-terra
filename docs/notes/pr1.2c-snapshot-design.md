@@ -65,14 +65,16 @@ For any committed WAL:
 full_replay(WAL)  ==  restore(snapshot) + replay_tail(WAL after covered_tick)
 ```
 
-byte-for-byte on **all four** carried quantities — a partial match is a defect:
+byte-for-byte on **all five** carried/positional quantities — a partial match is a defect:
 
 ```
-STATE_ROOT        global_merkle_root        eventCount        lastEventHash
+STATE_ROOT   global_merkle_root   eventCount   lastEventHash   covered_tick
 ```
 
 (STATE_ROOT alone is insufficient: the PR-1.2b negative control showed `STATE_ROOT` can match while
-`lastEventHash` diverges. All four, or it fails.) This generalises OVT-2's `crash → replay → same
+`lastEventHash` diverges. All five, or it fails. `covered_tick` is included because two recoveries can
+reach the same state through a different snapshot cut-point; the check costs ~nothing and pins the
+cut-point too.) This generalises OVT-2's `crash → replay → same
 STATE_ROOT` to the snapshot path; it is the guard that the accelerator introduces **zero** divergence.
 The PR-1.2c-B test asserts it over the OVT corpus at every possible `covered_tick` split (the snapshot
 analogue of PR-1.2b's split/resume).
@@ -101,6 +103,13 @@ rename is atomic, so a crash never publishes a partial or ahead-of-WAL snapshot.
 otherwise it is dropped (Rule 1). Retain **≥ 2** snapshots so an unreadable latest falls back to the
 previous; if none is valid, the full WAL re-fold always recovers.
 
+**Hard abort, not self-heal.** A *checksum-valid* snapshot whose `covered_tick > last committed WAL
+tick` is not a "drop and pick an older source" case — it is a violation of the write model itself
+(Rule 3's invariant was broken on the write path). Load **must** raise a corruption error and stop, not
+attempt recovery. (A checksum *failure* is the discardable case → fall back per Rule 1; a checksum-valid
+ahead-of-WAL snapshot is the fatal case → abort.) This keeps a broken write-ordering bug loud instead of
+silently masking it with a stale state.
+
 ---
 
 ## Crash matrix (the PR-1.2c-C test — the readiness gate of 1.2c)
@@ -127,8 +136,8 @@ a published snapshot with covered_tick > last committed WAL tick   (snapshot new
 
 ```
 PR-1.2c-A  Snapshot format      — serialise/deserialise IncrementalState (incl. lastEventHash bytes)
-                                   + envelope {version, covered_tick, roots, checksum}; round-trip test
-                                   (decode∘encode == identity on all four carried quantities).
+                                   + envelope {version, covered_tick, roots, checksum}. NO replay, NO
+                                   recovery, NO daemon change — prove the storage artifact alone.
 PR-1.2c-B  Tail replay          — restore(snapshot)+replay_tail == full_replay over the OVT corpus at
                                    every covered_tick split (Rule 2, byte-for-byte). Wire OvtNode.open()
                                    to take the snapshot path when a valid snapshot exists; cadence
@@ -136,6 +145,19 @@ PR-1.2c-B  Tail replay          — restore(snapshot)+replay_tail == full_replay
 PR-1.2c-C  Crash matrix         — the six rows above, each asserting recovery == full_replay, plus the
                                    forbidden-state assertion. Generalises OVT-2's crash→replay test.
 ```
+
+### Gate A — the storage artifact, proven in isolation
+
+The only claim PR-1.2c-A makes (no replay, no recovery, no daemon):
+
+```
+decode(encode(x)) == x      for x = { state, currentTick, eventCount, lastEventHash }
+```
+
+with **`lastEventHash` compared byte-for-byte**, not semantically — this is the exact false-positive the
+memory-only `structuredClone` round-trip in PR-1.2b could not catch (`STATE_ROOT` + `eventCount` match
+while `lastEventHash` is silently corrupted by a JSON pass). Plus: `checksum(encode(x))` verifies, and a
+tampered byte fails the checksum. Codec covers both `bigint` (`$bigint`) and `Uint8Array` (`$bytes` hex).
 
 Then **PR-1.3** pins the recovery SLA (target re-fold of the tail ≪ SLA at ≥1M CALs), and **PR-1.1b**
 wires daemon crash/restart against this FINAL recovery pipeline (snapshot+tail), not an intermediate
