@@ -163,6 +163,27 @@ Then **PR-1.3** pins the recovery SLA (target re-fold of the tail ≪ SLA at ≥
 wires daemon crash/restart against this FINAL recovery pipeline (snapshot+tail), not an intermediate
 one — which is why 1.1b sits after 1.2c.
 
+### PR-1.2c-B — DONE (2026-06-07): restore + tail replay
+
+`OvtNode.open()` is snapshot-aware: `loadLatestValidSnapshot` returns the newest checksum-valid
+snapshot at or below the committed WAL (skipping checksum-bad ones — Rule 1) or **hard-aborts** on a
+checksum-valid ahead-of-WAL snapshot (Rule 3); recovery then `restore(snapshot) + replay_tail(WAL after
+covered_tick)` via the same `applyTick`. The fold loop is generalised to `foldBlocks(startIncr, blocks)`
+(genesis start = full re-fold; snapshot start = tail) — single fold logic. `OvtNode.snapshot()` publishes
+atomically (TMP → fsync → rename) and retains ≥2 (`snapshot-store.ts`). A snapshot persists only `incr`,
+so a snapshot-recovered node's in-memory transcript is the tail only — the authoritative roots come from
+`liveIncr`, which also fixed `eventLogRoot()` to derive from the live state (single source) rather than
+the last tick result.
+
+**Gate B ✅** — `test/recovery-equivalence.test.ts`: `restore(snapshot@k) + tail == full_replay` for
+every cut-point (0, 1, mid, last-1, final) across the OVT corpus, byte-for-byte on all five quantities
+(STATE_ROOT, GLOBAL_ROOT, EVENT_COUNT, LAST_EVENT_HASH, COVERED_TICK), each cut round-tripped through
+the real codec. `test/snapshot-recovery.test.ts` (fs): recovery uses snapshot+tail not a full re-fold;
+a prefix snapshot replays the remaining tail to the same roots; ahead-of-WAL → `SnapshotCorruptionError`;
+a corrupted snapshot is skipped and the full WAL still recovers; ≥2 retention. Suite 44/44, typecheck
+clean; daemon demo + profile unregressed. **Next: PR-1.2c-C** (crash matrix — the six rows + the
+forbidden-state assertion, generalising OVT-2's crash→replay test).
+
 ## Risk-map position (after this stage)
 
 ```

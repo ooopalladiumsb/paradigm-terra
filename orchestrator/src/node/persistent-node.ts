@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   applyTick,
+  incrementalGlobalRoot,
   incrementalStateRoot,
   initIncremental,
   type Event,
@@ -32,6 +33,8 @@ import {
   type TickResult,
   type Transcript,
 } from "../index.js";
+import { makeSnapshotBody } from "./snapshot.js";
+import { loadLatestValidSnapshot, pruneSnapshots, writeSnapshotFile } from "./snapshot-store.js";
 
 type State = NonNullable<Program["genesisState"]>;
 
@@ -60,14 +63,17 @@ function appendLineDurable(file: string, line: string): void {
   }
 }
 
-/** Fold a list of committed tick blocks from genesis — the O(history) path (boot recovery / batch
- *  build only, NOT the per-tick hot path). Returns the maintained live state the node carries. */
-function foldFromGenesis(genesisState: State, blocks: readonly WalTick[]): {
+/** Fold a list of tick blocks onto a starting live state via the proven `applyTick` (single fold
+ *  logic). Used by the O(history) full re-fold (start = genesis) AND by snapshot recovery (start =
+ *  the snapshot's IncrementalState, blocks = the WAL tail). The returned tickResults / eventLog cover
+ *  only the folded `blocks` — on the snapshot path that is the tail, by design (the historical log is
+ *  not rematerialised; the authoritative roots live in `incr`). */
+function foldBlocks(startIncr: IncrementalState, blocks: readonly WalTick[]): {
   incr: IncrementalState;
   tickResults: TickResult[];
   eventLog: Event[];
 } {
-  let incr = initIncremental(genesisState);
+  let incr = startIncr;
   const tickResults: TickResult[] = [];
   const eventLog: Event[] = [];
   for (const b of blocks) {
@@ -78,6 +84,8 @@ function foldFromGenesis(genesisState: State, blocks: readonly WalTick[]): {
   }
   return { incr, tickResults, eventLog };
 }
+
+const foldFromGenesis = (genesisState: State, blocks: readonly WalTick[]) => foldBlocks(initIncremental(genesisState), blocks);
 
 export class OvtNode {
   private constructor(
@@ -120,8 +128,11 @@ export class OvtNode {
     return node;
   }
 
-  /** Recover a node from disk: re-fold the committed WAL prefix from genesis (the cold-recovery path —
-   *  one O(history) fold at boot; PR-1.2c snapshots shorten it to snapshot + tail). */
+  /** Recover a node from disk. Cold-recovery path: if a valid snapshot exists, restore from it and
+   *  replay only the WAL tail (PR-1.2c-B); otherwise re-fold the whole committed WAL from genesis
+   *  (the O(history) baseline, always correct). Either way `liveIncr` is authoritative — the snapshot
+   *  is a discardable accelerator (Rule 1). Throws SnapshotCorruptionError on an ahead-of-WAL snapshot
+   *  (a write-model violation — hard abort, never self-heal). */
   static open(dir: string): OvtNode {
     const p = OvtNode.paths(dir);
     const genesisState = dec(fs.readFileSync(p.genesis, "utf8")) as State;
@@ -138,7 +149,13 @@ export class OvtNode {
       }
       ticks.push(blk);
     }
-    const { incr, tickResults, eventLog } = foldFromGenesis(genesisState, ticks);
+
+    // snapshot path: restore(snapshot) + replay_tail(WAL after covered_tick). loadLatestValidSnapshot
+    // skips checksum-bad snapshots (Rule 1) and hard-aborts on an ahead-of-WAL one (Rule 3).
+    const snap = loadLatestValidSnapshot(dir, ticks.length);
+    const start = snap ? snap.incr : initIncremental(genesisState);
+    const tail = snap ? ticks.slice(Number(snap.covered_tick)) : ticks;
+    const { incr, tickResults, eventLog } = foldBlocks(start, tail);
     return new OvtNode(dir, genesisState, ticks, incr, tickResults, eventLog);
   }
 
@@ -157,12 +174,24 @@ export class OvtNode {
     return step.tickResult;
   }
 
+  /** Persist the current live state as a snapshot (atomic publish; retain ≥`keep`). `covered_tick` =
+   *  the count of committed WAL ticks folded in (tail replay on the next open starts at this index).
+   *  Off the commit path: the WAL is already durable, so this only accelerates a future recovery and
+   *  can never lose data (Rule 1). Returns the published snapshot file path. */
+  snapshot(keep = 2): string {
+    const file = writeSnapshotFile(this.dir, makeSnapshotBody(this.liveIncr, BigInt(this.ticks.length)));
+    pruneSnapshots(this.dir, keep);
+    return file;
+  }
+
   stateRoot(): string {
     return incrementalStateRoot(this.liveIncr);
   }
-  /** Cumulative event-log Merkle root (CE §6.3) as of the latest tick. */
+  /** Cumulative event-log Merkle root (CE §6.3) as of the latest tick — derived from the carried live
+   *  state (single source of truth), so it is correct after a snapshot recovery whose in-memory tail is
+   *  empty. "" only when no events have ever been committed (eventCount 0). */
   eventLogRoot(): string {
-    return this.tickResults.length === 0 ? "" : this.tickResults[this.tickResults.length - 1]!.globalMerkleRoot;
+    return this.liveIncr.eventCount === 0 ? "" : incrementalGlobalRoot(this.liveIncr);
   }
   eventLog(): Transcript["eventLog"] {
     return this.eventLogArr;
