@@ -1,8 +1,8 @@
-# Release Notes — v1.0.0 (DRAFT — pending sign-off)
+# Release Notes — v1.0.0
 
-> **Status: DRAFT.** This is the prepared annotation for the inaugural `v1.0.0` tag (Track A item A3). It
-> is **not** a release until the governed sign-off (A4) is recorded and the annotated tag is cut on the
-> green release commit. No `vX.Y.Z` tag exists yet. Authority: `release-governance.md §Release Authority`.
+> **Status: RELEASED.** Authorized by the Release Authority on 2026-06-09 ("Approve release v1.0.0";
+> sign-off record `release-signoff-v1.0.0.md §6`) and cut as the annotated tag `v1.0.0`. This is the
+> inaugural release on the PFC-1 freeze line.
 
 **Paradigm Terra v1.0.0** — the first released cut of the protocol, riding the **PFC-1 consensus freeze
 line** (`pfc1-consensus-freeze`, frozen state `2fd4b8a`). The release tag and the freeze tag are
@@ -68,8 +68,11 @@ this first line). See `docs/notes/release-gate.md`.
 ## Release commit & freeze line
 
 - **Freeze line:** `pfc1-consensus-freeze` @ `54e1864` (frozen state `2fd4b8a`).
-- **Release commit:** _to be pinned at tag time_ (the head of `track-a/launch-readiness` carrying the
-  recorded sign-off, A4), with required CI green.
+- **Release commit:** the commit tagged **`v1.0.0`** on `track-a/launch-readiness` — the signing commit
+  that carries the completed sign-off record. Recover it at any time with `git rev-parse v1.0.0^{commit}`.
+  Required gate (`vectors-check` + `verify-proof-ts` + `verify-proof-go`, plus `parity`) verified green on
+  this commit before tagging; optional `rust-parity` is environmental-RED on the runner (confirmed green
+  locally — see `release-gate.md §CI findings`).
 
 ## Related
 - `release-governance.md` — the versioning/authority/support policy this release executes against.

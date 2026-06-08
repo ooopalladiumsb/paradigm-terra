@@ -5,16 +5,21 @@ All notable changes to Paradigm Terra are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) under the policy in
 [`docs/notes/release-governance.md`](docs/notes/release-governance.md).
 
-**No `vX.Y.Z` release has been cut yet.** The first launch-ready cut will be the inaugural `v1.0.0`,
-riding the PFC-1 freeze line (see Track A — Launch Readiness). The freeze tag (`pfcN-consensus-freeze`)
-and the release tag (`vX.Y.Z`) are distinct: the freeze tag marks *what was proven*, the release tag
-marks *what was shipped on top of it*.
+**Current release: `v1.0.0`** (2026-06-09) — the inaugural cut, riding the PFC-1 freeze line. The freeze
+tag (`pfcN-consensus-freeze`) and the release tag (`vX.Y.Z`) are distinct: the freeze tag marks *what was
+proven*, the release tag marks *what was shipped on top of it*.
 
 ## [Unreleased]
 
-Work above the Freeze Surface, on the path to the inaugural `v1.0.0`. None of this alters frozen
-consensus; the `freeze-gate` (`vectors-check` + `verify-proof-ts` + `verify-proof-go`) stays green
-throughout.
+_Nothing yet — the next change above the Freeze Surface starts here._
+
+## [1.0.0] — 2026-06-09
+
+The **inaugural release** on the PFC-1 freeze line (`pfc1-consensus-freeze`, frozen state `2fd4b8a`).
+Authorized by the Release Authority on 2026-06-09 — decision "Approve release v1.0.0"
+(`docs/notes/release-signoff-v1.0.0.md`); notes `docs/notes/release-notes-v1.0.0.md`. Everything below is
+above the Freeze Surface; the `freeze-gate` (`vectors-check` + `verify-proof-ts` + `verify-proof-go`)
+stayed green throughout, so the frozen consensus core is byte-identical to the freeze line.
 
 ### Added — Track A (Launch Readiness)
 - **Release Governance** (`docs/notes/release-governance.md`) — SemVer policy, freeze lines,
@@ -60,4 +65,5 @@ Go, and across the entire Operational Validation Track (OVT-1/2/3 + griefing) **
 was found**. Inventory: `docs/spec/freeze-manifest-pfc1.md`; ruling: `docs/notes/pfc1-status-review.md §0`.
 This is a freeze of the consensus core — **not** a statement of mainnet / launch / product readiness.
 
-[Unreleased]: https://github.com/ooopalladiumsb/paradigm-terra/compare/pfc1-consensus-freeze...HEAD
+[Unreleased]: https://github.com/ooopalladiumsb/paradigm-terra/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ooopalladiumsb/paradigm-terra/compare/pfc1-consensus-freeze...v1.0.0

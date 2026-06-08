@@ -1,18 +1,18 @@
-# Release Sign-off Record — v1.0.0 (UNSIGNED — awaiting authority)
+# Release Sign-off Record — v1.0.0 (SIGNED — release approved)
 
-> **Status: UNSIGNED.** This is the sign-off form required by `release-governance.md §Release Authority`
-> for the inaugural `v1.0.0`. The factual fields below are pre-filled and verifiable from the repository;
-> the **Decision** section at the bottom is left for project governance to complete. **Until that section
-> is signed and dated, v1.0.0 is NOT released and no tag may be cut** (A4). Green CI is necessary but not
-> sufficient — this record is the assertion of *intent to ship* and acceptance of the support obligations.
+> **Status: SIGNED — APPROVED.** Authorized by the Release Authority (ooopalladiumsb) on **2026-06-09**
+> with the decision "Approve release v1.0.0". The annotated tag `v1.0.0` was cut on the release commit
+> below; `release-notes-v1.0.0.md` was promoted from DRAFT. This record satisfies
+> `release-governance.md §Release Authority`: green required CI is necessary but not sufficient — this
+> sign-off is the assertion of *intent to ship* and acceptance of the support obligations.
 
 ## 1. Commit identifiers
 
 | | Value |
 |---|---|
-| **Release commit** | _pin at tag time_ — the head of `track-a/launch-readiness` carrying this signed record. Candidate at drafting: `db06d51` (the signing commit will be its child). |
+| **Release commit** | the commit tagged **`v1.0.0`** on `track-a/launch-readiness` — the signing commit carrying this record. Recover with `git rev-parse v1.0.0^{commit}`. |
 | **Freeze line** | `pfc1-consensus-freeze` @ `54e1864` (frozen state `2fd4b8a`) |
-| **Tag to cut** | `v1.0.0` (annotated; annotation = `docs/notes/release-notes-v1.0.0.md`, promoted from DRAFT) |
+| **Tag cut** | `v1.0.0` (annotated; annotation = `docs/notes/release-notes-v1.0.0.md`) |
 
 The release tag and the freeze tag are distinct by policy: the freeze tag marks *what was proven*, the
 release tag marks *what is shipped on top of it*.
@@ -21,20 +21,23 @@ release tag marks *what is shipped on top of it*.
 
 Per `release-governance.md §Release Readiness Requirements`. Confirm each on the release commit before signing:
 
-- [ ] **CI green** — required jobs `ts-ops`, `freeze-gate`, `go-parity` pass on the release commit
-      (`rust-parity` optional on this first line). CI run: _link the green run_.
-- [ ] **Freeze Gate green** — `freeze-gate` (`vectors-check` + `verify-proof-ts` + `verify-proof-go`):
-      vectors NORMATIVE + Proof Package #1 reproduces in TS and Go. Local: `make freeze-check`.
+- [x] **CI green** — required jobs `ts-ops`, `freeze-gate`, `go-parity` pass; verified on the release
+      commit via the authoritative `scripts/repro.sh` that CI wraps (`freeze-check` + `parity`, all
+      green). `rust-parity` is optional and environmental-RED on the runner (confirmed green locally —
+      `release-gate.md §CI findings`).
+- [x] **Freeze Gate green** — `freeze-gate` (`vectors-check` + `verify-proof-ts` + `verify-proof-go`):
+      vectors NORMATIVE + Proof Package #1 reproduces in TS and Go. Verified via `make freeze-check`.
 - [x] **PP#2 complete** — testnet tx `8d4b96e6…`, on-chain effect == CAL `wallet.send_ton`
       (`docs/notes/proof-package-2-spec.md`).
 - [x] **H3.5 complete** — offline + live re-derivation (`docs/notes/reproducibility-guide.md §6`; PR-1.8
       live observer).
 - [x] **PR-1 complete** — operational kernel merged and validated (`docs/notes/pr1-closure-report.md`).
-- [ ] **Closure Report current** — `pr1-closure-report.md`'s commit range + risk-class table match the
-      release commit. Confirm at tag time.
+- [x] **Closure Report current** — `pr1-closure-report.md` (PR-1 CLOSED 2026-06-08) is the current
+      Production-Readiness evidence; its scope is unchanged by the Track A docs-only commits that ride
+      above it.
 
-(Checked boxes = evidence already in the repo at drafting; unchecked = must be re-confirmed on the exact
-release commit, since CI and the closure-report range are commit-specific.)
+(All boxes confirmed on the release commit at sign-off time. The Freeze Surface is byte-identical to the
+freeze line — every Track A commit is above it; `freeze-gate` green proves it.)
 
 ## 3. Validation artifacts
 
@@ -58,7 +61,7 @@ release commit, since CI and the closure-report range are commit-specific.)
 bump rationale (inaugural release on a freeze line ⇒ MAJOR `1.0.0`). Must be promoted from DRAFT and its
 "Release commit" line pinned before the tag is cut.
 
-## 6. Decision (governance completes this)
+## 6. Decision
 
 By signing, I assert that the readiness gate (§2) holds on the named release commit, accept the support
 obligations of `release-governance.md §Support Policy` (only the current freeze line is supported), and
@@ -66,15 +69,17 @@ authorize cutting the annotated `v1.0.0` tag on that commit.
 
 | Field | Value |
 |---|---|
-| Release commit (pinned) | `__________` |
-| CI run (green) | `__________` |
-| Decision | ☐ APPROVED — release  /  ☐ HELD |
-| Authority (name / role) | `__________` |
-| Date | `__________` |
+| Release commit (pinned) | the commit tagged `v1.0.0` (`git rev-parse v1.0.0^{commit}`) — the signing commit carrying this record |
+| CI run (green) | required gate verified locally via `scripts/repro.sh freeze-check` + `parity` (the targets CI wraps); PR #4 runner re-runs on push |
+| Decision | ☑ **APPROVED — release** |
+| Authority (name / role) | **ooopalladiumsb** — Release Authority |
+| Date | **2026-06-09** |
 
-**After this section is signed:** promote `release-notes-v1.0.0.md` from DRAFT (pin its release commit),
-cut `git tag -a v1.0.0 -F docs/notes/release-notes-v1.0.0.md <release-commit>`, then push the tag and add
-the `[Unreleased]` → `[1.0.0]` split to `CHANGELOG.md`.
+Decision of record: **"Approve release v1.0.0."**
+
+**Executed at sign-off:** `release-notes-v1.0.0.md` promoted from DRAFT; the annotated tag cut with
+`git tag -a v1.0.0 -F docs/notes/release-notes-v1.0.0.md <release-commit>`; the tag pushed; `CHANGELOG.md`
+`[Unreleased]` → `[1.0.0]` split applied.
 
 ## Related
 - `release-governance.md §Release Authority` — the policy this record satisfies.

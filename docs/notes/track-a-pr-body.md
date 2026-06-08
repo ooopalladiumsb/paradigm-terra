@@ -31,17 +31,17 @@ sign-off (`release-governance.md §Release Authority`).
 ## Status
 
 ```text
-Track A status: COMPLETE EXCEPT RELEASE AUTHORITY
+Track A status: COMPLETE — RELEASED v1.0.0 (2026-06-09)
 
 A0 Charter                  ✅  7190955
 A1 Governance               ✅  4bccf36
 A2 Public-facing docs       ✅  9042bd8
-A3 Release Notes (DRAFT)    ✅  db06d51
-A4 Sign-off Template        ✅  18c32e3   (HELD)
+A3 Release Notes            ✅  db06d51  (promoted from DRAFT at sign-off)
+A4 Sign-off + cut           ✅  18c32e3  (SIGNED; tag v1.0.0 cut)
 A5 CI + Release Gate        ✅  5c52ac0 / 8021f18
 
-Release Authorization       ⏸ Pending
-v1.0.0 Tag                  ⏸ Not Cut
+Release Authorization       ✅ Approved — "Approve release v1.0.0" (ooopalladiumsb, 2026-06-09)
+v1.0.0 Tag                  ✅ Cut (annotated, riding pfc1-consensus-freeze)
 ```
 
 ## Artifacts
