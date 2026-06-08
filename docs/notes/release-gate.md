@@ -51,6 +51,20 @@ not by editing CI.
 
 These are defaults to ratify in the full A1 Release Governance doc; they do not affect CI or the runbooks.
 
+## CI findings
+
+**2026-06-08 — first CI run caught a latent test-infra defect (and that is the point).** The very first
+GitHub Actions run reported `ts-ops` RED while `freeze-gate` and `go-parity` were green. The cause was a
+**stale test bench**, not a consensus issue: `cal-reducer/test/roundtrip.test.ts` under-provisioned the
+agent registry (no `operator_pubkey`/`owner_pubkey`, no `operatorSigPresent`), so the frozen validator's
+§8.1/§8.2 capability gate correctly returned `CAPABILITY_DENIED` before the test's intended
+precond/invariant/step paths. **Consensus logic and the Freeze Surface were not changed**; golden
+vectors, `verify-proof-ts`, `verify-proof-go`, PP#2 and H3.5 all remained green throughout. The fix was
+limited to test provisioning (`operator_pubkey`, `owner_pubkey`, `operatorSigPresent`) on the freeze
+line (`[pfc1/test]`), propagated up the stack by merge. After it, all required CI is green. This is the
+intended value of A5: automated re-verification of what was proven by hand surfaced a defect no prior
+(CI-less) process exercised — a useful precedent for future audits.
+
 ## Related
 - `.github/workflows/ci.yml` — the required/optional jobs.
 - `Makefile` / `scripts/repro.sh` — the targets CI calls (`typecheck` added in A5).
