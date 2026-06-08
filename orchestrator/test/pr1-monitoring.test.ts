@@ -41,7 +41,7 @@ async function drive(d: Pr1Daemon, fromCommitted: number, toCommitted: number): 
   assert.equal(d.status().committedTicks, toCommitted);
 }
 const stat = (max = 0) => ({ last: max, avg: max, max, n: 1 });
-const baseObs: NodeObservation = { stateRoot: "0x0", globalRoot: "0x0", eventCount: 0, currentTick: 0n, recoveryMode: "FRESH", recoveredTailTicks: 0, committedTicks: 0, stateAgentCount: 1, walSizeBytes: 0, snapshotCount: 0, tailTicksSinceSnapshot: 0 };
+const baseObs: NodeObservation = { stateRoot: "0x0", globalRoot: "0x0", eventCount: 0, lastEventHash: "0x0", currentTick: 0n, recoveryMode: "FRESH", recoveredTailTicks: 0, committedTicks: 0, stateAgentCount: 1, walSizeBytes: 0, snapshotCount: 0, tailTicksSinceSnapshot: 0 };
 function mkReport(over: { budget?: number; driftMax?: number; obs?: Partial<NodeObservation> }): MetricsReport {
   return {
     observation: { ...baseObs, ...over.obs },

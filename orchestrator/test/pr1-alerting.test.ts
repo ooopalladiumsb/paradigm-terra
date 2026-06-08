@@ -14,7 +14,7 @@ import { AlertManager } from "../src/node/alerting.js";
 import { RECOVERY_SLA_MS } from "../src/node/recovery-sla.js";
 
 const stat = (max = 0) => ({ last: max, avg: max, max, n: 1 });
-const baseObs: NodeObservation = { stateRoot: "0x0", globalRoot: "0x0", eventCount: 0, currentTick: 0n, recoveryMode: "FRESH", recoveredTailTicks: 0, committedTicks: 0, stateAgentCount: 1, walSizeBytes: 0, snapshotCount: 0, tailTicksSinceSnapshot: 0 };
+const baseObs: NodeObservation = { stateRoot: "0x0", globalRoot: "0x0", eventCount: 0, lastEventHash: "0x0", currentTick: 0n, recoveryMode: "FRESH", recoveredTailTicks: 0, committedTicks: 0, stateAgentCount: 1, walSizeBytes: 0, snapshotCount: 0, tailTicksSinceSnapshot: 0 };
 function mkReport(over: { budget?: number; driftMax?: number }): MetricsReport {
   return {
     observation: baseObs,

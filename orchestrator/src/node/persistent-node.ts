@@ -21,6 +21,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { toHex } from "@paradigm-terra/canonical";
 import {
   applyTick,
   incrementalGlobalRoot,
@@ -146,6 +147,7 @@ export interface NodeObservation {
   readonly stateRoot: string;
   readonly globalRoot: string;
   readonly eventCount: number;
+  readonly lastEventHash: string; // 0x-hex of the carried lastEventHash (CE §6.3); 0x00..00 at genesis
   readonly currentTick: bigint;
   readonly recoveryMode: RecoveryMode;
   readonly recoveredTailTicks: number;
@@ -307,6 +309,7 @@ export class OvtNode {
       stateRoot: incrementalStateRoot(this.liveIncr),
       globalRoot: incrementalGlobalRoot(this.liveIncr),
       eventCount: this.liveIncr.eventCount,
+      lastEventHash: `0x${toHex(this.liveIncr.lastEventHash)}`,
       currentTick: this.liveIncr.currentTick,
       recoveryMode: this.recoveredVia,
       recoveredTailTicks: this.recoveredTail,
