@@ -30,6 +30,9 @@ throughout.
 - **Public front door** — `SECURITY.md` (private disclosure routed to Emergency Response),
   `CONTRIBUTING.md` (the Freeze-Surface vs operational split, the L1→L2→L3→Track A merge stack,
   cross-language parity rules), and this `CHANGELOG.md`.
+- **Release notes for `v1.0.0`** (`docs/notes/release-notes-v1.0.0.md`, **DRAFT**) — the prepared tag
+  annotation: SemVer rationale (inaugural release on a freeze line ⇒ 1.0.0), contents, validation
+  evidence, scope/limits. Pending the governed sign-off before the tag is cut.
 
 ### Added — PR-1 (Production Readiness, CLOSED 2026-06-08)
 - Long-running **daemon** over `OvtNode`: clock-driven ticks, async mempool, lifecycle; incremental
