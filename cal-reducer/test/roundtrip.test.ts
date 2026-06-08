@@ -46,7 +46,7 @@ function snap(opts: { balance?: bigint; nonce?: bigint; scopes?: string[] } = {}
     governance: { gas_price_nano_ptra_per_unit: 1000n, genesis_validator_set: [], params: {} },
     oracles: { feeds: {} },
     ptra: { balances: { [A]: balance } },
-    registry: { agents: { [A]: { granted_scopes: scopes } }, mcp_schema_hash: "0x" + "00".repeat(32) },
+    registry: { agents: { [A]: { granted_scopes: scopes, operator_pubkey: "0x" + "11".repeat(32), owner_pubkey: "0x" + "22".repeat(32) } }, mcp_schema_hash: "0x" + "00".repeat(32) },
     tick: { current: 0n },
     treasury: { nav: 0n, developer_fund_balance: 0n, collected_fees_window: 0n },
   };
@@ -61,6 +61,7 @@ function trace(opts: { steps?: ExecutionTrace["steps"]; before?: Json; after?: J
     steps: opts.steps ?? [{ ok: true, effects: [EFFECT] }],
     stateBefore: opts.before ?? HAPPY_BEFORE,
     stateAfter: opts.after ?? HAPPY_AFTER,
+    operatorSigPresent: true,
     ownerSigPresent: opts.owner ?? false,
   };
 }
