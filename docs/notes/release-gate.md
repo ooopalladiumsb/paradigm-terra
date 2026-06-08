@@ -41,7 +41,11 @@ GitHub Actions (.github/workflows/ci.yml)
 No build/test command is duplicated in the workflow. New gates are added by adding a `repro.sh` target,
 not by editing CI.
 
-## Governance starting position (A1 — to be expanded)
+## Governance (A1 — see `release-governance.md`)
+
+The defaults below are now **ratified and expanded** in `docs/notes/release-governance.md` (versioning,
+freeze lines, freeze-adjacent process, release authority, support, emergency response, auditability).
+This table is the at-a-glance summary; the governance doc is authoritative.
 
 | Question | Starting position |
 |---|---|
@@ -49,7 +53,7 @@ not by editing CI.
 | Freeze-line support | only the **current** freeze line, until the next freeze (`pfcN-consensus-freeze`) supersedes it |
 | Freeze-adjacent changes | only via a **separate governance/review process** — a change to consensus/economics/validator/canonicalization starts its own line + freeze (per `post-freeze-roadmap.md`) |
 
-These are defaults to ratify in the full A1 Release Governance doc; they do not affect CI or the runbooks.
+These do not affect CI or the runbooks; full rationale and obligations are in `release-governance.md`.
 
 ## CI findings
 
