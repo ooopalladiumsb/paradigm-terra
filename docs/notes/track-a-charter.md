@@ -64,9 +64,14 @@ technical readiness; the sign-off asserts intent to ship and accepts the support
 |---|---|---|---|
 | **A1** | **Release Governance** — versioning (SemVer), freeze lines, freeze-adjacent process, release authority, support, emergency response, auditability | ✅ DONE (`4bccf36`) | the *who/under-what* half of the gate |
 | **A5** | **CI + Release Gate** — GitHub Actions as a thin wrapper over `make → repro.sh`; the runnable readiness checklist; the `freeze-gate` job as the mechanical Freeze-Surface discriminator | ✅ DONE (`5c52ac0`, `8021f18`) | the *when-technically-releasable* half of the gate; mechanizes hand-verification |
-| A2 | **Public front door** — root README reflects PR-1-closed + launch posture (not just freeze); add `SECURITY.md` (responsible disclosure routed to §Emergency Response) and `CONTRIBUTING.md` (the merge-stack + freeze-adjacent rules for outside contributors); seed `CHANGELOG.md` at the freeze baseline | ⬜ | a stranger can land, understand status, and know the contribution/disclosure rules |
-| A3 | **Release notes + changelog** — the `v1.0.0` annotated-tag content per §Release Authority (release commit + freeze line it rides, validation-artifact links, SemVer bump rationale); the corresponding `CHANGELOG.md` entry | ⬜ | the auditable *content* of the release |
-| A4 | **Sign-off + cut the tag** — the recorded governance decision (commit ids, PP#2/H3.5/OVT links, closure reports, release notes) **and** the act of cutting the annotated `v1.0.0` tag on the green release commit | ⬜ | the terminal act — the release is *declared*, not merely *ready* |
+| A2 | **Public front door** — root README reflects PR-1-closed + launch posture (not just freeze); add `SECURITY.md` (responsible disclosure routed to §Emergency Response) and `CONTRIBUTING.md` (the merge-stack + freeze-adjacent rules for outside contributors); seed `CHANGELOG.md` at the freeze baseline | ✅ DONE (`9042bd8`) | a stranger can land, understand status, and know the contribution/disclosure rules |
+| A3 | **Release notes + changelog** — the `v1.0.0` annotated-tag content per §Release Authority (release commit + freeze line it rides, validation-artifact links, SemVer bump rationale); the corresponding `CHANGELOG.md` entry | ✅ DRAFT (`db06d51`) | the auditable *content* of the release (promoted from DRAFT at sign-off) |
+| A4 | **Sign-off + cut the tag** — the recorded governance decision (commit ids, PP#2/H3.5/OVT links, closure reports, release notes) **and** the act of cutting the annotated `v1.0.0` tag on the green release commit | 🟡 form prepared, **held** — `release-signoff-v1.0.0.md` awaits authority | the terminal act — the release is *declared*, not merely *ready* |
+
+**A4 is human-gated by design.** Per `release-governance.md §Release Authority` the cut requires an
+explicit recorded sign-off — green CI is necessary, not sufficient. The form (`release-signoff-v1.0.0.md`)
+is prepared with the verifiable fields pre-filled; the Decision section is left for governance. No tag is
+cut until it is signed.
 
 **Why this order (not the label order):** A1 and A5 — the gate's two halves — already exist, so the
 remaining path is front door (A2) → release content (A3) → governed cut (A4). A4 is terminal by
