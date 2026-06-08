@@ -232,6 +232,16 @@ export class OvtNode {
     return new OvtNode(dir, genesisState, blocks.length, incr, tickResults, eventLog, "FULL_REPLAY", blocks.length);
   }
 
+  /** Read the committed program (genesis + WAL tick blocks) from a node directory — a READ-ONLY view of
+   *  the durable inputs, independent of any running node's in-memory state. The basis for an external
+   *  live observer (PR-1.8): re-derive the roots from the inputs and compare to the node's published head. */
+  static readProgram(dir: string): { genesisState: State; ticks: TickBlock[] } {
+    const p = OvtNode.paths(dir);
+    const genesisState = dec(fs.readFileSync(p.genesis, "utf8")) as State;
+    const raw = fs.existsSync(p.wal) ? fs.readFileSync(p.wal, "utf8") : "";
+    return { genesisState, ticks: parseWalLines(raw) as TickBlock[] };
+  }
+
   /** Submit a tick's worth of submissions: durably WAL it (write-ahead), then apply it INCREMENTALLY
    *  to the carried live state. Work is O(submissions in this tick) — NOT O(history): no re-fold. */
   submit(submissions: readonly Submission[]): TickResult {
