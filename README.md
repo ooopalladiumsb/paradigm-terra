@@ -9,6 +9,8 @@ verified reference implementations** of the canonical encoding in three language
 
 > **Consensus Freeze — PFC-1 (ruled 2026-06-06).** The consensus core is **frozen**: canonical encoding, DSL, CAL (skeleton + reducer + gas + validator), orchestrator, MCP schema-hash pin (TS / Rust / Go parity), TON Connect owner-sig ingress, and a TON mainnet economic anchor, all with NORMATIVE golden vectors — and across the entire Operational Validation Track (OVT-1/2/3 + griefing) **no Freeze Surface defect was found**. All known remaining risks are classified as **Integration Reality Risk** or **Production Readiness Risk**; **no known open Freeze Surface risk remains.** This is a freeze of the *consensus core* — **not** a statement of mainnet / launch / product readiness. Freeze Surface changes now go through compatibility review, not free editing. Ruling + rationale: [`docs/notes/pfc1-status-review.md §0`](docs/notes/pfc1-status-review.md); what is frozen: [`docs/spec/freeze-manifest-pfc1.md`](docs/spec/freeze-manifest-pfc1.md); reproduce: [`docs/notes/reproducibility-guide.md`](docs/notes/reproducibility-guide.md). Post-freeze open items are listed below.
 
+> **Production Readiness — PR-1 CLOSED (2026-06-08).** Above the freeze, the consensus kernel is now an operationally validated system: a long-running daemon (incremental apply + `snapshot + tail` recovery within SLA at 1M+ CALs), metrics → monitoring/drift-watch → alerting, verified backup/restore, a live external observer (H3.5-live), and a soak gate with **zero** root drift. Evidence: [`docs/notes/pr1-closure-report.md`](docs/notes/pr1-closure-report.md). The next and final track before a versioned release is **Track A — Launch Readiness** ([`docs/notes/track-a-charter.md`](docs/notes/track-a-charter.md)): release governance, CI/release-gate, and the governed cut of the inaugural `v1.0.0` riding `pfc1-consensus-freeze`. **No `vX.Y.Z` release tag exists yet** — the repository is launch-track, not yet released.
+
 - **Canonical Encoding Specification v1.3** — *Consensus-Freeze* (frozen normative).
 - **Conformance gate: CLEAN** (2026-05-24) — 0 divergences across TS / Rust / Go on
   170k random cases + full single-codepoint and pair-sweep Unicode coverage.
@@ -88,19 +90,23 @@ The freeze ruling and rationale: [`docs/notes/pfc1-status-review.md §0`](docs/n
 ## Post-Freeze open items
 
 Classified **Integration Reality Risk** or **Production Readiness Risk** — none requires a Freeze
-Surface change; none blocked the freeze.
+Surface change; none blocked the freeze. The Production-Readiness cluster is now **CLOSED by PR-1**
+([`docs/notes/pr1-closure-report.md`](docs/notes/pr1-closure-report.md)); resolved items are struck below.
 
-- **PP#2 — testnet validation** (the last falsification opportunity against a live chain).
-- **H3.1 — live W5 integration:** `ir_to_boc` (BoC serialization of the Annex F `InnerRequest`) +
-  `sendTransaction` external + on-chain Registry contract. The CAL→W5 *mapping* is reviewed and the
-  OutList arm implemented offline (`docs/notes/cal-to-w5-mapping-review.md`); the BoC + chain leg is
-  network-gated.
-- **H3.5 — live external observer** reproducing a running node's roots independently (the offline
-  half — reproducing the pinned artifacts — is done; see the reproducibility guide).
-- **OVT-SG — state checkpointing** (cold re-fold is linear but heavy; snapshot+replay is an
-  operational requirement, deferred to the long-running daemon — not a Freeze Surface defect).
-- **Production Readiness track** at large: TEP for the Agentic Wallet SBT, Tolk normative on-chain
-  artifacts, multi-owner (Multisig v2.1) flows, launch-grade daemon, monitoring, deployment surface.
+- **PP#2 — testnet validation** — ✅ **DONE (2026-06-06, ton-testnet):** verdict `A.SUCCESS`, tx
+  `8d4b96e6…`, on-chain effect == CAL `wallet.send_ton` (faithful self / 50000000). The freeze stands;
+  Integration Reality Risk for `send_ton` confirmed live. See `docs/notes/proof-package-2-spec.md`.
+- **H3.1 — live W5 integration:** the CAL→W5 *mapping* is reviewed and the OutList arm implemented, and
+  PP#2-A built + sent the real W5 external message; an on-chain **Registry** contract remains deferred
+  (not needed for the `send_ton` proof). `docs/notes/cal-to-w5-mapping-review.md`.
+- **H3.5 — live external observer** — ✅ **DONE (PR-1.8):** a third party tails a running node's root in
+  real time; the offline half (reproducing pinned artifacts) was already done. `reproducibility-guide.md §6`.
+- **OVT-SG — state checkpointing** — ✅ **DONE (PR-1.2/1.3):** `recover = snapshot + tail replay` within
+  the recovery SLA at 1M+ CALs; the linear cold re-fold is retired for runtime and recovery alike.
+- **Track A — Launch Readiness** — ◀ **current track** ([`docs/notes/track-a-charter.md`](docs/notes/track-a-charter.md)):
+  release governance + CI/release-gate (done) → public front door → release notes → the governed cut of
+  the inaugural `v1.0.0`. Coverage expansion (TEP for the Agentic Wallet SBT, Tolk on-chain artifacts,
+  multi-owner Multisig v2.1, additional verb classes) is a **post-launch** track on its own line.
 
 ## Layout
 
@@ -161,6 +167,16 @@ that file and recompute every vector. All three agree byte-for-byte.
 NFC backends differ by Unicode version (Go `x/text` 15.0 vs TS/Rust 17.0). Conformance
 is preserved by restricting canonical strings to the **Unicode 15.1 assigned set**
 (`sha256(ranges) = 59cb760256e1b8ec76aa6718a574b0e29a263fb37645bed358a137004c56a6d6`).
+
+## Contributing & security
+
+- **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — the one question that decides everything
+  (does your change touch the Freeze Surface?), the `L1 → L2 → L3 → Track A` merge stack, and the
+  cross-language parity rules.
+- **Security / consensus-divergence reports:** [`SECURITY.md`](SECURITY.md) — private disclosure routed
+  into the governed Emergency Response process. Do not open a public issue.
+- **Releases & versioning:** [`docs/notes/release-governance.md`](docs/notes/release-governance.md)
+  (authoritative) and the running [`CHANGELOG.md`](CHANGELOG.md). No `vX.Y.Z` tag exists yet.
 
 ## License
 
