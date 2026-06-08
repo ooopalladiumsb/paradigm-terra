@@ -69,6 +69,19 @@ line (`[pfc1/test]`), propagated up the stack by merge. After it, all required C
 intended value of A5: automated re-verification of what was proven by hand surfaced a defect no prior
 (CI-less) process exercised — a useful precedent for future audits.
 
+**2026-06-09 — `rust-parity` RED on the Track A PR is environmental, not a TS↔Rust regression
+(confirmed).** On the Track A PR (`track-a/launch-readiness`, head `6ad02a0`) the three required jobs
+`ts-ops`, `freeze-gate`, `go-parity` are green; the only red is the **optional** `rust-parity` job. The
+GitHub Actions runner is not provisioned for this repo's Rust build model — `.cargo/config.toml` forces
+a fully self-contained `x86_64-unknown-linux-musl` static build driven by the bundled `rust-lld`
+(`link-self-contained=yes`), because there is no system C toolchain — so the job fails at build/link
+setup, not on a test assertion. Locally, with that toolchain, `scripts/repro.sh parity-rs` is **green
+across all eight crates** (`canonical-rs`, `dsl-rs`, `cal-rs`, `cal-reducer-rs`, `cal-gas-rs`,
+`validator-rs`, `orchestrator-rs`, `tc-v2-verify-rs`) on `6ad02a0` — so the TS == Rust cross-language
+parity holds; the red is purely the runner's build environment. This is exactly why `rust-parity` is
+**optional** on the first freeze line and not a readiness blocker (toolchain tuning); promote it to
+required once the runner reproduces the musl/`rust-lld` build. No Freeze Surface impact.
+
 ## Related
 - `.github/workflows/ci.yml` — the required/optional jobs.
 - `Makefile` / `scripts/repro.sh` — the targets CI calls (`typecheck` added in A5).

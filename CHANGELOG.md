@@ -23,7 +23,9 @@ throughout.
 - **CI + Release Gate** (`.github/workflows/ci.yml`, `docs/notes/release-gate.md`) — GitHub Actions as a
   thin wrapper over `make → scripts/repro.sh`; the runnable readiness checklist; the `freeze-gate` job
   as the mechanical Freeze-Surface discriminator. First CI run caught a stale test bench (test-only fix
-  `e731e07`), recorded as the first CI finding.
+  `e731e07`), recorded as the first CI finding. Second CI finding: the optional `rust-parity` job is RED
+  on the runner for environmental reasons (no musl/`rust-lld` build setup) while local `parity-rs` is
+  green across all eight crates on `6ad02a0` — TS == Rust parity holds; not a blocker.
 - **Track A charter** (`docs/notes/track-a-charter.md`) — scope, stages (A1 governance / A2 front door /
   A3 release notes / A4 sign-off + cut / A5 CI-gate), and the Definition of Done for a *declared*
   release.
