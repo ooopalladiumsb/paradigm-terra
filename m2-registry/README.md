@@ -14,17 +14,20 @@ separate async transaction, so `cal.finalized` means "validated + emitted," not 
 Registry records, per W5 `external_message_hash`, the settlement status the **off-chain reconciler**
 computes.
 
-## Scope — M2-A is **SC-1 only**
+## Scope — M2-A (SC-1) + M2-B (SC-2) landed; M2-C deferred
 
-| In M2-A (this package) | Deferred |
-|---|---|
-| contract **structure** (`contracts/reconciliation_registry.tolk`) | reconciliation **logic** (classify settled/missing/delayed/mismatched) → **M2-B / SC-2** |
-| **reproducible build** (`scripts/build.ts` → `build/registry.compiled.json`) | `CAL → tx/effect → record` correlation → **M2-B / SC-3** |
-| **record schema** (`src/record.ts`, mirrors the on-chain layout) | testnet deploy / network leg → **M2-C** (gated) |
-| **build tests** (`test/build.test.ts` — determinism + round-trip) | |
+| Landed | Stage | Deferred |
+|---|---|---|
+| contract **structure** (`contracts/reconciliation_registry.tolk`) | M2-A · SC-1 | `CAL → tx/effect → record` correlation → **M2-B / SC-3** |
+| **reproducible build** (`scripts/build.ts` → `build/registry.compiled.json`) | M2-A · SC-1 | testnet deploy / network leg → **M2-C** (gated) |
+| **record schema** (`src/record.ts`, mirrors the on-chain layout) | M2-A · SC-1 | |
+| **build tests** (`test/build.test.ts` — determinism + round-trip) | M2-A · SC-1 | |
+| **reconciler / classifier** (`src/reconcile.ts` — settled·missing·delayed·mismatch) | M2-B · SC-2 | |
+| **classifier tests** (`test/reconcile.test.ts` — all four classes + ⊆ widening) | M2-B · SC-2 | |
 
-The contract stores records but contains **no classification logic** — the status is supplied by the
-owner (the off-chain reconciler) via `OP_UPSERT_RECORD`. Verb scope stays strictly `wallet.send_ton`
+The contract stores records but contains **no classification logic** — the status is computed
+**off-chain** by `classify()` (`src/reconcile.ts`, a pure offline function) and supplied by the owner
+(the reconciler) via `OP_UPSERT_RECORD`. Verb scope stays strictly `wallet.send_ton`
 (`V0_1_0_ENCODABLE`); any expansion is **Tier C → PFC-2 → v2.0.0**, out of M2.
 
 ## Reproducible build (SC-1)
