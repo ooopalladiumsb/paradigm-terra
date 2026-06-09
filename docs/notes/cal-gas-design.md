@@ -138,4 +138,19 @@ already pins.
 3. **Conservation** — the gas phase only emits the numbers; verifying the reducer's
    `fee_debited + gas_consumed − refund` books balance end-to-end is a validator-phase
    concern (the reducer is already frozen).
+
+---
+
+## 8. Economic anchor (Patchset C, 2026-05-29)
+
+PTRA-side defaults — `gas_price_nano_ptra_per_unit`, `Flat_Validation_Fee` — are
+governance-decided numbers. They are anchored to TON mainnet workchain prices
+(ConfigParam 20/21/24/25, snapshotted in **CAL Spec Annex §C.5**), not derived
+from them at runtime. The cal-gas reference implementations never query TON
+config; if you want to know "what does this CAL cost in TON-equivalent" the
+answer lives in §C.5.2 (mapping table), not in cal-gas itself.
+
+Open item (§C.3): cross-language CPU ns/op benchmarks remain TBD — they gate
+Conformance Freeze and require a harness that is not yet built. The TON
+economic anchor (§C.5) is orthogonal to those benchmarks.
 ```

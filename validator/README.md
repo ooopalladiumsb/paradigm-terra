@@ -38,10 +38,32 @@ check (§4.4), and Bounded Mode (§10).
 ## Golden vectors & parity
 
 `vectors/golden.json` pins, per scenario, the emitted `event_type` sequence, the
-terminal stage, `reason_code`, the economic event fields, and the full `bill` —
-across the happy FINALIZED path, each reachable reason code, and `EXPIRED`.
-Status **NORMATIVE** — the `validator-rs` (Rust) and `validator-go` (Go) parity
-ports reproduce every value byte-for-byte (120 checks each, verified 2026-05-25).
+terminal stage, `reason_code`, the economic event fields (incl. the §9.4 Tier-2
+`terminal_fee_debited_ptra` spam charge on a pre-VALIDATED `cal.failed`), and the
+full `bill` — across the happy FINALIZED path, each reachable reason code, the
+escrow-shortfall `OUT_OF_GAS`, and `EXPIRED`. Status **NORMATIVE** — the
+`validator-rs` (Rust) and `validator-go` (Go) parity ports reproduce every value
+byte-for-byte (verified 2026-05-26).
+
+## Differential fuzzing
+
+A seeded generator (`fuzz/driver.mjs`) feeds identical random `(cal, snapshot,
+trace)` inputs — biased to exercise every §3.1 gate, especially the §9.4 Tier-2
+pre-VALIDATED spam-charge gates with varied balances — to a harness per language;
+a case **passes** only when TS / Rust / Go emit the byte-identical event sequence,
+terminal stage, reason code, economic event fields, and §9.4 bill.
+
+```
+( cd validator-rs && cargo build --bin fuzz_harness )
+( cd cal-validator-go && go build -o ../validator/fuzz/bin/validator_go_harness ./cmd/fuzzharness )
+node validator/fuzz/driver.mjs --cases 40000 --seed 1
+```
+
+## End-to-end round-trip
+
+`../cal-reducer/test/roundtrip.test.ts` feeds this validator's emitted events
+straight into the frozen reducer and asserts the PTRA it moves matches the §9.4
+`bill` — the integration check that originally exposed the pre-VALIDATED fee gap.
 
 ## License
 

@@ -94,7 +94,7 @@ pub fn apply(state: &JcsValue, ev: &JcsValue) -> Result<JcsValue, ApplyError> {
             let entry = JcsValue::object(vec![
                 ("agent_id", JcsValue::string(agent)),
                 ("stage", JcsValue::string("CREATED")),
-                ("fee_debited_ptra", JcsValue::int_u128(0)),
+                ("escrowed_ptra", JcsValue::int_u128(0)),
                 ("gas_consumed_ptra", JcsValue::int_u128(0)),
                 ("staged", JcsValue::array(vec![])),
             ]);
@@ -115,10 +115,13 @@ pub fn apply(state: &JcsValue, ev: &JcsValue) -> Result<JcsValue, ApplyError> {
                 return Err(err("BAD_STAGE"));
             }
             let agent = h.get("agent_id").and_then(|x| x.as_str()).ok_or_else(|| err("BAD_DELTA"))?.to_string();
-            let fee = req_uint(ev, "fee_debited_ptra")?;
-            let nb = u256_at(state, &["ptra", "balances", &agent]).checked_sub(&fee).ok_or_else(|| err("INSUFFICIENT_BALANCE"))?;
+            // §9.3 upfront deposit: escrow = Flat_Validation_Fee + Max_Expected_Dynamic_Gas.
+            // The reducer debits the full escrow; the unused gas is refunded at the terminal
+            // event and the treasury keeps escrow − refund (= fee + consumed).
+            let escrow = req_uint(ev, "escrow_ptra")?;
+            let nb = u256_at(state, &["ptra", "balances", &agent]).checked_sub(&escrow).ok_or_else(|| err("INSUFFICIENT_BALANCE"))?;
             let s = set_in(state, &["ptra", "balances", &agent], int_val(nb));
-            let s = set_in(&s, &["cal", "in_flight", ch, "fee_debited_ptra"], int_val(fee));
+            let s = set_in(&s, &["cal", "in_flight", ch, "escrowed_ptra"], int_val(escrow));
             Ok(set_in(&s, &["cal", "in_flight", ch, "stage"], JcsValue::string("VALIDATED")))
         }
         "cal.executed" => {
@@ -148,8 +151,10 @@ pub fn apply(state: &JcsValue, ev: &JcsValue) -> Result<JcsValue, ApplyError> {
                 return Err(err("BAD_STAGE"));
             }
             let agent = h.get("agent_id").and_then(|x| x.as_str()).ok_or_else(|| err("BAD_DELTA"))?.to_string();
-            let fee = u256_at(state, &["cal", "in_flight", ch, "fee_debited_ptra"]);
-            let gas = u256_at(state, &["cal", "in_flight", ch, "gas_consumed_ptra"]);
+            // Refund the unused gas from the escrow; the treasury keeps escrow − refund
+            // (= Flat_Validation_Fee + consumed gas). The agent's net debit equals the
+            // treasury's gain.
+            let escrowed = u256_at(state, &["cal", "in_flight", ch, "escrowed_ptra"]);
             let staged: Vec<JcsValue> = match h.get("staged").and_then(|x| x.as_array()) {
                 Some(a) => a.to_vec(),
                 None => Vec::new(),
@@ -163,7 +168,7 @@ pub fn apply(state: &JcsValue, ev: &JcsValue) -> Result<JcsValue, ApplyError> {
                 let nb = u256_at(&s, &["ptra", "balances", &agent]).checked_add(&refund).ok_or_else(|| err("OVERFLOW"))?;
                 s = set_in(&s, &["ptra", "balances", &agent], int_val(nb));
             }
-            let retained = fee.checked_add(&gas).ok_or_else(|| err("OVERFLOW"))?.checked_sub(&refund).ok_or_else(|| err("UNDERFLOW"))?;
+            let retained = escrowed.checked_sub(&refund).ok_or_else(|| err("UNDERFLOW"))?;
             s = add_fees(&s, retained)?;
             s = bump_nonce(&s, &agent);
             Ok(delete_in(&s, &["cal", "in_flight", ch]))
@@ -172,9 +177,34 @@ pub fn apply(state: &JcsValue, ev: &JcsValue) -> Result<JcsValue, ApplyError> {
             let ch = req_str(ev, "cal_hash")?;
             let h = get_in(state, &["cal", "in_flight", ch]).ok_or_else(|| err("UNKNOWN_CAL"))?;
             let agent = h.get("agent_id").and_then(|x| x.as_str()).ok_or_else(|| err("BAD_DELTA"))?.to_string();
-            let fee = u256_at(state, &["cal", "in_flight", ch, "fee_debited_ptra"]);
-            let gas = u256_at(state, &["cal", "in_flight", ch, "gas_consumed_ptra"]);
-            let mut s = add_fees(state, fee.checked_add(&gas).ok_or_else(|| err("OVERFLOW"))?)?;
+            let pre_validated = matches!(stage_of(h), Some("CREATED") | Some("SIGNED"));
+            // Staged effects are discarded (all-or-nothing, §3.5). The fee/gas settlement
+            // splits by whether the CAL escrowed.
+            let mut s = state.clone();
+            if pre_validated {
+                // Pre-VALIDATED: no escrow was ever taken (no cal.validated). §9.4 charges a
+                // spam fee on PRECOND_FALSE/CAPABILITY_DENIED — the event carries it
+                // (min(fee, balance), baked by the validator); debit it and retain it.
+                // No-charge / ingress-class failures carry 0.
+                let charge_now = opt_uint(ev, "fee_debited_ptra")?;
+                if !charge_now.is_zero() {
+                    let nb = u256_at(&s, &["ptra", "balances", &agent]).checked_sub(&charge_now).ok_or_else(|| err("INSUFFICIENT_BALANCE"))?;
+                    s = set_in(&s, &["ptra", "balances", &agent], int_val(nb));
+                }
+                s = add_fees(&s, charge_now)?;
+            } else {
+                // Post-VALIDATED: the escrow (fee + maxGas) was debited at cal.validated.
+                // Refund the unused gas; the treasury keeps escrow − refund (= fee +
+                // consumed). Same arithmetic as cal.finalized, but staged effects drop.
+                let escrowed = u256_at(state, &["cal", "in_flight", ch, "escrowed_ptra"]);
+                let refund = opt_uint(ev, "gas_refunded_ptra")?;
+                if !refund.is_zero() {
+                    let nb = u256_at(&s, &["ptra", "balances", &agent]).checked_add(&refund).ok_or_else(|| err("OVERFLOW"))?;
+                    s = set_in(&s, &["ptra", "balances", &agent], int_val(nb));
+                }
+                let retained = escrowed.checked_sub(&refund).ok_or_else(|| err("UNDERFLOW"))?;
+                s = add_fees(&s, retained)?;
+            }
             s = bump_nonce(&s, &agent);
             Ok(delete_in(&s, &["cal", "in_flight", ch]))
         }

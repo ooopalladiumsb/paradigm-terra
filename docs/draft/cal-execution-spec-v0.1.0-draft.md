@@ -60,9 +60,16 @@ A `Step` is:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `operator_sig` | `bytes` | yes | Ed25519 signature by the agent's operator key over the canonical CAL bytes excluding `signatures.*`. |
-| `owner_sig` | `bytes` | conditional | Required if `action ∈ OWNER_REQUIRED_ACTIONS` (§8.2) or if `state.failure_mode.is_bounded_mode == true` (§10.4). |
+| `operator_sig` | `bytes` | yes | **Raw** Ed25519 signature by the agent's operator key over the canonical CAL bytes excluding `signatures.*` (agent runtime; not TON Connect). |
+| `owner_sig` | `bytes` \| `object` | conditional | Required if `action ∈ OWNER_REQUIRED_ACTIONS` (§8.2) or if `state.failure_mode.is_bounded_mode == true` (§10.4). **TON Connect v2 owner co-signature.** Current form: the Contract A reconstruction **envelope object** `{ signature, domain, timestamp, workchain, address_hash }` (`TC_V2_SIGNDATA_VERIFY_V1`, D1; see `docs/spec/cal-co-signature-envelope.md`). Legacy hex-`bytes` form is dual-accepted during the §8.4 Tier-2 compatibility window (schema-tolerated; not verifiable — no envelope). |
 | `sponsor_sig` | `bytes` | optional | Gas Legacy Bridge sponsor signature (§11.3). |
+
+> **§8.4 Tier-2 compatibility note (2026-06-01).** `owner_sig` gains the envelope-object form so the
+> node can reconstruct the TON Connect v2 Contract A commit (D1). Dual-accept / single-emit: new
+> code emits the object; validators accept both forms during the 1000-tick window; legacy form is
+> removed after. `CAL_HASH` is unaffected (`signatures.*` excluded from canonical bytes). The trace
+> booleans are derived from this material by `verifyIngress()` (D-S4: reconstruction exclusively
+> from CAL-carried fields, no backfill).
 
 ### 2.2. Canonical CAL hash
 
@@ -186,7 +193,8 @@ On any failure (precondition false, invariant false, step error, post-condition 
 | `STEP_ERROR` | Step verb failed (MCP error, contract revert). |
 | `POSTCOND_FALSE` | A step's post-condition evaluated FALSE. |
 | `INVARIANT_FALSE` | A top-level invariant evaluated FALSE. |
-| `OUT_OF_GAS` | Dynamic gas exhausted during execution. |
+| `INSUFFICIENT_ESCROW` | Agent balance below the §9.3 escrow requirement (`Flat_Validation_Fee + Max_Expected_Dynamic_Gas`) at the admission gate — rejected before VALIDATED, no PTRA taken. |
+| `OUT_OF_GAS` | Dynamic gas consumed during execution exceeds the escrowed `Max_Expected_Dynamic_Gas` budget (post-VALIDATED overrun). |
 | `UNKNOWN_ACTION` | `action` not in §2.3 registry. |
 | `BOUNDED_BLOCKED` | Action not in Bounded Mode whitelist (§10.2). |
 | `SCHEMA_MISMATCH` | MCP schema hash mismatch. |
@@ -233,6 +241,33 @@ For each `verb` in `steps[*].verb`, the validator computes the set of required `
 ### 4.4. MCP schema hash check
 
 If `state.registry.mcp_schema_hash` does not match the validator's locally pinned hash, validation fails with `SCHEMA_MISMATCH` and the system enters `MCP_DEGRADED_MODE` per Constitution §VI.
+
+#### 4.4.1. Schema hash construction (normative)
+
+The MCP schema hash is derived from the **lexicographically sorted set of MCP tool names**, and **only the names**. Tool descriptions, parameter schemas, and behavioural metadata are explicitly excluded so that documentation churn in the upstream `@ton/mcp` package cannot invalidate the hash; only addition or removal of a tool does.
+
+```
+MCP_SCHEMA_V1_TOOLSET := canonical_json(sorted_lex(tool_names))
+MCP_SCHEMA_HASH       := SHA256("PARADIGM_TERRA_MCP_V1" || MCP_SCHEMA_V1_TOOLSET)
+```
+
+where:
+
+- `tool_names` is the set of `name` strings exported by the pinned `@ton/mcp` runtime;
+- `sorted_lex` is byte-wise ascending sort of the UTF-8-encoded names (same order rule used for canonical JSON object keys, Canonical Encoding v1.3 §4);
+- `canonical_json` is the Restricted JCS profile defined in Canonical Encoding v1.3 §4 (no whitespace, lex-sorted keys, no surrogate pairs, NFC string contents);
+- `"PARADIGM_TERRA_MCP_V1"` is the §7.1 domain tag, UTF-8 bytes, no terminator;
+- `||` is byte concatenation.
+
+The validator carries `MCP_SCHEMA_HASH` as a pinned constant; `state.registry.mcp_schema_hash` carries the on-chain quorum-acknowledged value (set via Tier 1/2 amendments per Constitution §6.bis); §4.4 compares the two byte-for-byte.
+
+#### 4.4.2. Pinned toolchain
+
+```
+@ton/mcp@0.1.15-alpha.16
+```
+
+This is the pinned runtime against which `MCP_SCHEMA_V1_TOOLSET` is computed for the v0.1.0-draft profile. The concrete byte value of `MCP_SCHEMA_HASH(0.1.15-alpha.16)` is recorded by the validator's first reference run, frozen into the validator handshake, and included in the validator golden vectors as the `mcp_schema_hash` field. Patch/minor/major bump policy is governed by Constitution §6.bis "Pinning стратегия MCP схемы".
 
 ---
 
@@ -300,19 +335,21 @@ An agent MAY cancel a SIGNED-but-not-VALIDATED CAL by issuing a `cal.cancel` CAL
 apply : (State, Event) → State
 ```
 
-`apply` is a pure total function (modulo `ERROR` returned as a typed value, not an exception). The body is a `switch` over `event.type`. The full table mapping event type → state mutation is normative and MUST appear in Annex B of this spec at Conformance Freeze. The initial table is sketched below; this list is non-exhaustive and serves as a structural example:
+`apply` is a pure total function (modulo `ERROR` returned as a typed value, not an exception). The body is a `switch` over `event.type`. **The normative table is Annex B (§14), populated DRAFT 2026-05-28.** The summary below is informative; consult Annex B for the precise mutations, field requirements, and error codes:
 
-| `event.type` | State mutation |
+| `event.type` | Summary |
 |--------------|----------------|
-| `cal.created` | append `cal_hash → CREATED` to `state.cal.in_flight` |
-| `cal.signed` | update `state.cal.in_flight[cal_hash].stage = SIGNED` |
-| `cal.validated` | update `stage = VALIDATED`; debit `state.ptra.balances[agent_id] -= Flat_Validation_Fee` |
-| `cal.executed` | apply each step's effect; track `gas_consumed_ptra` |
-| `cal.settled` | finalize `state.after` snapshot for invariant evaluation |
-| `cal.finalized` | remove from `in_flight`; increment `nonces[agent_id]`; append to `state.treasury.collected_fees_window` |
-| `cal.failed` / `cal.expired` | rollback `state.after` to `state.before`; remove from `in_flight`; increment `nonces[agent_id]` |
+| `cal.created` | append `cal_hash → CREATED` to `state.cal.in_flight`; enforce one-CAL-per-agent (§6.1) |
+| `cal.signed` | `stage := SIGNED` |
+| `cal.validated` | debit `state.ptra.balances[agent_id] -= escrow_ptra` (= `Flat_Validation_Fee + Max_Expected_Dynamic_Gas`, §9.3); `stage := VALIDATED` |
+| `cal.executed` | stage step effects + `gas_consumed_ptra` (commit happens at finalize) |
+| `cal.settled` | `stage := SETTLED` |
+| `cal.finalized` | commit staged effects; refund unused gas; add `escrow − refund` to treasury; bump nonce; remove from `in_flight` |
+| `cal.failed` / `cal.expired` | branch on stage: pre-VALIDATED debits §9.4 spam fee, post-VALIDATED settles like finalize but drops effects; bump nonce; remove from `in_flight` |
 | `ptra.transferred` | mirror of TEP-74 transfer (§7.4); update `state.ptra.balances` |
+| `ptra.shadow_init` | idempotent zero-init for an address |
 | `oracle.feed_submitted` | update `state.oracles.feeds[symbol]` after median aggregation |
+| `tick.advanced` | `state.tick.current := new_tick`; recompute `is_bounded_mode` |
 
 ### 7.2. Determinism
 
@@ -403,6 +440,16 @@ The signed payload is the canonical bytes of the CAL **with** `signatures` field
 
 Sponsor signatures (§11.3) are validated separately and do not contribute to capability authorization; they only affect gas accounting.
 
+### 8.5. Signature ingress channels (normative pointer)
+
+This section defines **what** is signed (§8.3) and **which** signatures gate which actions (§8.1, §8.2). It does **not** define the transport channel by which signatures are obtained from their respective holders. Channel governance lives in the Execution Spec:
+
+- **`operator_sig`** — produced by the agent runtime locally; no external ingress channel. Key custody and signing tooling (e.g. `@ton/mcp`) are runtime-implementation choices, not consensus.
+- **`owner_sig`** — obtained via TON Connect v2 `signMessage` per **Execution Spec v1 §8.3** (Ingress подписей владельца). Domain binding via `ton_proof`, replay-model unification (`valid_until` ↔ `expiration_tick`), and wallet-compatibility constraints are normatively fixed in Execution Spec §8.3.
+- **`sponsor_sig`** (§11.3, §8.4) — ingress channel is implementation-defined; consensus-relevant only for gas accounting.
+
+The canonical bytes that are actually signed are identical across channels (§8.3 omit-on-null rule); only the transport differs. A validator MUST NOT distinguish a signature by its ingress channel — it MUST verify only the Ed25519 pair `(pubkey, bytes(cal_without_signatures))`.
+
 ---
 
 ## 9. Gas Model
@@ -417,7 +464,12 @@ Sponsor signatures (§11.3) are validated separately and do not contribute to ca
 | EXECUTED → SETTLED | Agent | **PTRA** | State rent (proportional to state mutation size) | If state rent insufficient, rollback; gas burned. |
 | SETTLED → FINALIZED | — | — | Free | — |
 
-### 9.2. Gas unit pricing (placeholder; finalized after benchmarking)
+### 9.2. Gas unit pricing
+
+The table below pins the gas-unit weights normatively (informative copy; the
+authoritative composition + invariants live in Annex C, §14). Wall-clock
+calibration across the three reference implementations is deferred to
+Conformance Freeze (Annex C.3).
 
 | Operation class | Gas units |
 |-----------------|-----------|
@@ -425,8 +477,9 @@ Sponsor signatures (§11.3) are validated separately and do not contribute to ca
 | DSL `contains_key` | 10 |
 | DSL `size` | 20 |
 | DSL path resolution (per segment) | 2 |
-| MCP read-only call (`get_*`) | 50 |
-| MCP write call (`send_*`) | 200 |
+| DSL gate op (`requires_scope`, `is_owner_required`) | 5 |
+| MCP read-only call (verb starting with `get_`) | 50 |
+| MCP write call (any other verb) | 200 |
 | Invariant evaluation (per expression) | base 5 + DSL cost |
 | State rent | 1 per byte written |
 
@@ -445,10 +498,20 @@ state.ptra.balances[agent_id] ≥ Flat_Validation_Fee + Max_Expected_Dynamic_Gas
 ### 9.4. Refunds and slashing
 
 - FINALIZED: unused gas refunded; `Flat_Validation_Fee` retained by validators.
-- FAILED with `PRECOND_FALSE` or `CAPABILITY_DENIED`: full `Flat_Validation_Fee` retained (spam charge); no dynamic gas consumed (validation stopped before execution).
-- FAILED with `STEP_ERROR`, `POSTCOND_FALSE`, `INVARIANT_FALSE`, `OUT_OF_GAS`: `Flat_Validation_Fee` + actually consumed dynamic gas retained; rollback applied.
+- FAILED with `PRECOND_FALSE` or `CAPABILITY_DENIED`: `Flat_Validation_Fee` retained (spam charge); no dynamic gas consumed (validation stopped before execution).
+- FAILED with `STEP_ERROR`, `POSTCOND_FALSE`, `INVARIANT_FALSE`, `OUT_OF_GAS` (execution overrun): `Flat_Validation_Fee` + actually consumed dynamic gas retained; rollback applied.
+- FAILED with `UNKNOWN_ACTION`, `NONCE_MISMATCH`, `PRECOND_ERROR`, or `INSUFFICIENT_ESCROW` (the §9.3 escrow shortfall): **no PTRA consumed** — these are ingress-class (§9.1, the TON ingress fee is the anti-spam) or unaffordable, so no `Flat_Validation_Fee` can be retained.
 - EXPIRED before VALIDATED: no PTRA consumed (TON ingress fee only).
 - EXPIRED after VALIDATED: `Flat_Validation_Fee` retained.
+
+> **Spam-charge availability (§9.4 Tier-2 clarification, 2026-05-26).** The
+> precondition and capability gates are evaluated *before* the §9.3 escrow gate,
+> so at a `PRECOND_FALSE`/`CAPABILITY_DENIED` rejection the agent is not yet
+> guaranteed to hold `Flat_Validation_Fee`. The retained spam charge is therefore
+> `min(Flat_Validation_Fee, state.ptra.balances[agent_id])` — the most that can be
+> honestly taken before escrow. The full fee is guaranteed only once §9.3 passes.
+> This pre-VALIDATED charge is non-refundable, booked at the `cal.failed` event
+> (the CAL never reaches VALIDATED, so it is not escrowed at `cal.validated`).
 
 Retained gas flows to `state.treasury.collected_fees_window`, then distributed per Constitution §VIII.
 
@@ -487,17 +550,7 @@ with reason `BOUNDED_BLOCKED`. The whitelist is Tier 1 amendable.
 
 ### 10.3. Emergency invariants
 
-For every CAL admitted in Bounded Mode, the runtime injects an additional invariant **regardless** of what the CAL declares:
-
-```dsl
-{
-  "op": "gte",
-  "lhs": {"var": "state.after.treasury.developer_fund_balance"},
-  "rhs": {"var": "state.before.treasury.developer_fund_balance"}
-}
-```
-
-Violation → FAILED with `INVARIANT_FALSE`.
+For every CAL admitted in Bounded Mode, the runtime injects the **three-invariant emergency set** on top of whatever the CAL declares: developer-fund non-decreasing, NAV non-decreasing, and `is_bounded_mode` pinned `true` for the duration of the CAL. The verbatim set is pinned by **DSL Spec v0.1.0-draft §7.1** and reproduced here by **Annex D.2** (§14). Violation → FAILED with `INVARIANT_FALSE`.
 
 ### 10.4. Signature escalation
 
@@ -716,10 +769,506 @@ Total agent debit on success: `391,000 nano_PTRA`.
 
 ## 14. Annexes (to be populated at Conformance Freeze)
 
-- **Annex A**: Final registered action taxonomy (`namespace.verb` enum + capability requirement matrix).
-- **Annex B**: Full `apply(state, event) → state'` reducer table.
-- **Annex C**: Gas unit benchmarks across reference implementations (TypeScript, Rust, Go).
-- **Annex D**: Bounded Mode whitelist final form + emergency invariant set.
+- **Annex A**: Final registered action taxonomy (`namespace.verb` enum + capability requirement matrix). *Draft populated 2026-05-28; promotes to Conformance-Freeze form on Tier 3 ratification.*
+- **Annex B**: Full `apply(state, event) → state'` reducer table. *Draft populated 2026-05-28; supersedes the non-exhaustive §7.1 sketch.*
+- **Annex C**: Gas unit benchmarks across reference implementations (TypeScript, Rust, Go). *Draft populated 2026-05-28 (model pinned; wall-clock columns deferred to Conformance Freeze).*
+- **Annex D**: Bounded Mode whitelist final form + emergency invariant set. *Draft populated 2026-05-28; supersedes the §10.3 single-invariant listing.*
+
+### Annex A (DRAFT) — Action taxonomy + capability requirement matrix
+
+The registered actions are the closed `namespace.verb` enum below, Tier 2
+amendable. For each action the validator (§4.3) requires the listed scopes to
+appear in `state.registry.agents[agent_id].granted_scopes` (set membership;
+empty list = no scope check, only the §4 signature gate applies). Scope
+strings draw from Constitution §V `asset_scope`, `treasury_access_level`, and
+`governance_scope` flattened to a single string set:
+
+| `asset_scope.*` | `ton_transfer`, `jetton_access`, `nft_access`, `swap_access`, `ptra_stake`, `ptra_governance_vote` |
+| `treasury_access_level` | `treasury_access:view`, `treasury_access:transfer` (tier; granting `:transfer` implies `:view`) |
+| `governance_scope` | `governance_scope:propose`, `governance_scope:vote` (tier; `:vote` implies `:propose`) |
+
+> Tier note: an agent whose `granted_scopes` contains `treasury_access:transfer` is treated as also holding `treasury_access:view` at gate-evaluation time (likewise `governance_scope:vote` ⇒ `:propose`). The flattening is recorded in the registry; the implication is applied by the validator without rewriting the agent profile.
+
+| Action | Required scopes | Owner-sig required (§8.2) | Notes |
+|---|---|---|---|
+| `wallet.send_ton` | `ton_transfer` | no | Value gate at §8.2 may escalate. |
+| `wallet.send_jetton` | `jetton_access` | no | Covers PTRA jetton transfers (TEP-74). |
+| `wallet.send_nft` | `nft_access` | no | |
+| `agent.register` | — | no | Self-registration; payload-validated. |
+| `agent.migrate` | — | yes | Identity migration. |
+| `agent.freeze` | — | no | Self-freeze or oracle-driven; owner not required. |
+| `agent.unfreeze` | — | no | Recovery path; owner-required in practice via §8.2 if listed. |
+| `capability.update` | — | yes | Owner edits its own capability profile. |
+| `capability.temporal_boost_request` | — | no | Collateral-driven; structural. |
+| `capability.temporal_boost_release` | — | no | Releases collateral on success. |
+| `treasury.transfer` | `treasury_access:transfer` | yes | |
+| `treasury.distribute_rewards` | `treasury_access:transfer` | no | Treasury-side periodic action. |
+| `treasury.buyback_burn` | `treasury_access:transfer` | no | §15.4 deflation path. |
+| `governance.propose_amendment` | `governance_scope:propose` | yes | |
+| `governance.vote` | `governance_scope:vote` | no | |
+| `governance.finalize_amendment` | `governance_scope:vote` | no | Anyone with vote rights may finalize a passed proposal. |
+| `governance.vote_as_agent` | `ptra_governance_vote` | yes | §15.6 staked-PTRA voting. |
+| `oracles.submit_feed` | — | no | Authority via registry membership, not scope. |
+| `oracles.slash` | — | no | Authority via registry membership. |
+| `oracles.force_update` | — | no | §10 emergency; Bounded-Mode whitelisted. |
+| `ptra.stake` | `ptra_stake` | yes | §15.5. |
+| `ptra.unstake` | `ptra_stake` | yes | §15.5. |
+| `ptra.claim_rewards` | `ptra_stake` | no | Must already be a staker. |
+| `failure_mode.emergency_withdraw` | — | yes | §10 emergency exit; owner-required + bounded whitelisted. |
+| `failure_mode.enter_bounded` | — | no | Deterministic from §10.1 triggers. |
+| `failure_mode.exit_bounded` | — | no | Tier 1 quorum at the §10.5 governance layer. |
+| `cal.cancel` | — | no | Originating-agent check is structural (§6.3). |
+
+### Annex B (DRAFT) — `apply(state, event) → state'` reducer table
+
+The reducer is the pure total function `apply : (State, Event) → ApplyResult`
+where `ApplyResult = {ok:true, state} | {ok:false, code}`. Illegal events
+yield a typed error code in the result; the public boundary never throws.
+The table below is normative: every event type, the fields the reducer
+reads, the precise state mutation, and the error codes that may be raised.
+Field types follow Canonical Encoding v1.3: `uint256` is a non-negative
+decimal-string-on-wire, `address` is the canonical TON workchain:hex form.
+
+> **Conservation invariant (post-VALIDATED):** for every CAL that escrows at
+> `cal.validated`, the agent's net debit equals `treasury.collected_fees_window`
+> gain at the terminal event: `escrow − refund = Flat_Validation_Fee + gas_consumed`.
+> Pre-VALIDATED failures conserve at `fee_debited_ptra` (§9.4 Tier-2). The
+> reducer realizes this without recomputing: the validator bakes the economic
+> values into the event and `apply` simply moves them.
+
+**Event field conventions.** Every event carries `event_type:string`. CAL
+lifecycle events additionally carry `cal_hash:bytes32`. Field types use the
+v1.3 canonical wire forms; absence of an optional field is treated as the
+identity (0 for `uint256`).
+
+#### B.1 CAL lifecycle (§3.1)
+
+##### `cal.created`
+- **Reads:** `cal_hash`, `agent_id`.
+- **Mutation:** appends `state.cal.in_flight[cal_hash] := {agent_id, stage:CREATED, escrowed_ptra:0, gas_consumed_ptra:0, staged:[]}`.
+- **Errors:** `DUPLICATE_CAL` (already in flight), `AGENT_BUSY` (the agent already has another in-flight CAL — enforces §6.1 one-CAL-per-agent).
+
+##### `cal.signed`
+- **Reads:** `cal_hash`.
+- **Mutation:** `in_flight[cal_hash].stage := SIGNED`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE` (current stage ≠ CREATED).
+
+##### `cal.validated`
+- **Reads:** `cal_hash`, `escrow_ptra:uint256` (= `Flat_Validation_Fee + Max_Expected_Dynamic_Gas`, §9.3).
+- **Mutation:** debits `state.ptra.balances[agent_id] -= escrow_ptra`; sets `in_flight[cal_hash].escrowed_ptra := escrow_ptra`; advances `stage := VALIDATED`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`, `INSUFFICIENT_BALANCE`.
+
+##### `cal.executed`
+- **Reads:** `cal_hash`, `effects:[Delta]` (per-step canonical deltas, §3.2), `gas_consumed_ptra:uint256`.
+- **Mutation:** `in_flight[cal_hash].staged := effects`; `in_flight[cal_hash].gas_consumed_ptra := gas_consumed_ptra`; `stage := EXECUTED`. **Staged effects are NOT committed to namespaces yet** — commit happens at `cal.finalized`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`, `BAD_DELTA` (effects not an array).
+
+##### `cal.settled`
+- **Reads:** `cal_hash`.
+- **Mutation:** `stage := SETTLED`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`.
+
+##### `cal.finalized`
+- **Reads:** `cal_hash`, `gas_refunded_ptra:uint256` (optional, default 0).
+- **Mutation (atomic):**
+  1. Commit `in_flight[cal_hash].staged` deltas to their target namespaces.
+  2. Credit `state.ptra.balances[agent_id] += gas_refunded_ptra`.
+  3. Add `escrowed − gas_refunded_ptra` to `state.treasury.collected_fees_window`.
+  4. `state.cal.nonces[agent_id] += 1`.
+  5. `delete state.cal.in_flight[cal_hash]`.
+- **Errors:** `UNKNOWN_CAL`, `BAD_STAGE`, `UNDERFLOW` (`gas_refunded_ptra > escrowed_ptra`).
+
+##### `cal.failed` / `cal.expired`
+- **Reads:** `cal_hash`, `fee_debited_ptra:uint256` (pre-VALIDATED only, §9.4 Tier-2), `gas_refunded_ptra:uint256` (post-VALIDATED only).
+- **Mutation (branch on current stage):**
+  - *Pre-VALIDATED* (stage ∈ {CREATED, SIGNED}): debit `balances[agent_id] -= fee_debited_ptra` (which the validator capped at `min(fee, balance)`); add `fee_debited_ptra` to `collected_fees_window`. Staged effects (empty) are discarded.
+  - *Post-VALIDATED* (stage ∈ {VALIDATED, EXECUTED, SETTLED}): refund `balances[agent_id] += gas_refunded_ptra`; add `escrowed − gas_refunded_ptra` to `collected_fees_window`. **Staged effects are dropped, not committed** (§3.5 all-or-nothing).
+  - Either branch: `nonces[agent_id] += 1`; `delete in_flight[cal_hash]`.
+- **Errors:** `UNKNOWN_CAL`, `INSUFFICIENT_BALANCE` (pre-VALIDATED branch only), `UNDERFLOW` (post-VALIDATED branch only).
+
+#### B.2 External event mirroring (§7.4)
+
+##### `ptra.transferred`
+- **Reads:** `from:address`, `to:address`, `amount_nano_ptra:uint256`.
+- **Mutation:** `balances[from] -= amount`; `balances[to] += amount`.
+- **Errors:** `INSUFFICIENT_BALANCE`.
+
+##### `ptra.shadow_init`
+- **Reads:** `addr:address`.
+- **Mutation:** idempotent — if `balances[addr]` is unset, initialize to 0; otherwise no-op.
+- **Errors:** none.
+
+##### `oracle.feed_submitted`
+- **Reads:** `symbol:string`, `value:any` (median-aggregated upstream).
+- **Mutation:** `state.oracles.feeds[symbol] := value`.
+- **Errors:** none.
+
+#### B.3 Tick stream (§3.3)
+
+##### `tick.advanced`
+- **Reads:** `new_tick:uint256`.
+- **Mutation:** `state.tick.current := new_tick`; recompute `state.failure_mode.is_bounded_mode` from `capture_guard_counters` against `governance.params.capture_guard_threshold` (§10.1 counter trigger).
+- **Errors:** `BAD_TICK` (`new_tick ≤ current`).
+
+#### B.4 Closed error enum
+
+The reducer's `ApplyError` carries one of:
+`UNKNOWN_EVENT`, `UNKNOWN_CAL`, `DUPLICATE_CAL`, `AGENT_BUSY`, `BAD_STAGE`,
+`BAD_DELTA`, `BAD_TICK`, `INSUFFICIENT_BALANCE`, `UNDERFLOW`, `OVERFLOW`.
+`OVERFLOW` is reserved for future arithmetic guards (no current path raises it).
+`UNKNOWN_EVENT` covers any `event_type` outside §B.1–§B.3.
+
+### Annex C (DRAFT) — Gas-unit model + cross-language benchmarks
+
+Gas units are **deterministic counters** computed by a pure function over the
+canonical CAL bytes and the canonical committed effects; they are not measured
+at runtime. The total for a CAL is:
+
+```
+gas_units(cal, bytes_written) = static_gas_units(cal)
+                              + bytes_written * STATE_RENT_PER_BYTE
+```
+
+`bytes_written` is the byte length of the canonical serialization of the
+committed effects array (§3.2 Deltas). Conversion to nano-PTRA uses the Tier 1
+amendable `state.governance.gas_price_nano_ptra_per_unit` parameter (genesis
+default `1000` = 1 µPTRA per unit, §9.2):
+
+```
+gas_nano_ptra = gas_units * gas_price_nano_ptra_per_unit
+```
+
+#### C.1 Operation-class weights (normative)
+
+The three reference implementations (`@paradigm-terra/cal-gas`, `cal-gas-rs`,
+`cal-gas-go`) carry the same constants. Parity is pinned byte-for-byte by the
+NORMATIVE goldens (`cal-gas/vectors/golden.json`, 135 checks per language).
+
+| Class | Symbol | Units | Source of truth |
+|---|---|---|---|
+| DSL binary op (`eq`, `lt`, `add`, `sub`, `mul`, `gte`, `lte`, `gt`, `and`, `or`, `not`) | `COST.binary` | 1 | DSL v1.2 §5 parser cost table |
+| DSL `contains_key` | `COST.contains_key` | 10 | DSL v1.2 §5 parser cost table |
+| DSL `size` | `COST.size` | 20 | DSL v1.2 §5 parser cost table |
+| DSL path segment (per `.x` in a `var` reference) | `COST.path_segment` | 2 | DSL v1.2 §5 parser cost table |
+| DSL gate op (`requires_scope`, `is_owner_required`) | `COST.gate_op` | 5 | DSL v1.2 §5 parser cost table |
+| MCP read call (verb whose unqualified name starts with `get_`) | `MCP_READ` | 50 | §9.2 |
+| MCP write call (any other verb) | `MCP_WRITE` | 200 | §9.2 |
+| Invariant evaluation (per invariant expression) | `INVARIANT_BASE` | base 5 + DSL cost | §9.2 |
+| State rent | `STATE_RENT_PER_BYTE` | 1 / byte of committed effects | §9.2 |
+
+The DSL portion delegates entirely to `expressionCost` (`@paradigm-terra/dsl`,
+the same function the parser uses for the `MAX_AST_COST` admission check), so
+the validator never recomputes DSL gas: it consults the DSL layer and the
+above MCP / invariant / rent constants in cal-gas.
+
+#### C.2 Composition
+
+`static_gas_units(cal)` = DSL cost of `preconditions`
++ Σ over steps of (`MCP_READ`/`MCP_WRITE` for `step.verb` + Σ post-conditions DSL cost)
++ Σ over `invariants` of (`INVARIANT_BASE` + DSL cost).
+
+`gas_units(cal, bytes_written)` adds `bytes_written * STATE_RENT_PER_BYTE`.
+
+The `Max_Expected_Dynamic_Gas` budget the agent escrows at `cal.validated`
+(§9.3) is computed identically; the validator pins it into the
+`escrow_ptra` field on `cal.validated` so the reducer never recomputes.
+
+#### C.3 Wall-clock benchmarks (BASELINE MEASURED 2026-06-02)
+
+The abstract unit weights above must be calibrated against measured CPU cost
+across the three reference languages before the spec leaves draft. A first
+single-machine baseline is now recorded; harnesses are `cal-gas/bench/gas-bench.mjs`
+(TS), `cal-gas-rs` bin `gas_bench` (Rust), `cal-gas-go` `cmd/gasbench` (Go); full
+conditions, methodology, and stability ranges are in
+`docs/notes/gate2-baseline-results.md`. Each cell pairs a median wall-clock time
+(ns/op) with the cost ratio relative to a single DSL binary op (the unit `1` peg).
+The harness isolates **evaluation** (AST parsed once, outside the timed loop) so
+fixed parse cost cannot swamp the marginal per-op cost; ≥2000 warmup, median of
+99×1000 batches, results consumed to defeat dead-code elimination. ns/op is
+machine-relative (Intel Celeron N4120, WSL2); the **ratio** is the portable signal.
+
+| Class | TS (ns / ratio) | Rust (ns / ratio) | Go (ns / ratio) |
+|---|---|---|---|
+| DSL binary op (peg) | 389 / 1.00 | 253 / 1.00 | 201 / 1.00 |
+| DSL `contains_key` | 1843 / 4.74 | 2167 / 8.57 | 1624 / 8.10 |
+| DSL `size` | 1084 / 2.79 | 1537 / 6.08 | 3077 / 15.34 |
+| DSL path segment | 93 / 0.24 | 13 / 0.05 | 92 / 0.46 |
+| DSL gate op | 1899 / 4.89 | 1031 / 4.08 | 1321 / 6.59 |
+| MCP read (synthetic) | 406 / 1.04 | 99 / 0.39 | 392 / 1.96 |
+| MCP write (synthetic) | 312 / 0.80 | 81 / 0.32 | 412 / 2.06 |
+| Invariant base (eval + JCS bind) | 529 / 1.36 | 290 / 1.15 | 984 / 4.91 |
+| State-rent encode (per byte, 1 KiB) | 252 / 0.65 | 152 / 0.60 | 102 / 0.51 |
+
+**Acceptance gate at Conformance Freeze.** Each language column's ratio MUST
+fall inside `[0.5 × unit, 2.0 × unit]` of the abstract weight; any ratio
+outside that band requires a Tier 2 amendment to either the unit weight or
+the implementation. The harness exercises the operation class in isolation (no
+IO, no canonicalization cost folded in) and reports the median over ≥1k
+iterations after a warmup of ≥100.
+
+**Baseline result (advisory — see §C.4).** One class is out of band in *all
+three* runtimes: **DSL path segment** (0.05–0.46× across TS/Rust/Go vs weight 2)
+— a path-segment marginal costs a fraction of a binary op in every tree-walker,
+so weight 2 over-prices it on a pure-CPU basis. This is the one systematic
+Tier-2-amendment candidate. The remaining single-runtime misses are explained,
+not defects: `size` is `O(n)` and was measured at n=3 (in band only where the
+per-runtime peg is cheapest — Go); `contains_key` / `invariant base` straddle a
+band edge because the ratio's denominator (the binary-op peg) differs per
+runtime. `gate op` and `state-rent/byte` are in band in all three. The MCP rows
+are **synthetic**: the validator's MCP cost is verb classification only (the real
+call cost is off-chain), so their CPU ratio is not a meaningful calibration of the
+50/200 economic weights. **No unit weight is changed by this baseline** — per §C.4
+the counts are consensus-locked anti-grief weights, not CPU predictors; whether to
+lower `path_segment` is a deferred Tier-2 decision, not a freeze blocker (parked as
+`PATH_SEGMENT_WEIGHT_REVIEW`, `docs/notes/tier2-path-segment-weight-review.md`).
+
+#### C.4 Parity discipline
+
+Cross-language drift in the unit *counts* (not the wall-clock) is forbidden:
+the `cal-gas/vectors/golden.json` parity vectors pin every count, and any
+implementation that diverges fails the cross-language differential fuzzer.
+The wall-clock columns of §C.3 are advisory inputs to the Tier 2 amendment
+process; they do not affect consensus.
+
+#### C.5 TON mainnet economic anchor (calibration reference)
+
+**Status:** Calibration reference. Establishes the off-chain economic peg
+between cal-gas units and on-chain TON cost. cal-gas remains self-contained
+and consensus-deterministic; this section does **not** introduce a runtime
+dependency on TON config. It documents the ratios used to set
+`gas_price_nano_ptra_per_unit` (Constitution §XV PTRA, Tier 1 amendable) and
+`Flat_Validation_Fee` (§9.2, Tier 1 amendable).
+
+##### C.5.1 Pinned TON mainnet config snapshot
+
+Snapshot taken from [Tonviewer](https://tonviewer.com/config) on **2026-05-29**.
+Workchain (chain `0`, where Agentic Wallet SBT executes) values are the anchor;
+masterchain values are recorded for completeness.
+
+| Param | Source | Workchain (chain 0) | Masterchain |
+|---|---|---|---|
+| `gas_price` | ConfigParam 20 / 21 | 4 369 067 nanoTON / 2¹⁶ gas units | 655 360 000 nanoTON / 2¹⁶ |
+| `flat_gas_limit` | ConfigParam 20 / 21 | 100 gas units | 100 |
+| `flat_gas_price` | ConfigParam 20 / 21 | 6 667 nanoTON | 1 000 000 nanoTON |
+| `gas_limit` (per tx) | ConfigParam 20 / 21 | 1 000 000 gas units | 1 000 000 |
+| `lump_price` | ConfigParam 24 / 25 | 66 667 nanoTON | 10 000 000 nanoTON |
+| `bit_price` (fwd) | ConfigParam 24 / 25 | 4 369 067 nanoTON / 2¹⁶ bit | 655 360 000 / 2¹⁶ |
+| `cell_price` (fwd) | ConfigParam 24 / 25 | 436 906 667 nanoTON / 2¹⁶ cell | 65 536 000 000 / 2¹⁶ |
+| `first_frac` | ConfigParam 24 / 25 | 21 845 / 2¹⁶ ≈ 33.33% | 21 845 / 2¹⁶ |
+| `bit_price_ps` (storage, post-`utime 1 777 500 000`) | ConfigParam 18 | 0 nanoTON / bit / s | 1 000 |
+| `cell_price_ps` (storage, post-`utime 1 777 500 000`) | ConfigParam 18 | 135 nanoTON / cell / s | 500 000 |
+
+Workchain per-unit derived rates (the numbers cal-gas calibrates against):
+
+```
+WC_GAS_PER_UNIT_NANO_TON = 4 369 067 / 65 536 ≈ 66.67 nanoTON / gas unit
+WC_FWD_PER_BIT_NANO_TON  = 4 369 067 / 65 536 ≈ 66.67 nanoTON / bit
+WC_FWD_PER_CELL_NANO_TON = 436 906 667 / 65 536 ≈ 6 666.67 nanoTON / cell
+```
+
+##### C.5.2 cal-gas → TON cost mapping
+
+For the hypothetical on-chain projection of a CAL (W5 external publication,
+deferred per Execution Spec §8.3 future work), the cal-gas → TON equivalence is:
+
+| cal-gas class | cal-gas units (§C.1) | TON-equivalent (workchain, at WC_GAS_PER_UNIT) |
+|---|---|---|
+| DSL binary op | 1 | folded into flat threshold |
+| DSL `contains_key` | 10 | folded into flat threshold |
+| DSL `size` | 20 | folded into flat threshold |
+| MCP read (`get_*`) | 50 | folded into flat threshold |
+| Invariant base | 5 + DSL cost | folded into flat threshold |
+| MCP write | 200 | 200 × 66.67 ≈ 13 334 nanoTON ≈ 13.3 µTON |
+| State rent | 1 / byte | workchain `bit_price_ps = 0` post-2026-04-29 ⇒ ≈ 0 nanoTON / byte / s on-chain |
+
+The cal-gas unit is **abstract** and parity-locked (Annex C.1 / golden vectors);
+the table above is a calibration **target**, not a runtime conversion. The
+reference implementations never query TON config; the values flow into the
+spec via this Annex and then into `gas_price_nano_ptra_per_unit` and
+`Flat_Validation_Fee` defaults.
+
+##### C.5.3 Recommended `gas_price_nano_ptra_per_unit`
+
+Assuming 1 PTRA ≡ 1 TON (Constitution §XV decimal alignment), the TON-anchored
+rate at the 2026-05-29 snapshot is:
+
+```
+gas_price_nano_ptra_per_unit  ≈ round(WC_GAS_PER_UNIT_NANO_TON)  =  67 nano-PTRA / unit
+```
+
+**Current genesis default:** `1000` (§9.2). The 15× margin over the
+TON-anchored rate is reserved for off-chain orchestrator + validator + indexer
+compute that has no on-chain counterpart and is paid by the agent regardless
+of whether the CAL is on-chain-published.
+
+**Amendment recommendation:** Tier 1 amendment to align with the TON workchain
+rate is appropriate **only after**:
+1. TON mainnet `gas_price` has held steady for ≥ 4 consecutive validator
+   config votes, **and**
+2. paradigm_terra adopts on-chain CAL publication
+   (Execution Spec §8.3 future work — W5 external `sendTransaction` path).
+
+Until both hold, the 1000-default is conservative and correct.
+
+##### C.5.4 Recommended `Flat_Validation_Fee`
+
+CAL Spec §9.1 row 2 (`SIGNED → VALIDATED`) charges a flat PTRA fee. The TON
+analogue at the 2026-05-29 snapshot is `flat_gas_price = 6 667 nanoTON` over
+`flat_gas_limit = 100 gas units`. Recommended PTRA-anchored value:
+
+```
+Flat_Validation_Fee  ≈  6 667 nano-PTRA  (= 6.667 µPTRA)
+```
+
+Same amendment policy as §C.5.3 — pending on-chain publication path.
+
+##### C.5.5 Storage rent comparability
+
+`STATE_RENT_PER_BYTE = 1 cal-gas unit / byte` (§C.1) is a **one-shot** charge
+at SETTLED, not per-second. The TON analogue is per-byte-per-second; for a
+notional 1-year retention horizon (≈ 31.557 M s) workchain storage of a 1-byte
+contribution costs:
+
+```
+TON_1Y_BYTE_NANO_TON  =  (135 nanoTON / cell / s) × (1 cell / ~127 bytes) × 31.557 M s
+                      ≈  33.6 µTON per byte per year
+```
+
+(Workchain `bit_price_ps = 0` since 2026-04-29; only `cell_price_ps` survives.)
+The cal-gas rate is intentionally conservative: it charges once for perpetual
+off-chain retention, whereas TON re-charges every storage epoch and eviction
+is possible. No PTRA-anchored amendment is recommended for state rent — the
+two cost models are structurally different.
+
+##### C.5.6 Re-pinning policy
+
+This snapshot is point-in-time. When TON validators amend the relevant config
+parameters:
+
+- The snapshot table (§C.5.1) is updated under a new date stamp; prior
+  snapshots are retained for replay-determinism review.
+- Re-anchoring is a governance act, not an automated sync — paradigm_terra
+  consensus never reads TON config at runtime, so a TON config change is not
+  itself a state transition.
+- If the workchain `gas_price` drifts by `>2×` from the latest pinned
+  snapshot, the orchestrator emits an informative `gas_anchor_drift_warning`
+  (off-consensus, advisory).
+
+Re-pinning does **not** flow through CAL Spec changelog as a Tier 2 amendment
+unless it changes `gas_price_nano_ptra_per_unit` or `Flat_Validation_Fee`;
+snapshot refreshes alone are doc-only.
+
+### Annex D (DRAFT) — Bounded Mode whitelist + emergency invariant set
+
+Pins the §10 Bounded Mode configuration as it stands at draft date. The
+admission whitelist (§D.1) and the injected invariant set (§D.2) are
+together the "final form" Annex D will carry at Conformance Freeze. The
+trigger and exit conditions (§D.3, §D.4) cross-reference §10.1 / §10.5 and
+Constitution §VI.6.bis without restating them.
+
+#### D.1 Admission whitelist (final form, §10.2)
+
+When `state.failure_mode.is_bounded_mode == true`, the validator admits
+**only** the six `namespace.verb` actions below; any other action fails
+with `BOUNDED_BLOCKED` (no-charge, ingress-class — §9.4 / §4 gate 1.5).
+
+| # | Action | Why whitelisted |
+|---|---|---|
+| 1 | `failure_mode.emergency_withdraw` | Emergency exit for solvent agents (§10 emergency path); owner-required + §10.4 escalation. |
+| 2 | `failure_mode.exit_bounded` | The dedicated Tier 1 quorum action that flips the flag off (§10.5). |
+| 3 | `oracles.force_update` | Restore oracle feed when the §10.1 oracle trigger fired. |
+| 4 | `oracles.submit_feed` | Allow oracles to keep aggregating during the window. |
+| 5 | `agent.freeze` | Capture-guard counter response (§10.1 third trigger). |
+| 6 | `cal.cancel` | Lets agents withdraw in-flight CALs that became inadmissible. |
+
+**Authoritative location:** `BOUNDED_MODE_WHITELIST` in
+`dsl/src/taxonomy.ts` (and the Rust / Go mirrors in `dsl-rs/src/taxonomy.rs`
+and `dsl-go/taxonomy.go`). Parity-pinned by the validator goldens
+(`bounded_blocked`, `bounded_sig_escalation`,
+`bounded_emergency_invariant_violated`, `bounded_whitelist_pass`).
+
+**Amendability:** Tier 1 amendable (Constitution §VI.6.bis). Any change to
+the set MUST be paired with new golden vectors that exercise the added or
+removed action under bounded mode.
+
+#### D.2 Emergency invariant set (final form, §10.3)
+
+For every CAL admitted in Bounded Mode the runtime injects the three
+invariants below on top of whatever the CAL declares. They are evaluated
+exactly like declared invariants (scope `invariant`, bindings `state.before`
+/ `state.after`); violation → `cal.failed` with `INVARIANT_FALSE`. The set
+is **not** part of `CAL_HASH` (the validator derives it deterministically
+from `is_bounded_mode`) but **is** part of consensus.
+
+```json
+[
+  {
+    "op": "gte",
+    "lhs": {"var": "state.after.treasury.developer_fund_balance"},
+    "rhs": {"var": "state.before.treasury.developer_fund_balance"}
+  },
+  {
+    "op": "gte",
+    "lhs": {"var": "state.after.treasury.nav"},
+    "rhs": {
+      "op": "sub",
+      "lhs": {"var": "state.before.treasury.nav"},
+      "rhs": {"const": 0}
+    }
+  },
+  {
+    "op": "eq",
+    "lhs": {"var": "state.after.failure_mode.is_bounded_mode"},
+    "rhs": {"const": true}
+  }
+]
+```
+
+Read line-by-line: (1) developer-fund balance is non-decreasing across the
+CAL; (2) treasury NAV is non-decreasing (the `sub … 0` form matches DSL
+v1.2 §7.1 verbatim — a no-op subtraction kept for hash stability); (3)
+`is_bounded_mode` is pinned `true` for the duration of the CAL — a CAL
+admitted under Bounded Mode MUST NOT flip the flag off as a side effect,
+the only path out is the dedicated `failure_mode.exit_bounded` action
+(§10.5).
+
+**Authoritative location:** `EMERGENCY_INVARIANTS` in `dsl/src/emergency.ts`
+with the `dsl-rs/src/emergency.rs` and `dsl-go/emergency.go` mirrors.
+Parity-pinned by the validator goldens `bounded_emergency_invariant_violated`
+(invariant 1 violated → INVARIANT_FALSE) and `bounded_whitelist_pass` (all
+three satisfied → FINALIZED).
+
+**Amendability:** Tier 2 amendable (DSL Spec §7.3). Any change MUST bump
+`dsl_version` to `1.3+` because the evaluation behavior of `invariants` is
+observably altered for replay purposes, and MUST extend the CE §7.1
+domain-tag registry with the new `PARADIGM_TERRA_DSL_V1.3` literal.
+
+#### D.3 Trigger conditions (cross-reference)
+
+`is_bounded_mode` is the OR of three deterministic predicates evaluated at
+each tick boundary by the reducer's `recompute_bounded` step
+(Annex B.3 `tick.advanced`): oracle-response-rate < 0.70, NAV drop > X% in
+one tick, capture-guard counters ≥ THRESHOLD. The thresholds X and THRESHOLD
+are Tier 1 amendable (Constitution §VI.6.bis). For the precise expression
+see **§10.1**; the implementations carry the counter-trigger subset, with
+the oracle-rate and NAV-drop predicates wired but their thresholds left at
+their Tier 1 amendable defaults.
+
+#### D.4 Exit conditions (cross-reference)
+
+Exit requires both (a) all §10.1 triggers clear for ≥ 100 consecutive
+ticks **and** (b) a `failure_mode.exit_bounded` CAL signed by a quorum of
+Tier 1 governance slot holders within a single-tick window. The emitted
+event sets `state.failure_mode.is_bounded_mode = false`. See **§10.5** and
+Constitution §VI for the precise quorum + window.
+
+#### D.5 Parity discipline
+
+Both the whitelist (D.1) and the invariant set (D.2) are byte-pinned by
+the validator NORMATIVE goldens. Any implementation that mutates either
+set without amending Annex D + regenerating goldens will diverge on the
+cross-language differential fuzzer (`validator/fuzz/`) — diff-fuzz is the
+trip-wire, Annex D is the contract.
 
 ---
 

@@ -16,7 +16,15 @@ function snapshot(nonce = 0n): Json {
     cal: { in_flight: {}, nonces: { [A]: nonce } },
     governance: { params: {} },
     ptra: { balances: { [A]: 10n ** 18n } },
-    registry: { agents: { [A]: { granted_scopes: ["ton_transfer"] } } },
+    registry: {
+      agents: {
+        [A]: {
+          granted_scopes: ["ton_transfer"],
+          operator_pubkey: "0x" + "11".repeat(32),
+          owner_pubkey: "0x" + "22".repeat(32),
+        },
+      },
+    },
   } as Json;
 }
 
@@ -37,6 +45,7 @@ const trace: ExecutionTrace = {
   steps: [{ ok: true, effects: [] }],
   stateBefore: {} as Json,
   stateAfter: {} as Json,
+  operatorSigPresent: true,
   ownerSigPresent: true,
 };
 

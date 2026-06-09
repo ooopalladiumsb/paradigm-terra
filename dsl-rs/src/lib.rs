@@ -9,6 +9,7 @@
 //! reused from `paradigm-terra-canonical`.
 
 pub mod ast;
+pub mod emergency;
 pub mod errors;
 pub mod evaluate;
 pub mod hash;
@@ -19,6 +20,6 @@ pub mod values;
 
 pub use ast::{Expr, Scope, Version};
 pub use errors::{DResult, DslError, Phase};
-pub use evaluate::{run, Bindings, Outcome};
+pub use evaluate::{evaluate, run, Bindings, Outcome};
 pub use hash::dsl_hash;
 pub use parse::{expression_cost, parse_expression};

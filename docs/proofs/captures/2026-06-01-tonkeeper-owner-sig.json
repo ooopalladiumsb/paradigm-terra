@@ -1,0 +1,24 @@
+{
+  "signature": "0xb11cde3d6d30ca2778a19b7f8feb686dc78471eaeb17f03e9fe6182961d78d66df06c478aedf1d19b8330d203cfcbd2f99b32580a747a19654f1be771d04cc03",
+  "domain": "ooopalladiumsb.github.io",
+  "timestamp": 1780333118,
+  "workchain": 0,
+  "address_hash": "0x28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "owner_pubkey": "0xe4bd70ac7328e5cb46b79227ca972a421ff5261e1a0068ca16cd8e7c8768c48a",
+  "trace_id": "019e841f-8705-71ba-98d1-6c2db362bc08",
+  "tc_session_id": null,
+  "tx_hash": null,
+  "wallet": {
+    "name": "tonkeeper",
+    "version": "4.7.0",
+    "account_chain": "-3"
+  },
+  "raw_wallet_response": {
+    "signature": "sRzePW0wyid4oZt/j+tobceEcerrF/A+n+YYKWHXjWbfBsR4rt8dGbgzDSA8/L0vmbMlgKdHoZZU8b53HQTMAw==",
+    "address": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+    "timestamp": 1780333118,
+    "domain": "ooopalladiumsb.github.io",
+    "traceId": "019e841f-8705-71ba-98d1-6c2db362bc08"
+  },
+  "note": "LIVE owner_sig over base64(canonical_bytes) of the Proof Package #1 CAL (cal_hash 0xacfe6450..cdc426). signature converted base64->0xhex for CAL envelope. owner_pubkey = Tonkeeper 4.7.0 account key."
+}

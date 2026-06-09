@@ -1,8 +1,8 @@
 package dsl
 
 // Registered action taxonomy + capability tables (mirrors taxonomy.ts).
-// REGISTERED_ACTIONS is CAL §2.3; ownerRequired is §8.2; requiresScope is
-// provisional pending CAL Annex A.
+// REGISTERED_ACTIONS is CAL §2.3; ownerRequired is §8.2; requiresScopeTable
+// mirrors CAL Annex A (DRAFT populated 2026-05-28; Constitution §V vocabulary).
 
 var registeredActions = map[string]bool{
 	"wallet.send_ton": true, "wallet.send_jetton": true, "wallet.send_nft": true,
@@ -38,21 +38,43 @@ func isOwnerRequired(a string) bool { return ownerRequiredActions[a] }
 // IsOwnerRequired reports whether action requires a valid owner_sig (CAL §8.2).
 func IsOwnerRequired(a string) bool { return isOwnerRequired(a) }
 
-// RequiredScopes returns the scopes an action requires (CAL Annex A pending;
-// mirrors REQUIRES_SCOPE_TABLE in taxonomy.ts). The gas/validator layers
-// consult it. The returned slice MUST NOT be mutated.
+// boundedModeWhitelist is the CAL §10.2 set of actions admissible while
+// state.failure_mode.is_bounded_mode == true. Tier 1 amendable.
+var boundedModeWhitelist = map[string]bool{
+	"failure_mode.emergency_withdraw": true,
+	"failure_mode.exit_bounded":       true,
+	"oracles.force_update":            true,
+	"oracles.submit_feed":             true,
+	"agent.freeze":                    true,
+	"cal.cancel":                      true,
+}
+
+// IsBoundedAllowed reports whether action is admissible in Bounded Mode (CAL §10.2).
+func IsBoundedAllowed(a string) bool { return boundedModeWhitelist[a] }
+
+// RequiredScopes returns the scopes an action requires (CAL Annex A DRAFT,
+// 2026-05-28). Empty slice ⇒ no scope gate at §4.3. The returned slice MUST
+// NOT be mutated.
 func RequiredScopes(action string) []string { return requiresScopeTable[action] }
 
 var requiresScopeTable = map[string][]string{
-	"wallet.send_ton":             {"ton_transfer"},
-	"wallet.send_jetton":          {"jetton_access"},
-	"wallet.send_nft":             {"nft_access"},
+	// Asset operations (Constitution §V.5.1 asset_scope)
+	"wallet.send_ton":    {"ton_transfer"},
+	"wallet.send_jetton": {"jetton_access"},
+	"wallet.send_nft":    {"nft_access"},
+	// Treasury (Constitution §V.5.1 treasury_access_level)
 	"treasury.transfer":           {"treasury_access:transfer"},
-	"treasury.distribute_rewards": {"treasury_access:distribute"},
+	"treasury.distribute_rewards": {"treasury_access:transfer"},
 	"treasury.buyback_burn":       {"treasury_access:transfer"},
-	"ptra.stake":                  {"ptra_stake"},
-	"ptra.unstake":                {"ptra_stake"},
-	"governance.vote_as_agent":    {"ptra_governance_vote"},
+	// Governance (Constitution §V.5.1 governance_scope)
+	"governance.propose_amendment": {"governance_scope:propose"},
+	"governance.vote":              {"governance_scope:vote"},
+	"governance.finalize_amendment": {"governance_scope:vote"},
+	"governance.vote_as_agent":     {"ptra_governance_vote"},
+	// PTRA staking (Constitution §V.5.1 asset_scope.ptra_stake)
+	"ptra.stake":         {"ptra_stake"},
+	"ptra.unstake":       {"ptra_stake"},
+	"ptra.claim_rewards": {"ptra_stake"},
 }
 
 func requiresScope(action, scope string) bool {
@@ -62,4 +84,17 @@ func requiresScope(action, scope string) bool {
 		}
 	}
 	return false
+}
+
+// ImpliedScopes returns the scopes implied by granted under Annex A tier
+// implication (`:transfer` ⇒ `:view`, `:vote` ⇒ `:propose`). Empty slice ⇒ none.
+// The returned slice MUST NOT be mutated.
+func ImpliedScopes(granted string) []string {
+	switch granted {
+	case "treasury_access:transfer":
+		return []string{"treasury_access:view"}
+	case "governance_scope:vote":
+		return []string{"governance_scope:propose"}
+	}
+	return nil
 }

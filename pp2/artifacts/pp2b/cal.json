@@ -1,0 +1,28 @@
+{
+  "cal_version": "0.1.0",
+  "action": "wallet.send_ton",
+  "agent_id": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+  "nonce": "1",
+  "expiration_tick": "1000000",
+  "preconditions": {
+    "op": "gte",
+    "lhs": {
+      "var": "state.ptra.balances.0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80"
+    },
+    "rhs": {
+      "const": "1"
+    }
+  },
+  "invariants": [],
+  "steps": [
+    {
+      "verb": "wallet.send_ton",
+      "params": {
+        "to": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+        "amount_nano": "50000000"
+      },
+      "post_conditions": []
+    }
+  ],
+  "receipt_required": true
+}

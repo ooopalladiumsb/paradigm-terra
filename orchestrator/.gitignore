@@ -1,0 +1,8 @@
+node_modules/
+dist/
+package-lock.json
+*.tsbuildinfo
+# OVT-3 soak stream — a regenerated measurement artifact, not a normative vector
+# (recreate via scripts/repro.sh ovt3-soak). The recorded result lives in
+# docs/notes/operational-validation-track.md.
+vectors/soak-stream.json

@@ -17,3 +17,5 @@ path = "src/lib.rs"
 paradigm-terra-canonical = { path = "../canonical-rs" }
 paradigm-terra-dsl = { path = "../dsl-rs" }
 paradigm-terra-cal-gas = { path = "../cal-gas-rs" }
+# `hex` (pure Rust, no build script) only for the differential-fuzz harness bin.
+hex = "0.4"

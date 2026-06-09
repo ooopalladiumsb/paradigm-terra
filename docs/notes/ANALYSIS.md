@@ -61,15 +61,18 @@
 
 ---
 
-### 1.4. MCP schema hash не задан
+### 1.4. MCP schema hash не задан — ✅ закрыто нормативно (2026-05-29)
 
-**Проблема:** Конституция (Глава XI) говорит: «ожидаемый хеш схемы MCP зафиксирован в конституции», но нигде его не указывает. `MCP_DEGRADED_MODE` проверяет этот хеш — без него триггер деградации неопределён.
+**Было:** Конституция (Глава XI) говорила: «ожидаемый хеш схемы MCP зафиксирован в конституции», но нигде его не указывала. `MCP_DEGRADED_MODE` проверял этот хеш — без него триггер деградации был неопределён.
 
-**Исправление:** Добавить в Конституцию Главу XI или в Registry:
-```
-MCP_SCHEMA_HASH = SHA256("PARADIGM_TERRA_MCP_V1" || canonical_json(@ton/mcp schema))
-```
-Конкретное значение — после финализации версии `@ton/mcp`. Использовать `npx @ton/mcp@alpha` из [mcp.ton.org](https://mcp.ton.org/) для получения схемы.
+**Закрытие (Patchset A1):**
+- **CAL Execution Spec §4.4.1** — нормативная формула: хеш считается **только от лексикографически отсортированного множества имён инструментов** (без descriptions/params, чтобы документационные правки upstream не инвалидировали хеш).
+  ```
+  MCP_SCHEMA_V1_TOOLSET := canonical_json(sorted_lex(tool_names))
+  MCP_SCHEMA_HASH       := SHA256("PARADIGM_TERRA_MCP_V1" || MCP_SCHEMA_V1_TOOLSET)
+  ```
+- **CAL Execution Spec §4.4.2** — pinned toolchain: `@ton/mcp@0.1.15-alpha.16`. Конкретный байтовый хеш фиксируется первым прогоном референсного валидатора и входит в его golden vectors.
+- **Constitution §6.bis** — ссылается на CAL Spec §4.4.1/§4.4.2 как нормативный источник формулы и pin'а; pin/patch/minor/major политика остаётся в §6.bis.
 
 ---
 
@@ -180,6 +183,60 @@ Cocoon предоставляет:
 
 **Рекомендация:** добавить в Конституцию Главу II явную ссылку на TEP (если он будет принят) для стандарта Agentic Wallet SBT.
 
+### 3.4. Wallet V5 ↔ CAL isomorphism — ✅ зафиксировано (2026-05-29)
+
+После анализа `/blockchain-basics/standard/wallets/v5` обнаружено, что Wallet V5 `ContractState` — это **строго изоморфная on-chain проекция** CAL authorization state, а не «похожая» структура:
+
+| Wallet V5                                  | CAL                                  |
+|--------------------------------------------|--------------------------------------|
+| `wallet_id`                                | `agent_id`                           |
+| `valid_until`                              | `expiration_tick`                    |
+| `seqno` / `msg_seqno`                      | `nonce`                              |
+| `public_key`                               | `operator_pubkey`                    |
+| `is_signature_allowed`                     | root-signature enable bit            |
+| `extensions_dict`                          | Bounded Mode whitelist (CAL §10.2)   |
+
+**Закрытие (Patchset A2):** введено как нормативный §10 в `cal-validator-design.md`:
+- `validator.operator_pubkey` **MUST** byte-match `Wallet V5 ContractState.public_key` (raw 32-byte Ed25519, user-friendly формы запрещены в любых hashed-полях);
+- ротация ключа (`agentic_rotate_operator_key`) обязана обновлять on-chain и registry mirror в одном CAL;
+- CAL Bounded Mode формально объявлен off-chain аналогом `is_signature_allowed = 0` + extension-gated execution.
+
+Следствие: будущий TON Connect transport (Execution §8) укладывается на этот изоморфизм без новых сущностей — owner-signed CAL ↦ `signMessage`, validated CAL ↦ W5 external body.
+
+### 3.5. TON Connect ingress для owner-подписей — ✅ зафиксировано (2026-05-29)
+
+Дыра в Execution Spec §8: запрет на «прямые вызовы TON API» (§8.2) не объяснял, как owner-подпись попадает в CAL. Без явного канала ingress'а split-key модель из Agentic Wallets была дырявой с точки зрения транспорта.
+
+**Закрытие (Patchset B):**
+- **Execution Spec §8.3** — `signMessage` TON Connect v2 как единственный нормативный канал для `owner_sig`; carve-out в §8.2 (TON Connect — это wallet-side signing-protocol, не TON API call).
+- **Execution Spec §8.3 / `ton_proof`** — domain-binding кошелька к origin'у (по умолчанию `agents.ton.org`, Tier 1 amendable); сохраняется в `state.registry.agents[id].owner_proof_domain`. Валидатор проверяет `signatures.owner_sig.pubkey == owner_proof_domain.pubkey` byte-match.
+- **Execution Spec §8.3 / replay model** — `TC.valid_until` ↔ CAL `expiration_tick` (привязано); TC `id` ↔ CAL `nonce` (независимы по назначению); никакая часть TC replay-state не входит в `STATE_ROOT`.
+- **Execution Spec §8.3 / bridge** — HTTP bridge с NaCl `crypto_box` явно out of consensus.
+- **CAL Spec §8.5** — нормативный pointer на Execution §8.3 для owner-channel; operator-sig остаётся runtime-internal; sponsor-sig — implementation-defined.
+- **Design note `ton-connect-ingress-design.md`** — полный technical depth (sequence, `ton_proof` flow, payload format, replay alignment table, multi-owner/HW-кошельки, out-of-scope).
+
+**Отложено в этом patchset'е** (намеренно):
+- `sendTransaction(W5 external)` для финальной on-chain публикации валидированного CAL — требует on-chain Registry-контракта и кодека `canonical_to_inner` (Annex F CAL Spec). Описано в §6 design note как future work, привязано к Registry roadmap.
+
+### 3.6. cal-gas TON-mainnet economic anchor — ✅ зафиксировано (2026-05-29)
+
+Memory отмечала «CAL spec §14 Annex C populated 2026-05-28 (model pinned, wall-clock TBD)». В §C.3 wall-clock'и означают ns/op CPU benchmarks для cross-language acceptance gate; отдельной дырой был **экономический якорь** — без него `gas_price_nano_ptra_per_unit` и `Flat_Validation_Fee` оставались governance-числами без real-world reference.
+
+**Закрытие (Patchset C):**
+- **CAL Spec Annex §C.5** — пятисекционный TON mainnet economic anchor:
+  - §C.5.1 — pinned snapshot из Tonviewer 2026-05-29: ConfigParam 18/20/21/24/25, workchain + masterchain;
+  - §C.5.2 — таблица соответствия cal-gas → TON-nanoTON (workchain rate ≈ 66.67 nanoTON / unit);
+  - §C.5.3 — recommended `gas_price_nano_ptra_per_unit ≈ 67` (TON-anchored), genesis 1000 объяснён 15× margin'ом на off-chain compute, amendment условен on-chain publication path'ом;
+  - §C.5.4 — recommended `Flat_Validation_Fee ≈ 6 667 nano-PTRA`;
+  - §C.5.5 — state rent comparability (one-shot vs per-second TON storage, ≈ 33.6 µTON/byte/year эквивалент);
+  - §C.5.6 — re-pinning policy: governance-act, не runtime-sync; off-consensus `gas_anchor_drift_warning` при дрейфе >2×.
+
+**Ключевое архитектурное решение:** cal-gas остаётся consensus-deterministic и **никогда не читает TON config во время валидации**. Якорь — это калибровочная reference для governance-решений о PTRA defaults, не runtime dependency. Это отделяет «протокольный газ» (нормативный, parity-locked) от «экономической цены» (Tier 1 amendable, периодически re-anchored).
+
+**Что НЕ сделано** (намеренно):
+- §C.3 wall-clock ns/op benchmarks остаются TBD — это отдельный harness работы (cross-language CPU performance), не закрывается TON-anchor'ом.
+- Genesis `gas_price_nano_ptra_per_unit = 1000` не изменён — это governance-решение, в §C.5.3 явно описаны условия amendment'а.
+
 ---
 
 ## 4. Мелкие технические замечания
@@ -202,7 +259,12 @@ Cocoon предоставляет:
 | P0 (блокер) | Исправить адрес Developer Fund → canonical raw format | ✅ Исправлено: `0:e8797d197cc0261968ab8072b6abf41085d87803d6d3f3ebdb88c3d1ea9090cf` |
 | P0 (блокер) | Исправить CAL preconditions → использовать DSL JSON AST | ✅ Исправлено: полная DSL-схема с `op`/`lhs`/`rhs` вместо строк |
 | P0 (блокер) | Вычислить реальные golden vectors (убрать заглушки) | ✅ Реализован `@paradigm-terra/canonical`; golden.json — NORMATIVE, паритет TS/Rust/Go подтверждён (diff-fuzz clean) |
-| P1 (критично) | Зафиксировать MCP schema hash в конституции | ✅ Добавлен формат и примечание; значение — после финализации @ton/mcp |
+| P1 (критично) | Зафиксировать MCP schema hash в конституции | ✅ Закрыто нормативно (2026-05-29, Patchset A1): CAL Spec §4.4.1/§4.4.2 — formula names-only/lex-sorted + pinned `@ton/mcp@0.1.15-alpha.16`; Constitution §6.bis ссылается на §4.4 |
+| Architectural | Wallet V5 ↔ CAL isomorphism (структурное соответствие, не аналогия) | ✅ Закрыто нормативно (2026-05-29, Patchset A2): `cal-validator-design.md` §10 — mapping table + MUST-level операторный pubkey byte-match + Bounded Mode ≡ `is_signature_allowed=0` |
+| Architectural | TON Connect ingress для owner-подписей (entire trust ingress) | ✅ Закрыто нормативно (2026-05-29, Patchset B): Execution Spec §8.3 + CAL Spec §8.5 + design note `ton-connect-ingress-design.md`. `sendTransaction` (W5 external publication) отложен до on-chain Registry. |
+| Calibration | cal-gas economic anchor к TON mainnet (`gas_price_nano_ptra_per_unit`, `Flat_Validation_Fee`) | ✅ Закрыто нормативно (2026-05-29, Patchset C): CAL Spec Annex §C.5 — pinned ConfigParam 18/20/21/24/25 snapshot, recommended PTRA-anchored defaults, re-pinning policy. cal-gas не читает TON config в runtime. §C.3 ns/op benchmarks остаются отдельной TBD'шкой. |
+| Implementation | Реальный `MCP_SCHEMA_HASH` + golden vectors + cross-language parity | ✅ Закрыто (2026-05-29, Patchset D1-D3): `tools/mcp/` reproducible artifact (40 tools из `@ton/mcp@0.1.15-alpha.16`, hash `cb133fa7…ba34`); `@paradigm-terra/canonical.computeMcpSchemaHash` + Rust/Go параллельные имплементации; 11 vectors NORMATIVE (order-independence, rename, addition, non-ASCII reject, duplicate reject, empty set reject, pinned digest) + 1000-shuffle stress per language. |
+| Milestone | Protocol Freeze Candidate marker | ✅ PFC-1 объявлен (2026-05-29, README.md): identity / transport / MCP / gas / governance / validator / canonical / orchestrator surfaces зафиксированы; гейты к настоящему Consensus Freeze явно описаны (real Ed25519, §C.3 benchmarks, staged validator, e2e smoke, 30-day quiet period). |
 | P1 (критично) | Определить процедуру выхода из CONSENSUS_UNCERTAINTY | ✅ Добавлена таблица условий восстановления для всех failure states |
 | P1 (критично) | Добавить `prev_receipt_hash` в receipt schema | ✅ Добавлено поле + genesis-значение (32 нулевых байта) |
 | P2 (важно) | Формально определить «тик» (Модель времени) | ✅ Новая Глава XII (5 с = 1 тик, источник: TON lt) |

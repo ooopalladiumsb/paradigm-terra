@@ -310,6 +310,29 @@
 
 ---
 
+## 11-bis. §9.4 Tier-2 ревизия редьюсера — спам-комиссия на pre-VALIDATED отказе
+
+**Дата:** 2026-05-26. **Тип:** Tier-2 amendment (ревизия NORMATIVE/замороженного редьюсера + правка валидатора).
+
+**Проблема.** Замороженный редьюсер списывал `Flat_Validation_Fee` только на событии `cal.validated`. CAL, отклонённый *до* VALIDATED (`PRECOND_FALSE`/`CAPABILITY_DENIED`), не порождал `cal.validated`, поэтому редьюсер не двигал PTRA — расхождение с §9.4, который удерживает спам-комиссию на этих отказах. Выявлено эмпирическим round-trip-тестом validator→reducer (золотые векторы как точечная проверка не покрывали интеграционный разрыв).
+
+**Решение `[R]`.**
+
+1. **Область удержания — буквально по §9.4.** Спам-комиссию реализуют только `PRECOND_FALSE` и `CAPABILITY_DENIED`. `UNKNOWN_ACTION`/`NONCE_MISMATCH` (malformed/replay, ingress-class §9.1), `PRECOND_ERROR` (предусловие с ошибкой, не `false`) и нехватка эскроу §9.3 (`OUT_OF_GAS` на гейте 7) удерживают **ноль** — введён исход `FAILED_NO_CHARGE` в `cal-gas.settle`.
+2. **Сумма — `min(fee, balance)`.** Гейты предусловий/способностей идут *до* гейта эскроу §9.3, поэтому полная комиссия не гарантирована. Валидатор запекает конкретную (ограниченную балансом) сумму в `cal.failed.fee_debited_ptra`; редьюсер списывает ровно её (self-describing, без пересчёта и без underflow). Post-VALIDATED арифметика не меняется.
+
+**Затрагивает:**
+- `→ CAL §9.4` — уточнение (формула `min(fee, balance)`; перечень ingress-class кодов) — `docs/draft/cal-execution-spec-v0.1.0-draft.md`.
+- `→ CAL §7.1 (Reducer)` — строка `cal.failed`/`cal.expired`: списание `chargeNow` при `stage ∈ {CREATED, SIGNED}` — `cal-reducer/src/apply.ts` (+ `-rs`/`-go`), [[cal-reducer-design]] §4/§5/§6.
+- Валидатор: `spamFail`/`noChargeFail`, поле `fee_debited_ptra` на pre-VALIDATED `cal.failed` — `validator/src/validate.ts` (+ `-rs`/`-go`), [[cal-validator-design]] §6.
+- `cal-gas`: `FAILED_PRECOND` = `min(fee, balance)`, новый `FAILED_NO_CHARGE` — `cal-gas/src/settle.ts` (+ `-rs`/`-go`).
+
+**Parity-верификация (2026-05-26).** Перегенерированы и повторно повышены до NORMATIVE золотые векторы `cal-gas` (6 исходов), `validator` (13 векторов, +`terminal_fee_debited_ptra`, +`escrow_out_of_gas`), `cal-reducer` (+3 последовательности: full/partial/no-charge, +1 defensive `INSUFFICIENT_BALANCE`). TS/Rust/Go воспроизводят байт-в-байт; все девять пакетов зелёные.
+
+**Открытый остаток (вне области).** Post-VALIDATED отказы на гейтах 9–11 (`STEP_ERROR`/`POSTCOND_FALSE`/`OUT_OF_GAS`-overrun) удерживают только комиссию (а не комиссию + потреблённый газ), т.к. `gas_consumed_ptra` пишется лишь на `cal.executed`, которое для них не наступает. `INVARIANT_FALSE` и `FINALIZED` сходятся. Помечено для отдельной follow-up ревизии (см. [[cal-validator-design]] §6.2).
+
+---
+
 ## 12. Лицензия
 
 Документ распространяется под лицензией MIT (см. `LICENSE` в корне репозитория), как и все сопутствующие спецификации.

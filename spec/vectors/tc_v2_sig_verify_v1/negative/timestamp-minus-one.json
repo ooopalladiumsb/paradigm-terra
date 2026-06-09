@@ -1,0 +1,25 @@
+{
+  "id": "negative/timestamp-minus-one",
+  "contract": "TC_V2_SIGNDATA_VERIFY_V1",
+  "channel": "signData",
+  "kind": "negative",
+  "mutation": "timestamp - 1",
+  "description": "Mutated copy of signData-mytonwallet-4.10.1-binary; timestamp - 1. MUST fail.",
+  "operator_pubkey_hex": "330eba04a55777e3e14d4080092e5d31540b924b23d8d5a7c025be097cce5411",
+  "input": {
+    "workchain": 0,
+    "address_hash_hex": "fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+    "domain": "ooopalladiumsb.github.io",
+    "timestamp": 1780210454,
+    "payload_type": "binary",
+    "payload_b64": "aW50ZXJvcC1vYnNlcnZhdGlvbi1zYW1wbGU=",
+    "payload_text": null
+  },
+  "signature_b64": "F31Se0AAztZR3JkbWYwxUvbNKTsDdf3ZbyhGo3IzL2t9kxkpV/Q1WzTJO+ciiSHrT9SL9hjI8Ym9fdKQldQmDw==",
+  "digest_from_input": true,
+  "expect": {
+    "digest_sha256_hex": "a47ee56bdd37528f4d1ccd01f5a76655271882d0d973b3721c25ecce8788b320",
+    "verdict": false
+  },
+  "source": "interop/observations/2026-05-31-mytonwallet.md Phase 4a"
+}

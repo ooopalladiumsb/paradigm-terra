@@ -24,6 +24,7 @@ const REQUIRED_FIELDS: &[&str] = &[
 ];
 const STEP_KEYS: &[&str] = &["verb", "params", "post_conditions"];
 const SIG_KEYS: &[&str] = &["operator_sig", "owner_sig", "sponsor_sig"];
+const OWNER_ENVELOPE_KEYS: &[&str] = &["signature", "domain", "timestamp", "workchain", "address_hash"];
 
 fn pairs_of<'a>(v: &'a JcsValue) -> Option<&'a Vec<(String, JcsValue)>> {
     match v {
@@ -78,11 +79,50 @@ fn validate_signatures(sig: &JcsValue) -> Result<(), CalError> {
     if sig.get("operator_sig").is_none() {
         return Err(CalError::with("MISSING_FIELD", "signatures.operator_sig".into()));
     }
-    for k in SIG_KEYS {
+    // operator_sig / sponsor_sig: raw hex Ed25519 bytes.
+    for k in ["operator_sig", "sponsor_sig"] {
         if let Some(v) = sig.get(k) {
             match v.as_str() {
                 Some(s) if is_hex_bytes(s) => {}
                 _ => return Err(CalError::with("BAD_SIG_BYTES", format!("signatures.{k}"))),
+            }
+        }
+    }
+    // owner_sig: legacy hex string OR the Contract A reconstruction envelope object
+    // (dual-accept, §8.4 Tier-2 window; D-S1/D-S2).
+    if let Some(v) = sig.get("owner_sig") {
+        if let Some(s) = v.as_str() {
+            if !is_hex_bytes(s) {
+                return Err(CalError::with("BAD_SIG_BYTES", "signatures.owner_sig".into()));
+            }
+        } else {
+            let env = pairs_of(v).ok_or_else(|| CalError::code("BAD_OWNER_ENVELOPE"))?;
+            check_unexpected(env, OWNER_ENVELOPE_KEYS, "UNEXPECTED_OWNER_ENVELOPE_FIELD")?;
+            for k in OWNER_ENVELOPE_KEYS {
+                if v.get(k).is_none() {
+                    return Err(CalError::with("MISSING_FIELD", format!("signatures.owner_sig.{k}")));
+                }
+            }
+            match v.get("signature").and_then(|x| x.as_str()) {
+                Some(s) if is_hex_bytes(s) => {}
+                _ => return Err(CalError::with("BAD_SIG_BYTES", "signatures.owner_sig.signature".into())),
+            }
+            // address_hash: 0x + exactly 32 bytes (reconstruction primitive, not friendly form).
+            match v.get("address_hash").and_then(|x| x.as_str()) {
+                Some(s) if is_hex_bytes(s) && s.len() == 66 => {}
+                _ => return Err(CalError::with("BAD_OWNER_ENVELOPE", "signatures.owner_sig.address_hash".into())),
+            }
+            match v.get("domain").and_then(|x| x.as_str()) {
+                Some(s) if !s.is_empty() => {}
+                _ => return Err(CalError::with("BAD_OWNER_ENVELOPE", "signatures.owner_sig.domain".into())),
+            }
+            if !is_u64(v.get("timestamp")) {
+                return Err(CalError::with("BAD_OWNER_ENVELOPE", "signatures.owner_sig.timestamp".into()));
+            }
+            // workchain: int32 (signed).
+            match v.get("workchain") {
+                Some(JcsValue::Int(s)) if s.parse::<i64>().map(|n| (-(1i64 << 31)..=(1i64 << 31) - 1).contains(&n)).unwrap_or(false) => {}
+                _ => return Err(CalError::with("BAD_OWNER_ENVELOPE", "signatures.owner_sig.workchain".into())),
             }
         }
     }
@@ -184,5 +224,64 @@ pub fn check_cal(cal: &JcsValue) -> CheckResult {
     match validate(cal) {
         Ok(()) => CheckResult { valid: true, code: None, detail: None },
         Err(e) => CheckResult { valid: false, code: Some(e.code), detail: e.detail },
+    }
+}
+
+#[cfg(test)]
+mod owner_envelope_tests {
+    // §8.4 dual-accept: owner_sig as the Contract A envelope object (D-S1/D-S2) and legacy hex.
+    use super::*;
+    use paradigm_terra_canonical::jcs::JcsValue as J;
+
+    fn hexbytes(n: usize) -> J {
+        J::Str(format!("0x{}", "ab".repeat(n)))
+    }
+    fn obj_from(p: Vec<(&str, J)>) -> J {
+        J::Object(p.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+    }
+    fn base_pairs() -> Vec<(&'static str, J)> {
+        vec![
+            ("signature", hexbytes(64)),
+            ("domain", J::Str("ooopalladiumsb.github.io".into())),
+            ("timestamp", J::Int("1780211353".into())),
+            ("workchain", J::Int("0".into())),
+            ("address_hash", hexbytes(32)),
+        ]
+    }
+    fn sigs(owner: J) -> J {
+        obj_from(vec![("operator_sig", hexbytes(64)), ("owner_sig", owner)])
+    }
+
+    #[test]
+    fn object_form_accepts() {
+        assert!(validate_signatures(&sigs(obj_from(base_pairs()))).is_ok());
+    }
+
+    #[test]
+    fn legacy_string_accepts() {
+        assert!(validate_signatures(&sigs(hexbytes(64))).is_ok());
+    }
+
+    #[test]
+    fn malformed_envelope_rejects() {
+        let mut p = base_pairs();
+        p[1].1 = J::Str(String::new()); // empty domain
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p[4].1 = hexbytes(2); // address_hash not 32 bytes
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p[3].1 = J::Str("0".into()); // non-int workchain
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p.push(("x", J::Int("1".into()))); // unexpected field
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
+
+        let mut p = base_pairs();
+        p.remove(0); // missing signature
+        assert!(validate_signatures(&sigs(obj_from(p))).is_err());
     }
 }

@@ -1,0 +1,19 @@
+[package]
+name = "paradigm-terra-tc-v2-verify"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Rust reference for the two TC v2 owner-signature contracts (Contract A TC_V2_SIGNDATA_VERIFY_V1, Contract B TC_V2_TONPROOF_VERIFY_V1). Digest-only port verified byte-for-byte against the TypeScript reference golden vectors. No build scripts, no proc-macros, self-contained musl static build."
+
+[lib]
+name = "paradigm_terra_tc_v2_verify"
+path = "src/lib.rs"
+
+# Dependency policy mirrors the rest of the tree: no build scripts, no
+# proc-macros, no JSON crate. SHA-256 and the base64/hex codecs are vendored so
+# the crate cross-compiles to a self-contained x86_64-unknown-linux-musl static
+# binary with no system C toolchain. Ed25519 is intentionally NOT a dependency:
+# this crate proves the DIGEST axis only (see docs/draft/tc-v2-sig-verify-v1-draft.md);
+# the verdict axis is covered by TS (Node) and Go (std crypto/ed25519).
+[dependencies]

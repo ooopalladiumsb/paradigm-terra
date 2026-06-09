@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>paradigm_terra interop dApp</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, monospace; max-width: 860px; margin: 2em auto; padding: 0 1em; color: #111; }
+    h1 { font-size: 1.2em; margin-bottom: 0; }
+    h1 + .sub { color: #666; margin-top: .2em; margin-bottom: 1.5em; }
+    section { border: 1px solid #ccc; padding: .8em 1em; margin-bottom: 1em; border-radius: 4px; }
+    section h2 { font-size: 1em; margin-top: 0; }
+    button { font: inherit; padding: .4em .8em; cursor: pointer; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    textarea { width: 100%; font: inherit; padding: .4em; box-sizing: border-box; }
+    label { display: block; margin-top: .4em; }
+    input[type=text] { font: inherit; width: 100%; padding: .3em; box-sizing: border-box; }
+    pre { background: #f4f4f4; padding: .6em; overflow-x: auto; font-size: .85em; max-height: 220px; }
+    .row { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; }
+    .pill { display: inline-block; padding: .1em .5em; border-radius: 3px; font-size: .8em; background: #eee; }
+    .pill.ok { background: #d6f5d6; }
+    .pill.err { background: #f5d6d6; }
+    .pill.muted { color: #666; }
+    #log-area { font-size: .8em; max-height: 320px; overflow-y: auto; background: #fafafa; border: 1px solid #ddd; padding: .4em; }
+    #log-area .entry { margin-bottom: .2em; padding-bottom: .2em; border-bottom: 1px dashed #ddd; }
+    #log-area .entry .t { color: #888; }
+    #log-area .entry .k { color: #036; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>paradigm_terra interop dApp</h1>
+  <div class="sub">
+    Phase 1 observational harness — anchor <code>7n5ywp</code>. Discipline anchor <code>z3h0ix</code>:
+    <em>PFC-1 defines the protocol. This page observes reality.</em>
+    Not a validator, not an orchestrator, not an execution engine.
+  </div>
+
+  <section>
+    <h2>1. Session</h2>
+    <div class="row">
+      <button id="btn-connect">Connect wallet</button>
+      <button id="btn-disconnect" disabled>Disconnect</button>
+      <span id="conn-status" class="pill muted">disconnected</span>
+    </div>
+    <div id="wallet-info" style="margin-top: .6em; display: none;">
+      <div>name: <span id="w-name"></span> <span id="w-version" class="pill muted"></span></div>
+      <div>platform: <span id="w-platform"></span></div>
+      <div>address: <code id="w-address"></code></div>
+      <div>pubkey (raw32 hex): <code id="w-pubkey"></code></div>
+      <div>TC protocol features: <span id="w-features"></span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. ton_proof</h2>
+    <div>Captured on connect. <span id="proof-status" class="pill muted">none</span></div>
+    <pre id="proof-dump">(none)</pre>
+  </section>
+
+  <section>
+    <h2>3. Sign — observe what works</h2>
+    <p>Pick the RPC method to probe. PFC-1/B spec uses <code>signMessage</code> with
+    <code>payload.type = "binary"</code>; TonConnect docs more commonly describe
+    <code>signData</code> for that. We try both and log the wallet's actual response.</p>
+
+    <div class="row">
+      <label><input type="radio" name="method" value="signData" checked> signData</label>
+      <label><input type="radio" name="method" value="signMessage"> signMessage</label>
+    </div>
+
+    <label>payload.type
+      <select id="payload-type">
+        <option value="binary" selected>binary</option>
+        <option value="text">text</option>
+        <option value="cell">cell</option>
+      </select>
+    </label>
+
+    <label>payload.data
+      <textarea id="payload-data" rows="3">// default: canonical bytes of pinned MCP toolset (see tools/mcp/mcp-schema-v1-tools.json) base64-encoded.
+// Replace with a real CAL once you have one.
+WyJhZ2VudGljX2NhbmNlbF9yb290X3dhbGxldF9zZXR1cCJd</textarea>
+    </label>
+
+    <div class="row" style="margin-top: .4em;">
+      <button id="btn-sign" disabled>Sign with selected method</button>
+      <span id="sign-status" class="pill muted">idle</span>
+    </div>
+    <pre id="sign-dump">(no signature yet)</pre>
+  </section>
+
+  <section>
+    <h2>4. Send (optional, testnet)</h2>
+    <p>Sends an empty test transaction to your own address. Useful for observing
+    full <code>sendTransaction</code> flow + W5 external publication path. Skip on first runs.</p>
+    <div class="row">
+      <button id="btn-send" disabled>sendTransaction (self, 1 nanoTON)</button>
+      <span id="send-status" class="pill muted">idle</span>
+    </div>
+    <pre id="send-dump">(no transaction yet)</pre>
+  </section>
+
+  <section>
+    <h2>5. Observation log</h2>
+    <p>Structured log of every observed event. This is the corpus that lands in
+    <code>interop/observations/&lt;wallet&gt;/&lt;date&gt;.json</code> after export.</p>
+    <div id="log-area"></div>
+    <div class="row" style="margin-top: .4em;">
+      <button id="btn-export">Export observations as JSON</button>
+      <button id="btn-clear">Clear log</button>
+      <span class="pill muted" id="log-count">0 events</span>
+    </div>
+  </section>
+
+  <script type="module">
+    // @tonconnect/ui via CDN. Pin minor for reproducibility in observations.
+    import { TonConnectUI } from "https://esm.sh/@tonconnect/ui@2.4.4";
+    // SDK helpers (pinned to ui@2.4.4's dep). sendTransaction validator requires a
+    // user-friendly address; connect provides raw 0:hex. See observation 2026-05-31 (D6).
+    import { toUserFriendlyAddress, CHAIN } from "https://esm.sh/@tonconnect/sdk@3.4.1";
+
+    // ─── Observation log ────────────────────────────────────────────────
+    const observation = {
+      session_id: crypto.randomUUID(),
+      started_at: new Date().toISOString(),
+      tc_lib: "@tonconnect/ui@2.4.4",
+      wallet: null,
+      features: { signData_supported: null, signMessage_supported: null, sendTransaction_supported: null, ton_proof_supported: null },
+      events: [],
+    };
+    const logArea = document.getElementById("log-area");
+    const logCount = document.getElementById("log-count");
+
+    function log(kind, data = {}) {
+      const ts = new Date().toISOString();
+      const entry = { ts, kind, ...data };
+      observation.events.push(entry);
+      const div = document.createElement("div");
+      div.className = "entry";
+      div.innerHTML = `<span class="t">${ts}</span> <span class="k">${kind}</span> <code>${escapeHtml(JSON.stringify(data))}</code>`;
+      logArea.prepend(div);
+      logCount.textContent = `${observation.events.length} events`;
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+    }
+
+    // ─── TonConnectUI bootstrap ─────────────────────────────────────────
+    const manifestUrl = new URL("./manifest.json", location.href).toString();
+    log("init", { manifestUrl });
+
+    const tc = new TonConnectUI({
+      manifestUrl,
+      buttonRootId: null,
+    });
+
+    // ─── DOM refs ───────────────────────────────────────────────────────
+    const btnConnect = document.getElementById("btn-connect");
+    const btnDisconnect = document.getElementById("btn-disconnect");
+    const btnSign = document.getElementById("btn-sign");
+    const btnSend = document.getElementById("btn-send");
+    const btnExport = document.getElementById("btn-export");
+    const btnClear = document.getElementById("btn-clear");
+    const connStatus = document.getElementById("conn-status");
+    const walletInfo = document.getElementById("wallet-info");
+
+    // ─── Session lifecycle ──────────────────────────────────────────────
+    tc.onStatusChange((wallet) => {
+      log("status_change", { connected: !!wallet, wallet_name: wallet?.device?.appName ?? null });
+      if (wallet) renderConnected(wallet); else renderDisconnected();
+    });
+
+    function renderConnected(wallet) {
+      connStatus.textContent = "connected";
+      connStatus.className = "pill ok";
+      btnConnect.disabled = true;
+      btnDisconnect.disabled = false;
+      btnSign.disabled = false;
+      btnSend.disabled = false;
+      walletInfo.style.display = "block";
+      document.getElementById("w-name").textContent = wallet.device?.appName ?? "?";
+      document.getElementById("w-version").textContent = wallet.device?.appVersion ?? "?";
+      document.getElementById("w-platform").textContent = wallet.device?.platform ?? "?";
+      document.getElementById("w-address").textContent = wallet.account?.address ?? "?";
+      document.getElementById("w-pubkey").textContent = wallet.account?.publicKey ?? "(not exposed)";
+
+      const features = wallet.device?.features ?? [];
+      document.getElementById("w-features").textContent = JSON.stringify(features);
+      observation.wallet = {
+        name: wallet.device?.appName ?? null,
+        version: wallet.device?.appVersion ?? null,
+        platform: wallet.device?.platform ?? null,
+        max_protocol_version: wallet.device?.maxProtocolVersion ?? null,
+        features,
+        account_address_raw: wallet.account?.address ?? null,
+        account_chain: wallet.account?.chain ?? null,
+        public_key_hex: wallet.account?.publicKey ?? null,
+      };
+      // crude feature derivation from advertised features array
+      observation.features.signData_supported = features.some((f) => (typeof f === "string" ? f === "SignData" : f?.name === "SignData"));
+      observation.features.signMessage_supported = features.some((f) => (typeof f === "string" ? f === "SignMessage" : f?.name === "SignMessage"));
+      observation.features.sendTransaction_supported = features.some((f) => (typeof f === "string" ? f === "SendTransaction" : f?.name === "SendTransaction"));
+
+      // ton_proof
+      const tonProof = wallet.connectItems?.tonProof;
+      if (tonProof && "proof" in tonProof) {
+        observation.features.ton_proof_supported = true;
+        document.getElementById("proof-status").textContent = "received";
+        document.getElementById("proof-status").className = "pill ok";
+        document.getElementById("proof-dump").textContent = JSON.stringify(tonProof.proof, null, 2);
+        log("ton_proof_received", { proof: tonProof.proof });
+      } else if (tonProof && "error" in tonProof) {
+        observation.features.ton_proof_supported = false;
+        document.getElementById("proof-status").textContent = "rejected";
+        document.getElementById("proof-status").className = "pill err";
+        document.getElementById("proof-dump").textContent = JSON.stringify(tonProof.error, null, 2);
+        log("ton_proof_rejected", { error: tonProof.error });
+      } else {
+        document.getElementById("proof-status").textContent = "none";
+        document.getElementById("proof-status").className = "pill muted";
+      }
+      log("connected", { wallet: observation.wallet });
+    }
+
+    function renderDisconnected() {
+      connStatus.textContent = "disconnected";
+      connStatus.className = "pill muted";
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+      btnSign.disabled = true;
+      btnSend.disabled = true;
+      walletInfo.style.display = "none";
+      log("disconnected");
+    }
+
+    // ─── Connect / disconnect ───────────────────────────────────────────
+    btnConnect.addEventListener("click", async () => {
+      try {
+        // Request ton_proof on connect — payload is a random nonce we'll later verify.
+        const payload = crypto.getRandomValues(new Uint8Array(32));
+        const payloadB64 = btoa(String.fromCharCode(...payload));
+        tc.setConnectRequestParameters({ state: "ready", value: { tonProof: payloadB64 } });
+        log("connect_request", { ton_proof_payload_b64: payloadB64 });
+        await tc.openModal();
+      } catch (e) {
+        log("connect_error", { message: String(e?.message ?? e) });
+      }
+    });
+
+    btnDisconnect.addEventListener("click", async () => {
+      try { await tc.disconnect(); }
+      catch (e) { log("disconnect_error", { message: String(e?.message ?? e) }); }
+    });
+
+    // ─── Sign ────────────────────────────────────────────────────────────
+    btnSign.addEventListener("click", async () => {
+      const method = document.querySelector("input[name=method]:checked").value;
+      const payloadType = document.getElementById("payload-type").value;
+      const rawData = document.getElementById("payload-data").value
+        .split("\n").filter((l) => !l.trim().startsWith("//")).join("").trim();
+      const t0 = performance.now();
+      log("sign_request", { method, payload: { type: payloadType, data: rawData } });
+      try {
+        let resp;
+        // TC v2 SignDataPayload uses per-type field names (text/bytes/cell), not a generic "data".
+        const fieldKey = payloadType === "text" ? "text" : payloadType === "binary" ? "bytes" : "cell";
+        const tcPayload = { type: payloadType, [fieldKey]: rawData };
+        if (method === "signData") {
+          resp = await tc.signData(tcPayload);
+        } else {
+          // signMessage path — many wallets DO NOT implement this; the failure mode is itself an observation.
+          resp = await tc.signMessage({ payload: tcPayload });
+        }
+        const latency = Math.round(performance.now() - t0);
+        document.getElementById("sign-status").textContent = "signed";
+        document.getElementById("sign-status").className = "pill ok";
+        document.getElementById("sign-dump").textContent = JSON.stringify(resp, null, 2);
+        log("sign_response", { method, latency_ms: latency, response: resp });
+      } catch (e) {
+        const latency = Math.round(performance.now() - t0);
+        document.getElementById("sign-status").textContent = "error";
+        document.getElementById("sign-status").className = "pill err";
+        document.getElementById("sign-dump").textContent = String(e?.message ?? e);
+        log("sign_error", { method, latency_ms: latency, message: String(e?.message ?? e), code: e?.code ?? null });
+      }
+    });
+
+    // ─── Send (testnet only) ─────────────────────────────────────────────
+    btnSend.addEventListener("click", async () => {
+      const wallet = tc.wallet;
+      if (!wallet) return;
+      // connect gives raw 0:hex; sendTransaction's SDK validator wants user-friendly.
+      const rawAddr = wallet.account.address;
+      const testOnly = wallet.account.chain === CHAIN.TESTNET;
+      const friendlyAddr = toUserFriendlyAddress(rawAddr, testOnly);
+      const tx = {
+        validUntil: Math.floor(Date.now() / 1000) + 300,
+        messages: [{ address: friendlyAddr, amount: "1" }],
+      };
+      const t0 = performance.now();
+      log("send_request", { tx, raw_address: rawAddr, friendly_address: friendlyAddr, test_only: testOnly });
+      try {
+        const resp = await tc.sendTransaction(tx);
+        const latency = Math.round(performance.now() - t0);
+        document.getElementById("send-status").textContent = "sent";
+        document.getElementById("send-status").className = "pill ok";
+        document.getElementById("send-dump").textContent = JSON.stringify(resp, null, 2);
+        log("send_response", { latency_ms: latency, response: resp });
+      } catch (e) {
+        const latency = Math.round(performance.now() - t0);
+        document.getElementById("send-status").textContent = "error";
+        document.getElementById("send-status").className = "pill err";
+        document.getElementById("send-dump").textContent = String(e?.message ?? e);
+        log("send_error", { latency_ms: latency, message: String(e?.message ?? e), code: e?.code ?? null });
+      }
+    });
+
+    // ─── Export / clear ──────────────────────────────────────────────────
+    btnExport.addEventListener("click", () => {
+      observation.exported_at = new Date().toISOString();
+      const walletSlug = (observation.wallet?.name ?? "unknown").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const date = observation.started_at.slice(0, 10);
+      const name = `${walletSlug}_${date}_${observation.session_id.slice(0,8)}.json`;
+      const blob = new Blob([JSON.stringify(observation, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = name; a.click();
+      URL.revokeObjectURL(url);
+      log("exported", { filename: name, event_count: observation.events.length });
+    });
+
+    btnClear.addEventListener("click", () => {
+      observation.events = [];
+      logArea.innerHTML = "";
+      logCount.textContent = "0 events";
+      log("cleared");
+    });
+
+    log("ready");
+  </script>
+</body>
+</html>

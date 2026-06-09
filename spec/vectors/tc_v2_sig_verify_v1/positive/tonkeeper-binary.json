@@ -1,0 +1,24 @@
+{
+  "id": "positive/tonkeeper-binary",
+  "contract": "TC_V2_SIGNDATA_VERIFY_V1",
+  "channel": "signData",
+  "kind": "positive",
+  "description": "Real tonkeeper 4.7.0 capture; ed25519 verifies against the reconstructed commit.",
+  "operator_pubkey_hex": "e4bd70ac7328e5cb46b79227ca972a421ff5261e1a0068ca16cd8e7c8768c48a",
+  "input": {
+    "workchain": 0,
+    "address_hash_hex": "28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+    "domain": "10076c73b909ca.lhr.life",
+    "timestamp": 1780128533,
+    "payload_type": "binary",
+    "payload_b64": "WyJhZ2VudGljX2NhbmNlbF9yb290X3dhbGxldF9zZXR1cCJd",
+    "payload_text": null
+  },
+  "signature_b64": "cRTFbHRLOkfKOnd66XpBMa5j2ZOK6/etlgy+WJz8PDL4ddhXtFNQjDE6LahkhIE4nfd924FNEBxaiBaWfHsaDA==",
+  "digest_from_input": true,
+  "expect": {
+    "digest_sha256_hex": "c1d0c52de9926da04e323fa0a3fdc785242a60cdd8afa5a87be8dc0944574073",
+    "verdict": true
+  },
+  "source": "interop/observations/2026-05-30-tonkeeper.md Phase 4a"
+}

@@ -7,6 +7,10 @@ verified reference implementations** of the canonical encoding in three language
 
 ## Status
 
+> **Consensus Freeze — PFC-1 (ruled 2026-06-06).** The consensus core is **frozen**: canonical encoding, DSL, CAL (skeleton + reducer + gas + validator), orchestrator, MCP schema-hash pin (TS / Rust / Go parity), TON Connect owner-sig ingress, and a TON mainnet economic anchor, all with NORMATIVE golden vectors — and across the entire Operational Validation Track (OVT-1/2/3 + griefing) **no Freeze Surface defect was found**. All known remaining risks are classified as **Integration Reality Risk** or **Production Readiness Risk**; **no known open Freeze Surface risk remains.** This is a freeze of the *consensus core* — **not** a statement of mainnet / launch / product readiness. Freeze Surface changes now go through compatibility review, not free editing. Ruling + rationale: [`docs/notes/pfc1-status-review.md §0`](docs/notes/pfc1-status-review.md); what is frozen: [`docs/spec/freeze-manifest-pfc1.md`](docs/spec/freeze-manifest-pfc1.md); reproduce: [`docs/notes/reproducibility-guide.md`](docs/notes/reproducibility-guide.md). Post-freeze open items are listed below.
+
+> **Production Readiness — PR-1 CLOSED (2026-06-08).** Above the freeze, the consensus kernel is now an operationally validated system: a long-running daemon (incremental apply + `snapshot + tail` recovery within SLA at 1M+ CALs), metrics → monitoring/drift-watch → alerting, verified backup/restore, a live external observer (H3.5-live), and a soak gate with **zero** root drift. Evidence: [`docs/notes/pr1-closure-report.md`](docs/notes/pr1-closure-report.md). The final track before a versioned release was **Track A — Launch Readiness** ([`docs/notes/track-a-charter.md`](docs/notes/track-a-charter.md)): release governance, CI/release-gate, and the governed cut of the inaugural release. **Released as `v1.0.0` (2026-06-09)**, riding `pfc1-consensus-freeze` — authorized by the Release Authority ([`docs/notes/release-signoff-v1.0.0.md`](docs/notes/release-signoff-v1.0.0.md); notes [`docs/notes/release-notes-v1.0.0.md`](docs/notes/release-notes-v1.0.0.md)). The release tag and the freeze tag are distinct; `v1.0.0` ships the proven `wallet.send_ton` path, not broad mainnet coverage (see the release notes' scope/limits).
+
 - **Canonical Encoding Specification v1.3** — *Consensus-Freeze* (frozen normative).
 - **Conformance gate: CLEAN** (2026-05-24) — 0 divergences across TS / Rust / Go on
   170k random cases + full single-codepoint and pair-sweep Unicode coverage.
@@ -44,8 +48,65 @@ verified reference implementations** of the canonical encoding in three language
   Golden vectors `NORMATIVE` (reproduced byte-for-byte across all three; 120
   checks each). See
   [`docs/notes/cal-validator-design.md`](docs/notes/cal-validator-design.md).
+- **Orchestrator / node** (`@paradigm-terra/orchestrator`, TypeScript) — the
+  integration layer: folds a program of per-tick `{cal, trace}` submissions through
+  `cal.created`/`cal.signed` → `validate()` → `apply()` over one evolving `State`,
+  enforcing §6.1 serialization + §6.2 nonce streams, advancing ticks, and recording
+  the STATE_ROOT per event and the Canonical Encoding §6.3 global Merkle root per
+  tick, in TypeScript with Rust (`orchestrator-rs`) and Go (`orchestrator-go`)
+  parity. The event log is byte-for-byte replayable (§7.2). Golden vectors
+  `NORMATIVE` (reproduced byte-for-byte across all three; 69 checks). `EXPIRED_POST` /
+  `AGENT_BUSY` need a staged validator and are deferred. See
+  [`docs/notes/orchestrator-design.md`](docs/notes/orchestrator-design.md).
 - Active drafts: Constitution v0.10.0, CAL Execution Spec v0.1.0, DSL v1.2
   (see [`docs/draft/`](docs/draft/)).
+
+## PFC-1 contents
+
+Declared **2026-05-29**. The following surfaces are inside the freeze candidate
+and are not expected to change before promotion except via the gates below:
+
+- **Identity model** — Wallet V5 ↔ CAL isomorphism (`cal-validator-design.md` §10), `operator_pubkey` MUST byte-match V5 `ContractState.public_key`.
+- **Transport** — TON Connect v2 `signMessage` + `ton_proof` for owner-sig ingress (Execution Spec §8.3, `ton-connect-ingress-design.md`).
+- **MCP surface** — `MCP_SCHEMA_HASH = cb133fa73023b330edc20801adea7a8eb2c9396dd99bb8ab06122936129fba34` over `@ton/mcp@0.1.15-alpha.16` (40 tools, lex-sorted names-only). Reproducible artifact at [`tools/mcp/`](tools/mcp/), parity NORMATIVE across TS / Rust / Go (11 vectors + 1000-shuffle stress).
+- **Gas model** — `gas_units` parity-locked; TON mainnet economic anchor pinned at 2026-05-29 (CAL Spec Annex §C.5, ConfigParam 18 / 20 / 21 / 24 / 25 snapshot from Tonviewer).
+- **Governance anchor** — Constitution §6.bis references CAL Spec §4.4 for the MCP pin; re-pinning policy explicit.
+- **Validator semantics** — `validate(cal, snapshot, trace) → events` pure function, NORMATIVE goldens across TS / Rust / Go, §10 Bounded Mode, §4.4 MCP schema-hash gate, §8.1/§8.2 sig + pubkey gate.
+- **Canonical encoding** — CE v1.3 in Consensus-Freeze since 2026-05-24.
+- **Orchestrator** — Track B node, NORMATIVE goldens, replay-clean.
+
+## PFC-1 → Freeze gates — ALL SATISFIED (Consensus Freeze ruled 2026-06-06)
+
+Promotion from PFC-1 to actual Consensus Freeze required **all** of the following — **all are now
+satisfied**, and the OVT Definition of Done is met (OVT-1/2/3 + griefing, no Freeze Surface defect).
+The freeze ruling and rationale: [`docs/notes/pfc1-status-review.md §0`](docs/notes/pfc1-status-review.md).
+
+1. **Real Ed25519 — CONTOUR CLOSED (2026-06-01).** `operator_sig` = raw Ed25519 over `canonical_bytes`; `owner_sig` = TON Connect v2 Contract A commit (`TC_V2_SIGNDATA_VERIFY_V1`, D1 finding, confirmed on 2 wallets). TS/Rust/Go cross-language parity green, NORMATIVE vectors `spec/vectors/tc_v2_sig_verify_v1/`, Exec-spec §8.3 wired via the §8.4 Tier-2 amendment. Node-side derivation is `verifyIngress()` (`orchestrator/src/ingress.ts` + `orchestrator-go/ingress.go`): `CAL → {operatorSigPresent, ownerSigPresent} → ExecutionTrace → validate()`, proven end-to-end with real test keys to `cal.finalized` (`orchestrator/test/ingress.test.ts`); `validate()` stays a pure function over the booleans by design. **Asterisk:** the Rust node is deferred-by-constraint (no no-build-script Ed25519; its pure `validate()` is parity-green on the booleans).
+2. **§C.3 ns/op CPU benchmarks — BASELINE MEASURED (2026-06-02).** Eval-isolated harnesses in all three runtimes (`cal-gas/bench/gas-bench.mjs`, `cal-gas-rs` bin `gas_bench`, `cal-gas-go` `cmd/gasbench`); Annex C.3 table populated; conditions + findings in `docs/notes/gate2-baseline-results.md`. **Not yet fully green by the literal criterion:** `path_segment` (weight 2) is out of band low in all three tree-walkers (0.05–0.46×) — the one systematic Tier-2-amendment candidate; remaining single-runtime misses are data-dependence (`size` is `O(n)`, n=3) or peg noise. Per §C.4 the unit *counts* are consensus-locked anti-grief weights (untouched), not CPU predictors, so wall-clock is advisory — the deferred Tier-2 decision on `path_segment` is not a freeze blocker. **No weight changed by the baseline** (MEASURE-not-optimize discipline).
+3. **Staged validator** lifting the single-tick model — `EXPIRED_POST` and `AGENT_BUSY` become reachable (the two states the current orchestrator cannot induce).
+4. **End-to-end smoke flow — DONE (2026-06-01).** **Proof Package #1** (`docs/proofs/proof-package-1.json`, status `LIVE`): a real Tonkeeper 4.7.0 testnet `signData`/`binary` signature over the CAL's canonical bytes → `verifyIngress()` (`ownerSigPresent: true`) → `validate()` → `cal.finalized` (events `created→signed→validated→executed→settled→finalized`, with STATE_ROOTs + event-log root). On-chain `sendTransaction` publication stubbed (`transport.tx_hash: null`, §8.3 out-of-scope). Reproducible via `orchestrator/scripts/assemble-proof.mjs`; capture provenance in `docs/proofs/captures/`.
+5. **5-day cooling-off period + OVT completion** — no new normative changes to PFC-1 contents during the gating period; freeze promotion is gated by the Operational Validation Track Definition of Done, with a minimum 5-day cooling-off as a procedural safeguard.
+
+## Post-Freeze open items
+
+Classified **Integration Reality Risk** or **Production Readiness Risk** — none requires a Freeze
+Surface change; none blocked the freeze. The Production-Readiness cluster is now **CLOSED by PR-1**
+([`docs/notes/pr1-closure-report.md`](docs/notes/pr1-closure-report.md)); resolved items are struck below.
+
+- **PP#2 — testnet validation** — ✅ **DONE (2026-06-06, ton-testnet):** verdict `A.SUCCESS`, tx
+  `8d4b96e6…`, on-chain effect == CAL `wallet.send_ton` (faithful self / 50000000). The freeze stands;
+  Integration Reality Risk for `send_ton` confirmed live. See `docs/notes/proof-package-2-spec.md`.
+- **H3.1 — live W5 integration:** the CAL→W5 *mapping* is reviewed and the OutList arm implemented, and
+  PP#2-A built + sent the real W5 external message; an on-chain **Registry** contract remains deferred
+  (not needed for the `send_ton` proof). `docs/notes/cal-to-w5-mapping-review.md`.
+- **H3.5 — live external observer** — ✅ **DONE (PR-1.8):** a third party tails a running node's root in
+  real time; the offline half (reproducing pinned artifacts) was already done. `reproducibility-guide.md §6`.
+- **OVT-SG — state checkpointing** — ✅ **DONE (PR-1.2/1.3):** `recover = snapshot + tail replay` within
+  the recovery SLA at 1M+ CALs; the linear cold re-fold is retired for runtime and recovery alike.
+- **Track A — Launch Readiness** — ◀ **current track** ([`docs/notes/track-a-charter.md`](docs/notes/track-a-charter.md)):
+  release governance + CI/release-gate (done) → public front door → release notes → the governed cut of
+  the inaugural `v1.0.0`. Coverage expansion (TEP for the Agentic Wallet SBT, Tolk on-chain artifacts,
+  multi-owner Multisig v2.1, additional verb classes) is a **post-launch** track on its own line.
 
 ## Layout
 
@@ -106,6 +167,16 @@ that file and recompute every vector. All three agree byte-for-byte.
 NFC backends differ by Unicode version (Go `x/text` 15.0 vs TS/Rust 17.0). Conformance
 is preserved by restricting canonical strings to the **Unicode 15.1 assigned set**
 (`sha256(ranges) = 59cb760256e1b8ec76aa6718a574b0e29a263fb37645bed358a137004c56a6d6`).
+
+## Contributing & security
+
+- **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — the one question that decides everything
+  (does your change touch the Freeze Surface?), the `L1 → L2 → L3 → Track A` merge stack, and the
+  cross-language parity rules.
+- **Security / consensus-divergence reports:** [`SECURITY.md`](SECURITY.md) — private disclosure routed
+  into the governed Emergency Response process. Do not open a public issue.
+- **Releases & versioning:** [`docs/notes/release-governance.md`](docs/notes/release-governance.md)
+  (authoritative) and the running [`CHANGELOG.md`](CHANGELOG.md). Current release: **`v1.0.0`** (2026-06-09).
 
 ## License
 

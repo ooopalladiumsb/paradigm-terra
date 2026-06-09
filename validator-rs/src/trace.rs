@@ -21,6 +21,14 @@ pub struct ExecutionTrace {
     pub state_before: JcsValue,
     /// Post-execution state bound to `state.after.*`.
     pub state_after: JcsValue,
+    /// Whether a valid operator_sig is present over the CAL's canonical-unsigned
+    /// payload (§8.1, §8.3). Structural-only at this layer: the trace carries
+    /// the node's verifier verdict; real Ed25519 curve arithmetic is deferred.
+    pub operator_sig_present: bool,
     /// Whether a valid owner_sig co-signature is present (§8.2 structural check).
     pub owner_sig_present: bool,
+    /// Validator-local pinned MCP schema hash (§4.4). Compared to
+    /// `state.registry.mcp_schema_hash`; mismatch fails the CAL with
+    /// `SCHEMA_MISMATCH` (no-charge, ingress-class). Empty string = no pin.
+    pub pinned_mcp_schema_hash: String,
 }

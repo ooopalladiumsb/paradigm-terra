@@ -212,7 +212,11 @@ fn eval_boolean(is_and: bool, args: &[Expr], b: &Bindings, scope: Scope) -> DRes
     Ok(Value::Bool(acc))
 }
 
-fn evaluate(expr: &Expr, b: &Bindings, scope: Scope) -> Outcome {
+/// Evaluate an already-parsed expression against bindings. Never panics.
+/// Public so a pre-parsed AST can be evaluated in a tight loop (e.g. the §C.3
+/// ns/op benchmark harness isolates evaluation from parse cost); mirrors the
+/// TypeScript reference's exported `evaluate`.
+pub fn evaluate(expr: &Expr, b: &Bindings, scope: Scope) -> Outcome {
     match eval_node(expr, b, scope) {
         Ok(Value::Bool(true)) => Outcome { code: "EVALUATION_TRUE".into(), reason: None },
         Ok(Value::Bool(false)) => Outcome { code: "EVALUATION_FALSE".into(), reason: None },

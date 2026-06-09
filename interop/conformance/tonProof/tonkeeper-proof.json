@@ -1,0 +1,18 @@
+{
+  "capture_id": "tonProof-tonkeeper-4.7.0",
+  "channel": "tonProof",
+  "wallet": { "name": "tonkeeper", "version": "4.7.0", "form_factor": "browser-extension" },
+  "max_protocol_version": 2,
+  "operator_pubkey_hex": "e4bd70ac7328e5cb46b79227ca972a421ff5261e1a0068ca16cd8e7c8768c48a",
+  "address_raw": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "workchain": 0,
+  "address_hash_hex": "28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "domain": "ooopalladiumsb.github.io",
+  "domain_length_bytes": 24,
+  "timestamp": 1780255041,
+  "proof_payload": "zj/ZLU5gV1qu6dY0koYXT8ZE9i8E5hKbjS0tcTQ0TDw=",
+  "signature_b64": "McDorUfGbB3hye3IPxYhSaD8J1ly/IGHmZnZRSEMwJYMmVCZL6ZIyLpAdhTeJ3wl+4NUywQC5xwwG+rIae5/BQ==",
+  "source": "interop/observations/2026-05-31-tonkeeper-tonproof.md",
+  "note": "2nd independent ton_proof (after MyTonWallet 4.10.1) — closes the Contract B >=2-wallet gate. Same Tonkeeper key as the 2026-05-30 signData captures. proof_payload is the literal base64 nonce (matches connect_request ton_proof_payload_b64).",
+  "status": "PRE-NORMATIVE"
+}

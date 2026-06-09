@@ -15,4 +15,4 @@ pub mod trace;
 pub mod validate;
 
 pub use trace::{ExecutionTrace, StepResult};
-pub use validate::{validate, ValidationResult};
+pub use validate::{resume_from_validated, validate, validate_to_validated, ToValidated, ValidationResult};

@@ -1,0 +1,18 @@
+{
+  "capture_id": "tonProof-mytonwallet-4.10.1",
+  "channel": "tonProof",
+  "wallet": { "name": "mytonwallet", "version": "4.10.1", "form_factor": "browser" },
+  "max_protocol_version": 2,
+  "operator_pubkey_hex": "330eba04a55777e3e14d4080092e5d31540b924b23d8d5a7c025be097cce5411",
+  "address_raw": "0:fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+  "workchain": 0,
+  "address_hash_hex": "fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+  "domain": "ooopalladiumsb.github.io",
+  "domain_length_bytes": 24,
+  "timestamp": 1780211353,
+  "proof_payload": "botvmjojzz/bIb2NCGASOzY6xxr/uQFOG9459WVUJmc=",
+  "signature_b64": "RrL/RA76ks6UYMKv0ZpxDiiiLj11FnGq16ecX4loCrKjJSnd1pUQMLacJ2PYYXyT3IMOJ911AtDmmA4rketTBw==",
+  "source": "interop/observations/2026-05-31-mytonwallet.md Phase 3",
+  "note": "proof_payload (the dApp nonce) is signed as its literal base64 string bytes, NOT base64-decoded",
+  "status": "PRE-NORMATIVE"
+}

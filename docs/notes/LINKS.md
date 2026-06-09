@@ -45,6 +45,12 @@
 |--------|-----|------------------------|
 | AI Dev Wall (Telegram) | https://t.me/ai_dev_wall | Канал для TON AI builders |
 | TON Whitepaper | https://ton.org/whitepaper.pdf | §3.1: TON Cell hash (используется в Canonical Encoding §5) |
+| TON Connect — Core concepts | https://docs.ton.org/applications/ton-connect/core-concepts | Execution Spec §8.3: нормативный канал owner-sig ingress (`signMessage`, `ton_proof`) |
+| Wallet V5 spec | https://docs.ton.org/blockchain-basics/standard/wallets/v5 | `cal-validator-design.md` §10: W5 ↔ CAL изоморфизм (ContractState — каноническая on-chain проекция CAL auth state) |
+| Wallet comparison | https://docs.ton.org/blockchain-basics/standard/wallets/comparison | Контекст для §8.3 совместимости кошельков (V5/Highload/Multisig features) |
+| TON fees overview | https://docs.ton.org/blockchain-basics/primitives/fees | Формулы fee-расчёта (storage / gas / forward / action) — основа CAL Spec §C.5 калибровки |
+| TON ConfigParam reference | https://docs.ton.org/blockchain-basics/primitives/config | Документация ConfigParam 18/20/21/24/25 — referenced в §C.5.1 snapshot table |
+| Tonviewer config (live values) | https://tonviewer.com/config | Источник pinned mainnet значений §C.5.1 (snapshot date stamped) |
 
 ---
 

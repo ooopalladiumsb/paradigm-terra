@@ -1,0 +1,22 @@
+{
+  "id": "cross-channel/signdata-under-tonproof-verifier",
+  "contract": "TC_V2_TONPROOF_VERIFY_V1",
+  "channel": "signData",
+  "kind": "cross-channel",
+  "description": "A genuine signData capture (real sig) verified with the ton_proof routine. MUST fail — proves the two routines are NOT interchangeable (different endianness + nested vs single hash).",
+  "operator_pubkey_hex": "330eba04a55777e3e14d4080092e5d31540b924b23d8d5a7c025be097cce5411",
+  "input": {
+    "workchain": 0,
+    "address_hash_hex": "fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+    "domain": "ooopalladiumsb.github.io",
+    "timestamp": 1780210455,
+    "proof_payload": "aW50ZXJvcC1vYnNlcnZhdGlvbi1zYW1wbGU="
+  },
+  "signature_b64": "F31Se0AAztZR3JkbWYwxUvbNKTsDdf3ZbyhGo3IzL2t9kxkpV/Q1WzTJO+ciiSHrT9SL9hjI8Ym9fdKQldQmDw==",
+  "digest_from_input": true,
+  "expect": {
+    "digest_sha256_hex": "e7d69bdeaf49c36564aef198fdfdaf6116930657f612898283fffd910bd2e18c",
+    "verdict": false
+  },
+  "source": "interop/observations/2026-05-31-mytonwallet.md Phase 4a"
+}
