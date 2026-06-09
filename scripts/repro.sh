@@ -14,6 +14,7 @@
 #   scripts/repro.sh ovt3-soak        # OVT-3 — continuous TS==Go parity over a long multi-agent stream
 #   scripts/repro.sh ovt3-griefing    # OVT-3 — griefing/economic-bound: every attack class is bounded
 #   scripts/repro.sh setup            # clean-room bootstrap: install + build TS packages in dep order
+#   scripts/repro.sh typecheck        # tsc --noEmit across every TS package that defines it
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,6 +32,7 @@ verify_proof_ts() { echo "→ Proof Package #1 through the TS node"; (cd orchest
 verify_proof_go() { echo "→ Proof Package #1 through the Go node (cross-language parity)"; (cd orchestrator-go && go run ./cmd/verifyproof); }
 verify_proof()    { verify_proof_ts; verify_proof_go; }
 
+typecheck() { for d in "${TS_PKGS[@]}";  do echo "→ typecheck: $d"; (cd "$d" && npm run --if-present --silent typecheck); done; echo "✅ typecheck green (all TS packages)"; }
 parity_ts() { for d in "${TS_PKGS[@]}";  do echo "→ TS parity: $d";   (cd "$d" && npm test --silent); done; }
 parity_rs() { for d in "${RS_CRATES[@]}"; do echo "→ Rust parity: $d"; (cd "$d" && cargo test --release --quiet); done; }
 parity_go() { for d in "${GO_MODS[@]}";  do echo "→ Go parity: $d";   (cd "$d" && go test ./...); done; }
@@ -81,6 +83,7 @@ ovt3_griefing() { echo "→ OVT-3: griefing / economic-bound validation"; (cd or
 
 case "${1:-help}" in
   setup)           bash "$ROOT/scripts/setup.sh" ;;
+  typecheck)       typecheck ;;
   verify-proof-ts) verify_proof_ts ;;
   verify-proof-go) verify_proof_go ;;
   verify-proof)    verify_proof ;;
