@@ -82,6 +82,18 @@ parity holds; the red is purely the runner's build environment. This is exactly 
 **optional** on the first freeze line and not a readiness blocker (toolchain tuning); promote it to
 required once the runner reproduces the musl/`rust-lld` build. No Freeze Surface impact.
 
+**2026-06-09 — M1: runner provisioned for the musl/`rust-lld` build (post-release v1.x, Tier M).** The
+environmental RED above was traced to a single missing piece: `dtolnay/rust-toolchain@stable` installs
+only the host `x86_64-unknown-linux-gnu` std, but every crate's `.cargo/config.toml` forces a
+self-contained `x86_64-unknown-linux-musl` static build, so the runner had no musl target std to link
+against (`rust-lld` itself ships with the toolchain). The fix is one runner-side line — `targets:
+x86_64-unknown-linux-musl` on the toolchain step — so CI reproduces the **exact** build model the freeze
+used locally (green across all eight crates). This is a runner-provisioning change only: no
+`.cargo/config.toml`, source, or Freeze Surface edit. **Promotion sequence:** keep `continue-on-error`
+for one observation cycle; once `rust-parity` is observed green on the runner, drop `continue-on-error`
+and add `rust-parity` to the branch-protection required checks (`ts-ops`, `freeze-gate`, `go-parity`,
+`rust-parity`) — completing the full three-language gate (TS == Rust == Go) on the 1.x line.
+
 ## Related
 - `.github/workflows/ci.yml` — the required/optional jobs.
 - `Makefile` / `scripts/repro.sh` — the targets CI calls (`typecheck` added in A5).

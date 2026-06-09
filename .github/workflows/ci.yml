@@ -61,9 +61,16 @@ jobs:
   rust-parity:
     name: rust-parity (optional — TS == Rust)
     runs-on: ubuntu-latest
-    continue-on-error: true # OPTIONAL on the first pass; promote to required once stable
+    continue-on-error: true # OPTIONAL until observed green on the runner — then drop this + promote to required (M1)
     steps:
       - uses: actions/checkout@v4
+      # The crates' .cargo/config.toml force a fully self-contained x86_64-unknown-linux-musl
+      # static build driven by the bundled rust-lld (the freeze's reproducibility model — no system
+      # C toolchain assumed). The runner therefore needs the musl target std installed; rust-lld
+      # ships with the toolchain already. Without `targets:` the action installs only the host gnu
+      # std and the build fails at link setup (release-gate.md, 2026-06-09 finding).
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
       - name: parity-rs (cargo test across every crate)
         run: make parity-rs
