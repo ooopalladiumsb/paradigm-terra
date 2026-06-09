@@ -14,16 +14,33 @@ separate async transaction, so `cal.finalized` means "validated + emitted," not 
 Registry records, per W5 `external_message_hash`, the settlement status the **off-chain reconciler**
 computes.
 
-## Scope — M2-A (SC-1) + M2-B (SC-2) landed; M2-C deferred
+## Scope — M2-A (SC-1) + M2-B (SC-2) + M2-C (SC-3) all landed
 
-| Landed | Stage | Deferred |
-|---|---|---|
-| contract **structure** (`contracts/reconciliation_registry.tolk`) | M2-A · SC-1 | `CAL → tx/effect → record` correlation → **M2-B / SC-3** |
-| **reproducible build** (`scripts/build.ts` → `build/registry.compiled.json`) | M2-A · SC-1 | testnet deploy / network leg → **M2-C** (gated) |
-| **record schema** (`src/record.ts`, mirrors the on-chain layout) | M2-A · SC-1 | |
-| **build tests** (`test/build.test.ts` — determinism + round-trip) | M2-A · SC-1 | |
-| **reconciler / classifier** (`src/reconcile.ts` — settled·missing·delayed·mismatch) | M2-B · SC-2 | |
-| **classifier tests** (`test/reconcile.test.ts` — all four classes + ⊆ widening) | M2-B · SC-2 | |
+| Landed | Stage |
+|---|---|
+| contract **structure** (`contracts/reconciliation_registry.tolk`) | M2-A · SC-1 |
+| **reproducible build** (`scripts/build.ts` → `build/registry.compiled.json`) | M2-A · SC-1 |
+| **record schema** (`src/record.ts`, mirrors the on-chain layout) | M2-A · SC-1 |
+| **build tests** (`test/build.test.ts` — determinism + round-trip) | M2-A · SC-1 |
+| **reconciler / classifier** (`src/reconcile.ts` — settled·missing·delayed·mismatch) | M2-B · SC-2 |
+| **classifier tests** (`test/reconcile.test.ts` — all four classes + ⊆ widening) | M2-B · SC-2 |
+| **testnet network leg** (`scripts/m2c-testnet.ts` deploy→send_ton→observe→classify→upsert) | M2-C · SC-3 |
+| **read-only verifier** (`scripts/m2c-verify.ts` → `artifacts/m2c/m2c-verdict.json`) | M2-C · SC-3 |
+
+### M2-C — SC-3 VERIFIED on ton-testnet
+
+A real `wallet.send_ton` was driven end-to-end and its settlement recorded on-chain:
+`CAL (nonce 3) → tx ed9ee52d… (effect: self, 50000000 nano) → registry record (Settled)`, correlated.
+
+- registry `kQA2oxgANStyRkrgk7T9QncyzbdexEw1riSp2YcjNb86g5RE` (codeHash `62D0CA9C…`), `recordCount = 1`
+- evidence: `artifacts/m2c/m2c-verdict.json`. Re-derive read-only (no secret needed):
+  ```bash
+  M2C_REGISTRY=0:36a3…3a83 M2C_KEY=0x5e02…f6fd node --import tsx scripts/m2c-verify.ts
+  ```
+- The first run's step-D read-back false-negatived under the keyless toncenter rate limit (a **B-class
+  observer bug**, not a contract failure — the record was on-chain); the §3.1 "inspect before
+  classifying" rule caught it, and step D now uses the throttled reader. The network leg stays **gated**
+  (needs testnet access + `BROADCAST=1`); it is **not** part of the deterministic CI gate.
 
 The contract stores records but contains **no classification logic** — the status is computed
 **off-chain** by `classify()` (`src/reconcile.ts`, a pure offline function) and supplied by the owner
