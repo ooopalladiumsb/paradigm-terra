@@ -1,0 +1,24 @@
+{
+  "name": "@paradigm-terra/pp2",
+  "version": "0.0.1-draft",
+  "private": true,
+  "type": "module",
+  "description": "Proof Package #2 publication layer (DRAFT, post-freeze, NOT consensus-binding): ir_to_boc — W5 external-message serialization of the Annex F InnerRequest, with offline round-trip validation (IR == decode(encode(IR))).",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ton/core": "^0.63.1",
+    "@ton/ton": "^16.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.22.0",
+    "typescript": "^5.6.0"
+  }
+}

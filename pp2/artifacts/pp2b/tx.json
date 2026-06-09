@@ -1,0 +1,26 @@
+{
+  "tx_hash_b64": "jUuW5kOfhxmUegcDDIoh0V7QRCgW53VzD1IusB4D64Q=",
+  "tx_hash_hex": "8d4b96e6439f8719947a07030c8a21d15ed0442816e775730f522eb01e03eb84",
+  "lt": "74854899000001",
+  "in_msg_external": true,
+  "out_msgs": [
+    {
+      "@type": "ext.message",
+      "hash": "nt2YXRZq78AMpYCn3tA6kM/0HcgfOr3Tcn2prSrx7K0=",
+      "source": "EQDKLzsxK0SFTZ9ucs0MLjikhpe0RvIPzjCYdE_BanfbgJZY",
+      "destination": "EQDKLzsxK0SFTZ9ucs0MLjikhpe0RvIPzjCYdE_BanfbgJZY",
+      "value": "50000000",
+      "extra_currencies": [],
+      "fwd_fee": "44446",
+      "ihr_fee": "0",
+      "created_lt": "74854899000002",
+      "body_hash": "lqKW0iTyhcZ77pPDD4owkVfw2qNdxbh+QQt4YwoJz8c=",
+      "msg_data": {
+        "@type": "msg.dataRaw",
+        "body": "te6cckEBAQEAAgAAAEysuc0=",
+        "init_state": ""
+      },
+      "message": ""
+    }
+  ]
+}

@@ -111,7 +111,37 @@ OVT_SEED=any-string scripts/repro.sh ovt3-soak   # reproducible continuous-parit
 scripts/repro.sh ovt3-griefing                   # bounded-griefing verdict
 ```
 
-## 6. Related
-- `pfc1-status-review.md` — promotion criteria (this is #3).
-- `operational-validation-track.md` — OVT charter; H3.5 (the live half needs a network).
+## 6. H3.5 — external-observer protocol
+
+The goal of H3.5 is not to prove the model (done) but to prove the proof is **independently
+reproducible by a third party, with no author involvement** — from the repo + the pinned toolchain +
+the public chain. Two reproduction surfaces, both runnable by a stranger on a clean checkout:
+
+```bash
+# (a) deterministic-root reproduction — golden vectors + Proof Package #1, TS == Go, byte-for-byte
+make setup && make freeze-check          # diff the roots against §3.1
+
+# (b) Proof Package #2 — independent re-derivation from the repo + the LIVE testnet chain
+cd pp2 && npm install
+node --import tsx scripts/pp2-observer.mjs   # ⇒ "INDEPENDENT A.SUCCESS"
+```
+
+`pp2-observer` does **not** trust our `verdict.json`: it re-derives the expected effect from the
+committed `cal.json` through `canonical_to_inner`, re-checks repo-internal encoding fidelity
+(`inner.boc` ⇄ IR; `external.boc` hash == `params.external_msg_hash`), then fetches the recorded
+`tx_hash` from live testnet and confirms the on-chain effect equals the re-derived expectation
+(faithful dest+value, no widening). All six checks green ⇒ a third party reaches the same A.SUCCESS
+from the repo + the chain alone.
+
+**Split (be honest about what is offline vs live):**
+- **H3.5-offline / on-chain-read — DONE:** the above. A stranger reproduces every *pinned* verdict
+  (golden, PP#1, PP#2) without us; the PP#2 leg reads the public chain by `tx_hash`.
+- **H3.5-live — deferred (Production Readiness):** an observer tailing a *continuously running* node's
+  root in real time needs the long-running daemon, which does not exist yet. That is operational
+  engineering ("can we operate it for years"), not model validation.
+
+## 7. Related
+- `pfc1-status-review.md` — promotion criteria (reproducibility hardening is #3).
+- `proof-package-2-spec.md` — PP#2 spec + §0 RESULT + §3.1 verdict rule (what pp2-observer re-checks).
+- `operational-validation-track.md` — OVT charter; H3.5 (the live-node half needs the daemon).
 - `freeze-manifest-pfc1.md` — the normative inventory being reproduced.

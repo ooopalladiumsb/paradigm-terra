@@ -1,0 +1,15 @@
+{
+  "network": "ton-testnet",
+  "address": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+  "seqno": 0,
+  "nonce": "1",
+  "deploy": true,
+  "valid_until": 1780781131,
+  "send_mode": "PAY_GAS_SEPARATELY(1)",
+  "expected_effect": {
+    "dest": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+    "value_nano": "50000000"
+  },
+  "external_msg_hash": "a8d5863a29c0a7c80a8d3320ae696db66186c82cf4380381578ab18d5a9f46cd",
+  "nonce_rule": "cal.nonce == wallet_seqno + 1 (A.5)"
+}

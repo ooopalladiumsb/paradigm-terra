@@ -1,0 +1,7 @@
+node_modules/
+dist/
+package-lock.json
+*.tsbuildinfo
+# PP#2 operator secret — NEVER commit. The public identity (pubkey/address/wallet_id)
+# lives in the committed artifacts/ trail; only the private seed stays here.
+.secrets/

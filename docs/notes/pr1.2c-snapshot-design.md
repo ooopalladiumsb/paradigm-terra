@@ -1,0 +1,231 @@
+# PR-1.2c — Snapshot + Tail Replay design review (before code)
+
+**Date:** 2026-06-07 · Branch `post-freeze/pr1` · Fixes the snapshot/recovery contract **before**
+PR-1.2c code, the way PP#2-A.5 fixed the envelope rules before the live build. Operations layer,
+**above the Freeze Surface** (composes the frozen validator/reducer/canonical; changes none). Builds on
+PR-1.2b's `IncrementalState` (`600d727`) — the formal process-state object that did not exist when
+PR-1.2a was written, and whose serialisability is already shown by the Gate-1 split/resume test.
+
+## The one wall left
+
+PR-1.2b removed the runtime O(n)/tick wall (incremental `applyTick`; daemon drift ~11 s → 71 ms). The
+remaining known operational wall is **cold recovery**: `OvtNode.open()` still re-folds the whole WAL
+from genesis — ~7.9 s / 400 ticks here, ~2 h / 1M at scale (OVT-SG). PR-1.2c closes it so
+
+```
+recover  =  restore(latest valid snapshot)  +  replay_tail(WAL after covered_tick)
+```
+
+turning hours into "load one state + replay a short tail." It must do so without becoming a second
+source of truth for the frozen core — hence the three rules below come first.
+
+## The state object a snapshot persists
+
+A snapshot is exactly a serialised `IncrementalState` plus the metadata to validate it:
+
+```
+IncrementalState                        snapshot envelope
+ ├─ state            (reducer State)     ├─ snapshot_version
+ ├─ currentTick      (bigint)            ├─ covered_tick   = WAL tick index folded THROUGH (incl.)
+ ├─ eventCount       (number)            ├─ state_root     (redundant, for a fast integrity check)
+ └─ lastEventHash    (Uint8Array)        ├─ event_log_root (redundant, CE §6.3)
+                                         └─ checksum       (over the canonical snapshot bytes)
+```
+
+Restore = decode the `IncrementalState`, then `applyTick`-fold the WAL tail (ticks after
+`covered_tick`) onto it — the same `applyTick` the hot path and the full re-fold use (single fold
+logic, PR-1.2b).
+
+**Format note (concrete, easy to get wrong):** `OvtNode`'s existing `enc/dec` codec handles `bigint`
+(the `$bigint` tag) but **not `Uint8Array`** — `lastEventHash` is bytes. The split/resume test passed
+only because `structuredClone` preserves `Uint8Array` natively; **disk JSON does not**. The snapshot
+codec must explicitly encode `lastEventHash` (e.g. a `$bytes`-hex tag), or store/rehydrate it as hex.
+This is a Gate condition for PR-1.2c-A, not a footnote.
+
+---
+
+## Rule 1 — Snapshot Truth Rule
+
+```
+WAL       = source of truth   (the ordered submission inputs; the only commit authority)
+Snapshot  = recovery accelerator (a discardable cache of a derived fold)
+```
+
+Never `snapshot → canonical truth`. Always `snapshot + tail WAL → truth`. Consequence: a missing,
+older, corrupt, or unreadable snapshot can **always** be dropped and the state rebuilt by the full
+WAL re-fold (the OVT-2 path, which always works). A snapshot can therefore never cause data loss or
+divergence — at worst it costs a full re-fold. This is the property that makes PR-1.2c safe to add
+above a frozen core; it is the same Decision A as PR-1.2a §1, now made operational.
+
+## Rule 2 — Recovery Equivalence Rule
+
+For any committed WAL:
+
+```
+full_replay(WAL)  ==  restore(snapshot) + replay_tail(WAL after covered_tick)
+```
+
+byte-for-byte on **all five** carried/positional quantities — a partial match is a defect:
+
+```
+STATE_ROOT   global_merkle_root   eventCount   lastEventHash   covered_tick
+```
+
+(STATE_ROOT alone is insufficient: the PR-1.2b negative control showed `STATE_ROOT` can match while
+`lastEventHash` diverges. All five, or it fails. `covered_tick` is included because two recoveries can
+reach the same state through a different snapshot cut-point; the check costs ~nothing and pins the
+cut-point too.) This generalises OVT-2's `crash → replay → same
+STATE_ROOT` to the snapshot path; it is the guard that the accelerator introduces **zero** divergence.
+The PR-1.2c-B test asserts it over the OVT corpus at every possible `covered_tick` split (the snapshot
+analogue of PR-1.2b's split/resume).
+
+## Rule 3 — Snapshot Atomicity Rule
+
+Write ordering — the WAL commit point is preserved and the snapshot is strictly secondary:
+
+```
+commit path (per tick):           snapshot path (off the latency-critical path, periodic):
+  1. append tick to WAL             S1. write snapshot → snapshot.tmp
+  2. fsync WAL   ← COMMIT POINT     S2. fsync snapshot.tmp
+  3. apply to liveState (memory)    S3. rename(snapshot.tmp, snapshot-<covered_tick>)  ← atomic publish
+```
+
+The single invariant that must never be violated:
+
+```
+covered_tick(any published snapshot)  ≤  last committed WAL tick
+```
+
+i.e. **no snapshot may be newer than the durable WAL.** It holds by construction: a snapshot's
+`covered_tick` only ever names ticks already fsync'd to the WAL (step 2 precedes step 3), and the
+rename is atomic, so a crash never publishes a partial or ahead-of-WAL snapshot. A snapshot is
+**valid for recovery only if** `covered_tick ≤ last committed WAL tick` **and** its checksum verifies;
+otherwise it is dropped (Rule 1). Retain **≥ 2** snapshots so an unreadable latest falls back to the
+previous; if none is valid, the full WAL re-fold always recovers.
+
+**Hard abort, not self-heal.** A *checksum-valid* snapshot whose `covered_tick > last committed WAL
+tick` is not a "drop and pick an older source" case — it is a violation of the write model itself
+(Rule 3's invariant was broken on the write path). Load **must** raise a corruption error and stop, not
+attempt recovery. (A checksum *failure* is the discardable case → fall back per Rule 1; a checksum-valid
+ahead-of-WAL snapshot is the fatal case → abort.) This keeps a broken write-ordering bug loud instead of
+silently masking it with a stale state.
+
+---
+
+## Crash matrix (the PR-1.2c-C test — the readiness gate of 1.2c)
+
+Every crash point must recover to the same `full_replay(WAL)` result (Rule 2). `T` = the WAL's last
+durable tick after the crash; `C` = covered_tick of the newest valid snapshot.
+
+| # | Crash point | On-disk situation | Recovery action | Invariant |
+|---|---|---|---|---|
+| 1 | before any snapshot | WAL only | full re-fold (= restore none + replay all) | Rule 1 |
+| 2 | mid snapshot write (S1) | partial `.tmp`, no published snapshot | ignore `.tmp`; prev snapshot or full re-fold | Rule 3 |
+| 3 | after fsync tmp, before rename (S2→S3) | complete `.tmp`, not published | ignore `.tmp` (unpublished); prev/full | Rule 3 |
+| 4 | after rename (S3), before next WAL append | snapshot at `C`, `C == T` | restore(C) + empty tail | C ≤ T |
+| 5 | after WAL append+fsync, before next snapshot | snapshot at `C`, `C < T` | restore(C) + replay tail (C, T] | C ≤ T |
+| 6 | mid WAL append (torn line) | torn trailing WAL line | drop torn line (OVT-2) → surviving `T'`; `C ≤ T'` | Rule 3 + OVT-2 |
+
+Forbidden state — must be **unreachable**, and the test asserts it never occurs:
+
+```
+a published snapshot with covered_tick > last committed WAL tick   (snapshot newer than WAL)
+```
+
+## Sub-stages
+
+```
+PR-1.2c-A  Snapshot format      — serialise/deserialise IncrementalState (incl. lastEventHash bytes)
+                                   + envelope {version, covered_tick, roots, checksum}. NO replay, NO
+                                   recovery, NO daemon change — prove the storage artifact alone.
+PR-1.2c-B  Tail replay          — restore(snapshot)+replay_tail == full_replay over the OVT corpus at
+                                   every covered_tick split (Rule 2, byte-for-byte). Wire OvtNode.open()
+                                   to take the snapshot path when a valid snapshot exists; cadence
+                                   (every N ticks + on graceful shutdown, keep ≥2) per PR-1.2a §3.
+PR-1.2c-C  Crash matrix         — the six rows above, each asserting recovery == full_replay, plus the
+                                   forbidden-state assertion. Generalises OVT-2's crash→replay test.
+```
+
+### Gate A — the storage artifact, proven in isolation
+
+The only claim PR-1.2c-A makes (no replay, no recovery, no daemon):
+
+```
+decode(encode(x)) == x      for x = { state, currentTick, eventCount, lastEventHash }
+```
+
+with **`lastEventHash` compared byte-for-byte**, not semantically — this is the exact false-positive the
+memory-only `structuredClone` round-trip in PR-1.2b could not catch (`STATE_ROOT` + `eventCount` match
+while `lastEventHash` is silently corrupted by a JSON pass). Plus: `checksum(encode(x))` verifies, and a
+tampered byte fails the checksum. Codec covers both `bigint` (`$bigint`) and `Uint8Array` (`$bytes` hex).
+
+Then **PR-1.3** pins the recovery SLA (target re-fold of the tail ≪ SLA at ≥1M CALs), and **PR-1.1b**
+wires daemon crash/restart against this FINAL recovery pipeline (snapshot+tail), not an intermediate
+one — which is why 1.1b sits after 1.2c.
+
+### PR-1.2c-B — DONE (2026-06-07): restore + tail replay
+
+`OvtNode.open()` is snapshot-aware: `loadLatestValidSnapshot` returns the newest checksum-valid
+snapshot at or below the committed WAL (skipping checksum-bad ones — Rule 1) or **hard-aborts** on a
+checksum-valid ahead-of-WAL snapshot (Rule 3); recovery then `restore(snapshot) + replay_tail(WAL after
+covered_tick)` via the same `applyTick`. The fold loop is generalised to `foldBlocks(startIncr, blocks)`
+(genesis start = full re-fold; snapshot start = tail) — single fold logic. `OvtNode.snapshot()` publishes
+atomically (TMP → fsync → rename) and retains ≥2 (`snapshot-store.ts`). A snapshot persists only `incr`,
+so a snapshot-recovered node's in-memory transcript is the tail only — the authoritative roots come from
+`liveIncr`, which also fixed `eventLogRoot()` to derive from the live state (single source) rather than
+the last tick result.
+
+**Gate B ✅** — `test/recovery-equivalence.test.ts`: `restore(snapshot@k) + tail == full_replay` for
+every cut-point (0, 1, mid, last-1, final) across the OVT corpus, byte-for-byte on all five quantities
+(STATE_ROOT, GLOBAL_ROOT, EVENT_COUNT, LAST_EVENT_HASH, COVERED_TICK), each cut round-tripped through
+the real codec. `test/snapshot-recovery.test.ts` (fs): recovery uses snapshot+tail not a full re-fold;
+a prefix snapshot replays the remaining tail to the same roots; ahead-of-WAL → `SnapshotCorruptionError`;
+a corrupted snapshot is skipped and the full WAL still recovers; ≥2 retention. Suite 44/44, typecheck
+clean; daemon demo + profile unregressed. **Next: PR-1.2c-C** (crash matrix — the six rows + the
+forbidden-state assertion, generalising OVT-2's crash→replay test).
+
+### PR-1.2c-C — DONE (2026-06-07): crash matrix → PR-1.2c closed
+
+Crash safety of the publication protocol, framed as the central invariant: after any admissible crash
+point, `open()` either recovers state == `full_replay(committed WAL)` **or** deterministically refuses
+(`SnapshotCorruptionError`) — never starts with a wrong state. `test/snapshot-crash-matrix.test.ts`
+simulates each crash point as the exact on-disk state it would leave and runs `open()` against it:
+
+| Row | Crash point | Outcome asserted |
+|---|---|---|
+| 1 | before any snapshot | full re-fold == full_replay |
+| 2 | mid snapshot write (partial `.tmp`) | `.tmp` ignored → full re-fold |
+| 3 | after fsync(tmp), before rename (complete `.tmp`) | unpublished `.tmp` never used → full re-fold |
+| 4 | after rename, before next WAL append (C==T) | restore(C) + empty tail |
+| 5 | after WAL append+fsync, before next snapshot (C<T) | restore(C) + replay tail |
+| 6 | mid WAL append (torn line) | drop torn line → recover committed prefix (± snapshot) |
+| — | forbidden: snapshot newer than WAL | hard abort (SnapshotCorruptionError) |
+| — | operational: latest snapshot corrupt, previous valid | roll back to previous + replay tail |
+
+8/8 green. The two extra rows beyond the six are the forbidden-state assertion (branch 3 unreachable)
+and the requested operational negative-control for `loadLatestValidSnapshot` (real-world fs
+degradation, not a crash). Suite 52/52, typecheck clean.
+
+**PR-1.2c is closed.** Cold Recovery now has a proven mechanism (A: codec), proven equivalence (B:
+restore+tail == full at every cut), and proven crash safety (C). The remaining cold-recovery work is
+no longer correctness but cost — the **PR-1.3 recovery SLA** (snapshot cadence tuned so the tail
+re-fold stays ≪ SLA at ≥1M CALs) — and **PR-1.1b** wires daemon crash/restart against this final
+pipeline. Work shifts from recovery correctness to SLA / monitoring / long-run operation (PR-1.3+).
+
+## Risk-map position (after this stage)
+
+```
+Freeze Surface       ✅      Publication Layer    ✅      Integration Reality  ✅
+Runtime Scalability  ✅ (PR-1.2b)
+Recovery Equivalence ✅ (PR-1.2c-B)
+Crash Safety         ✅ (PR-1.2c-C)   ⇒ Cold Recovery correctness CLOSED; remaining work is SLA (PR-1.3)
+```
+
+## Related
+- `pr1.2-architecture-review.md` — PR-1.2a (Runtime State Architecture) + the PR-1.2b DONE note;
+  §1 (WAL=truth), §3 (cadence), §4 (write ordering), §5 (recovery proof) are the parents of Rules 1–3.
+- `orchestrator/src/node/persistent-node.ts` — `OvtNode` (WAL + `foldFromGenesis` + the `enc/dec`
+  codec the snapshot format extends) and `open()` (the cold-recovery path 1.2c-B rewires).
+- `orchestrator/src/node.ts` — `IncrementalState` / `applyTick` (the object a snapshot persists and the
+  fold tail replay reuses).
+- `operational-validation-track.md` — OVT-2 (crash→replay) + OVT-SG (the ~2 h/1M recovery bound 1.2c closes).

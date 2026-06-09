@@ -31,8 +31,9 @@ calendar-only freeze criterion (Gate #5) with an evidence-based one, consistent 
 - **Frozen state:** HEAD `2fd4b8a`. **Recorded across:** this §0, `freeze-manifest-pfc1.md §0/§1`,
   and `README.md`.
 - **Post-freeze open items** (do not block the freeze; tracked at §3 / §5 / the freeze manifest §6):
-  PP#2 testnet validation, H3.1 live W5 integration (`ir_to_boc` + on-chain), H3.5 live external
-  observer, OVT-SG checkpointing, and the Production Readiness track at large.
+  ✅ PP#2 testnet validation / H3.1 live W5 integration — **DONE 2026-06-06** (ton-testnet, verdict
+  A.SUCCESS, `tx_hash 8d4b96e6…`, effect == CAL action; `proof-package-2-spec.md §0`). Remaining:
+  H3.5 live external observer, OVT-SG checkpointing, broader verbs, and Production Readiness at large.
 
 ---
 

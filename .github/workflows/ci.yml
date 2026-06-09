@@ -1,0 +1,69 @@
+# PR-1/Track-A · A5 — CI. A THIN wrapper over the existing source of truth: the workflow calls `make`,
+# `make` calls `scripts/repro.sh`. No build/test command is duplicated here. Required jobs gate merges
+# on the already-proven invariants (typecheck · tests · vectors NORMATIVE · proof verifiers TS+Go).
+# rust-parity is OPTIONAL on the first pass (it may need toolchain tuning); promote it to required once
+# it has been green for a while. Branch-protection required checks (set in repo settings):
+#   ts-ops · freeze-gate · go-parity   (rust-parity stays non-required for now)
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "consensus/**", "validation/**", "post-freeze/**", "track-a/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ts-ops:
+    name: ts-ops (typecheck + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: setup (build TS packages in dependency order)
+        run: make setup
+      - name: typecheck (tsc --noEmit, all TS packages)
+        run: make typecheck
+      - name: tests (every TS package incl. the orchestrator operational suite)
+        run: make parity-ts
+
+  freeze-gate:
+    name: freeze-gate (vectors NORMATIVE + proof verifiers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: orchestrator-go/go.mod }
+      - run: make setup
+      - name: vectors-check (every golden + tc-v2 manifest is NORMATIVE)
+        run: make vectors-check
+      - name: verify-proof-ts (Proof Package #1 via the TS node)
+        run: make verify-proof-ts
+      - name: verify-proof-go (Proof Package #1 via the independent Go node)
+        run: make verify-proof-go
+
+  go-parity:
+    name: go-parity (TS == Go, all modules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: orchestrator-go/go.mod }
+      - name: parity-go (go test ./... across every Go module)
+        run: make parity-go
+
+  rust-parity:
+    name: rust-parity (optional — TS == Rust)
+    runs-on: ubuntu-latest
+    continue-on-error: true # OPTIONAL on the first pass; promote to required once stable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: parity-rs (cargo test across every crate)
+        run: make parity-rs
