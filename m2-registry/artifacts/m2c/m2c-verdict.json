@@ -1,0 +1,17 @@
+{
+  "result": "SC-3 VERIFIED",
+  "network": "ton-testnet",
+  "operator": null,
+  "registry": "0:36a31800352b72464ae093b4fd427732cdb75ec44c35ae24a9d9872335bf3a83",
+  "codeHashHex": "62D0CA9CCD3768395792DF148721074272885C8F26DC26EA7632740B6EBC01AB",
+  "externalMessageHash": "0x5e0299ea565f611f914a251b3ebff3c53c8c5969fa9a2cfa3092da887946f6fd",
+  "recordCount": 1,
+  "record": {
+    "status": "Settled",
+    "nonce": "3",
+    "calHash": "0x0",
+    "txHash": "0xed9ee52d1f40ffacb5d4d485f84d7c7ceb98583ec58123387157ba11a5372c26",
+    "observedEffectHash": "0x0",
+    "updatedAt": 1781041393
+  }
+}
