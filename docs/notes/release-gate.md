@@ -28,8 +28,9 @@ runnable check or a merged, reviewed artifact.
 | cross-language (Go) | `go-parity` job (`make parity-go`) + verify-proof-go above |
 | PP#2 / H3.5 / PR-1 / Closure Report | merged PRs (#2→#3→#1 stack) + the docs they carry |
 
-**Required CI checks** (set in branch protection on `main`): `ts-ops`, `freeze-gate`, `go-parity`.
-`rust-parity` is **optional** on the first pass (toolchain tuning) — promote to required once stable.
+**Required CI checks** (set in branch protection on `main`): `ts-ops`, `freeze-gate`, `go-parity`,
+`rust-parity` — the full TS == Rust == Go gate. `rust-parity` was optional on the first pass and was
+promoted to required in M1 (see CI findings below) once it was observed green on the provisioned runner.
 
 ## CI = thin wrapper (source of truth)
 
@@ -81,6 +82,23 @@ across all eight crates** (`canonical-rs`, `dsl-rs`, `cal-rs`, `cal-reducer-rs`,
 parity holds; the red is purely the runner's build environment. This is exactly why `rust-parity` is
 **optional** on the first freeze line and not a readiness blocker (toolchain tuning); promote it to
 required once the runner reproduces the musl/`rust-lld` build. No Freeze Surface impact.
+
+**2026-06-09 — M1: runner provisioned for the musl/`rust-lld` build (post-release v1.x, Tier M).** The
+environmental RED above was traced to a single missing piece: `dtolnay/rust-toolchain@stable` installs
+only the host `x86_64-unknown-linux-gnu` std, but every crate's `.cargo/config.toml` forces a
+self-contained `x86_64-unknown-linux-musl` static build, so the runner had no musl target std to link
+against (`rust-lld` itself ships with the toolchain). The fix is one runner-side line — `targets:
+x86_64-unknown-linux-musl` on the toolchain step — so CI reproduces the **exact** build model the freeze
+used locally (green across all eight crates). This is a runner-provisioning change only: no
+`.cargo/config.toml`, source, or Freeze Surface edit.
+
+**Observation cycle — PASSED, M1 closed.** On PR #5 (`post-release/m1-rust-ci-runner`) the first run
+after the fix came back **all four jobs green on the runner**, including `rust-parity` (success) —
+confirming the provisioned musl/`rust-lld` build reproduces the freeze model on GitHub-hosted infra, not
+just locally. With the green observation in hand, `rust-parity` was promoted: `continue-on-error`
+dropped, the job renamed `rust-parity (TS == Rust)`, and the check added to the branch-protection
+required set (`ts-ops`, `freeze-gate`, `go-parity`, `rust-parity`) — completing the full three-language
+gate (TS == Rust == Go) on the 1.x line.
 
 ## Related
 - `.github/workflows/ci.yml` — the required/optional jobs.
