@@ -1,1 +1,7 @@
 promt/
+
+# stray root npm artifacts: each module carries its own package.json (orchestrator/, cal/, …);
+# the root install only pulls dev tsx for running scripts and is not part of the project layout.
+node_modules/
+/package.json
+/package-lock.json
