@@ -1,9 +1,9 @@
 # PR-1/Track-A · A5 — CI. A THIN wrapper over the existing source of truth: the workflow calls `make`,
 # `make` calls `scripts/repro.sh`. No build/test command is duplicated here. Required jobs gate merges
 # on the already-proven invariants (typecheck · tests · vectors NORMATIVE · proof verifiers TS+Go).
-# rust-parity is OPTIONAL on the first pass (it may need toolchain tuning); promote it to required once
-# it has been green for a while. Branch-protection required checks (set in repo settings):
-#   ts-ops · freeze-gate · go-parity   (rust-parity stays non-required for now)
+# rust-parity was OPTIONAL on the first pass (toolchain tuning); since M1 (musl target provisioned,
+# observed green on the runner) it is REQUIRED. Branch-protection required checks (set in repo settings):
+#   ts-ops · freeze-gate · go-parity · rust-parity   (full TS == Rust == Go gate)
 
 name: CI
 
@@ -59,9 +59,10 @@ jobs:
         run: make parity-go
 
   rust-parity:
-    name: rust-parity (optional — TS == Rust)
+    name: rust-parity (TS == Rust)
     runs-on: ubuntu-latest
-    continue-on-error: true # OPTIONAL until observed green on the runner — then drop this + promote to required (M1)
+    # Promoted to REQUIRED (M1): observed green on the runner once the musl target was provisioned
+    # (release-gate.md, 2026-06-09 M1). The full three-language gate is now TS == Rust == Go.
     steps:
       - uses: actions/checkout@v4
       # The crates' .cargo/config.toml force a fully self-contained x86_64-unknown-linux-musl
