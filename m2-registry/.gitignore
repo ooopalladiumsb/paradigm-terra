@@ -1,0 +1,3 @@
+node_modules/
+*.tsbuildinfo
+# build/registry.compiled.json is COMMITTED — it is the SC-1 reproducible-build evidence.

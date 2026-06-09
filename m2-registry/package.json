@@ -1,0 +1,21 @@
+{
+  "name": "@paradigm-terra/m2-registry",
+  "version": "0.0.1",
+  "private": true,
+  "description": "M2 — Registry reconciliation contract (settlement observation for the proven wallet.send_ton path). NON-NORMATIVE operational DRAFT, Tier M, above the Freeze Surface. See docs/notes/m2-charter.md.",
+  "type": "module",
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ton/core": "0.63.1",
+    "@ton/tolk-js": "1.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

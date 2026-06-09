@@ -15,6 +15,7 @@
 #   scripts/repro.sh ovt3-griefing    # OVT-3 — griefing/economic-bound: every attack class is bounded
 #   scripts/repro.sh setup            # clean-room bootstrap: install + build TS packages in dep order
 #   scripts/repro.sh typecheck        # tsc --noEmit across every TS package that defines it
+#   scripts/repro.sh m2-registry      # M2-A (SC-1): reproducible Registry-reconciliation contract build + tests
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -81,6 +82,14 @@ ovt3_soak() {
 # empirical datum for PATH_SEGMENT_WEIGHT_REVIEW.
 ovt3_griefing() { echo "→ OVT-3: griefing / economic-bound validation"; (cd orchestrator && "$NODE" --import tsx scripts/ovt3-griefing.mjs); }
 
+# M2-A (SC-1): the Registry reconciliation contract is a NON-NORMATIVE operational artifact (Tier M,
+# above the Freeze Surface). Reproducible Tolk build (pinned @ton/tolk-js) + determinism/schema tests.
+# Standalone package (own node_modules, no `file:` links) — installed here, not in setup.sh's dep chain.
+m2_registry() {
+  echo "→ M2-A: Registry reconciliation — reproducible contract build + SC-1 tests"
+  (cd m2-registry && npm install --silent && npm run build --silent && npm run typecheck --silent && npm test --silent)
+}
+
 case "${1:-help}" in
   setup)           bash "$ROOT/scripts/setup.sh" ;;
   typecheck)       typecheck ;;
@@ -98,6 +107,7 @@ case "${1:-help}" in
   ovt-sg)          ovt_sg ;;
   ovt3-soak)       ovt3_soak ;;
   ovt3-griefing)   ovt3_griefing ;;
+  m2-registry)     m2_registry ;;
   freeze-check)    freeze_check ;;
   help|*)          grep -E '^#   scripts/repro.sh ' "$0" | sed 's/^#   /  /' ;;
 esac

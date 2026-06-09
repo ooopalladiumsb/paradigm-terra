@@ -13,7 +13,7 @@
 # See docs/notes/reproducibility-guide.md for the clean-room walkthrough + the deterministic-root
 # vs property-target split. OVT targets (ovt1/ovt2/ovt-sg/ovt3-soak/ovt3-griefing) run via repro.sh.
 
-.PHONY: setup typecheck freeze-check verify-proof verify-proof-ts verify-proof-go parity parity-ts parity-rs parity-go vectors-check bench help
+.PHONY: setup typecheck freeze-check verify-proof verify-proof-ts verify-proof-go parity parity-ts parity-rs parity-go vectors-check bench m2-registry help
 
-help setup typecheck freeze-check verify-proof verify-proof-ts verify-proof-go parity parity-ts parity-rs parity-go vectors-check bench:
+help setup typecheck freeze-check verify-proof verify-proof-ts verify-proof-go parity parity-ts parity-rs parity-go vectors-check bench m2-registry:
 	@scripts/repro.sh $@
