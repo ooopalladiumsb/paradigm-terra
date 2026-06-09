@@ -58,6 +58,20 @@ jobs:
       - name: parity-go (go test ./... across every Go module)
         run: make parity-go
 
+  m2-registry:
+    name: m2-registry (SC-1 — reproducible contract build)
+    runs-on: ubuntu-latest
+    # M2-A operational artifact (Tier M, above the Freeze Surface): reproducible Tolk build (pinned
+    # @ton/tolk-js WASM compiler) + determinism/schema tests. Isolated from the freeze jobs — touches no
+    # normative vector or proof, so freeze-gate stays byte-identical. Not yet in the required set;
+    # promote once observed green (the M1 pattern).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: m2-registry (build + typecheck + SC-1 tests)
+        run: make m2-registry
+
   rust-parity:
     name: rust-parity (TS == Rust)
     runs-on: ubuntu-latest
