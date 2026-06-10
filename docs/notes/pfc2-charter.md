@@ -1,5 +1,11 @@
 # PFC2-0 Charter — opening the PFC-2 consensus line (v2.0.0)
 
+> **⚠ SUPERSEDED (2026-06-10) — the Tier-C premise was FALSIFIED for jetton.** Investigation found the
+> consensus surface already finalizes `wallet.send_jetton` (registry + `jetton_access` scope frozen;
+> generic validator/reducer/gas), so jetton is a **Tier-M publication feature** (`j1-jetton-publication-charter.md`,
+> v1.1.0), not a freeze-line change. See `pfc2-jetton-reclassification.md`. PFC-2 as a *real* new freeze
+> line is **reserved for Multisig v2.1** (a genuine authorization-model change). Kept for audit trail.
+
 **Date:** 2026-06-10 · **Status:** charter / pre-registration (no code). **Tier C — this MOVES the
 Freeze Surface.** Opens a new freeze line above PFC-1 (`pfc1-consensus-freeze`, v1.0.0). Ratify before any
 PFC-2 code. First verb: **`wallet.send_jetton` (TEP-74)**.
