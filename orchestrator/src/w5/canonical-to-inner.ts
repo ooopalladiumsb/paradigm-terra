@@ -30,14 +30,24 @@ export const SEND_MODE_EXACT = 1;
 export const CARRY_REMAINING = 64;
 export const CARRY_ALL = 128;
 
+/** TEP-74 `transfer` opcode (J1-A: the jetton transfer body). */
+export const JETTON_TRANSFER_OP = 0x0f8a7ea5;
+/** Bounded TON allowance attached to a jetton transfer (gas for the jetton-wallet hop), in nano-TON. The
+ *  attached value = forward_ton_amount + this; the ⊆ rule caps the TON that may leave at exactly this. */
+export const JETTON_TRANSFER_TON = 50_000_000n; // 0.05 TON
+
 /** One relaxed internal message the wallet emits (the `out_msg` of a W5 `action_send_msg`). */
 export interface OutMessage {
-  /** Destination address (agent-supplied via step params). Raw form; friendly encodings are non-normative. */
+  /** Destination address (agent-supplied via step params). Raw form; friendly encodings are non-normative.
+   *  For a jetton transfer this is the agent's jetton wallet — derived from `jettonMaster` + the agent at
+   *  the network leg (`get_wallet_address`); the IR carries it UNRESOLVED as "" with `jettonMaster` set. */
   readonly dest: string;
   /** Exact value to send, in nano-TON. */
   readonly valueNano: bigint;
-  /** Message body intent (opaque for v0.1.0; null for a bare transfer). */
+  /** Message body intent (opaque for v0.1.0 send_ton; the structured TEP-74 transfer for send_jetton). */
   readonly body: Json | null;
+  /** Jetton master whose agent-wallet is the resolved `dest` — present only for jetton transfers. */
+  readonly jettonMaster?: string;
 }
 
 /** A W5 standard output action (the OutList arm). */
@@ -76,8 +86,9 @@ const SEND_VERBS: ReadonlySet<string> = new Set([
 const CONFIG_VERBS: ReadonlySet<string> = new Set(["failure_mode.enter_bounded", "failure_mode.exit_bounded"]);
 // Off-chain lifecycle — no W5 action.
 const OFFCHAIN_VERBS: ReadonlySet<string> = new Set(["cal.cancel"]);
-// v0.1.0 verbs with a concrete body encoder (the rest of `send` is recognized-but-unimplemented).
-const V0_1_0_ENCODABLE: ReadonlySet<string> = new Set(["wallet.send_ton"]);
+// Verbs with a concrete body encoder. `wallet.send_jetton` added in J1-A (TEP-74); the rest of `send`
+// is recognized-but-unimplemented. (Publication layer, §8.3 — the consensus already finalizes these.)
+const V0_1_0_ENCODABLE: ReadonlySet<string> = new Set(["wallet.send_ton", "wallet.send_jetton"]);
 
 /** Classify a step verb. `get_*` reads are always off-chain (no on-chain effect). */
 export function classifyVerb(verb: string): VerbClass {
@@ -112,6 +123,55 @@ function encodeSendTon(params: Json | undefined): SendAction {
   return { type: "action_send_msg", mode: SEND_MODE_EXACT, msg: { dest, valueNano: amount, body: p["body"] ?? null } };
 }
 
+const U64_MAX = (1n << 64n) - 1n;
+
+/**
+ * J1-A — encode one `wallet.send_jetton` step into a SendAction carrying the TEP-74 `transfer` body.
+ * The ⊆ rule binds BOTH quantities: the body's `amount`/`destination` equal the CAL's `amount`/`recipient`
+ * (no widening/redirection), and the attached TON is exactly `forward_ton_amount + JETTON_TRANSFER_TON`
+ * (a bounded gas allowance — never the carry bits). `dest` is the agent's jetton wallet, left UNRESOLVED
+ * ("") at the IR layer with `jettonMaster` set; the network leg derives it via `get_wallet_address`
+ * (`pfc2-1-send-jetton-semantics.md` D1). Required-explicit: jetton_master, recipient, amount, query_id.
+ * Normalized defaults (D4): response_destination ⇒ agent, forward_ton_amount ⇒ 0, forward_payload ⇒ null.
+ */
+function encodeSendJetton(params: Json | undefined, agent: string): SendAction {
+  const p = asObj(params);
+  const jettonMaster = p["jetton_master"];
+  const recipient = p["recipient"];
+  const amount = p["amount"];
+  const queryId = p["query_id"];
+  if (typeof jettonMaster !== "string" || jettonMaster === "") throw new W5CodecError("W5_MALFORMED_PARAMS", "wallet.send_jetton requires params.jetton_master (address string)");
+  if (typeof recipient !== "string" || recipient === "") throw new W5CodecError("W5_MALFORMED_PARAMS", "wallet.send_jetton requires params.recipient (address string)");
+  if (typeof amount !== "bigint") throw new W5CodecError("W5_MALFORMED_PARAMS", "wallet.send_jetton requires params.amount (integer)");
+  if (amount <= 0n) throw new W5CodecError("W5_MALFORMED_PARAMS", "jetton amount must be > 0");
+  if (typeof queryId !== "bigint") throw new W5CodecError("W5_MALFORMED_PARAMS", "wallet.send_jetton requires params.query_id (explicit integer — never auto-generated)");
+  if (queryId < 0n || queryId > U64_MAX) throw new W5CodecError("W5_MALFORMED_PARAMS", "query_id must be a uint64");
+
+  // normalized defaults (D4) — deterministic, applied here at the publication layer.
+  const respRaw = p["response_destination"];
+  const responseDestination = typeof respRaw === "string" && respRaw !== "" ? respRaw : agent;
+  const fwdRaw = p["forward_ton_amount"];
+  const forwardTonAmount = typeof fwdRaw === "bigint" ? fwdRaw : 0n;
+  if (forwardTonAmount < 0n) throw new W5CodecError("W5_MALFORMED_PARAMS", "forward_ton_amount must be non-negative");
+  const forwardPayload = p["forward_payload"] ?? null; // absent ⇒ no payload
+
+  const valueNano = forwardTonAmount + JETTON_TRANSFER_TON; // ⊆: the only TON authorized to leave
+  if (forwardTonAmount >= valueNano) throw new W5CodecError("W5_MALFORMED_PARAMS", "forward_ton_amount must be < the attached value");
+
+  const body: Json = {
+    kind: "jetton_transfer",
+    op: BigInt(JETTON_TRANSFER_OP),
+    query_id: queryId,
+    amount, // faithful jetton amount (⊆: no widening)
+    destination: recipient, // faithful recipient (⊆: no redirection)
+    response_destination: responseDestination,
+    custom_payload: null, // fixed-absent this increment (Non-goals)
+    forward_ton_amount: forwardTonAmount,
+    forward_payload: forwardPayload,
+  };
+  return { type: "action_send_msg", mode: SEND_MODE_EXACT, msg: { dest: "", jettonMaster, valueNano, body } };
+}
+
 /**
  * Project a validated CAL's steps onto a W5 `InnerRequest` (OutList arm).
  *
@@ -121,6 +181,7 @@ function encodeSendTon(params: Json | undefined): SendAction {
  */
 export function canonicalToInner(cal: Json): InnerRequest {
   const c = asObj(cal);
+  const agent = typeof c["agent_id"] === "string" ? c["agent_id"] : "";
   const steps = Array.isArray(c["steps"]) ? (c["steps"] as Json[]) : [];
   const outActions: SendAction[] = [];
 
@@ -136,9 +197,9 @@ export function canonicalToInner(cal: Json): InnerRequest {
         throw new W5CodecError("W5_UNKNOWN_VERB", `step ${i} verb ${JSON.stringify(verb)} is not a §2.3 registered verb`);
       case "send": {
         if (!V0_1_0_ENCODABLE.has(verb)) {
-          throw new W5CodecError("W5_UNIMPLEMENTED_VERB", `step ${i} verb ${verb} is a message verb but has no v0.1.0 body encoder (only wallet.send_ton)`);
+          throw new W5CodecError("W5_UNIMPLEMENTED_VERB", `step ${i} verb ${verb} is a message verb but has no body encoder (have: wallet.send_ton, wallet.send_jetton)`);
         }
-        outActions.push(encodeSendTon(step["params"]));
+        outActions.push(verb === "wallet.send_jetton" ? encodeSendJetton(step["params"], agent) : encodeSendTon(step["params"]));
       }
     }
   }
