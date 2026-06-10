@@ -12,8 +12,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { Address, beginCell, Cell, contractAddress, toNano } from "@ton/core";
 import { Blockchain } from "@ton/sandbox";
-import { canonicalToInner } from "../../orchestrator/dist/w5/canonical-to-inner.js";
-import { jettonBodyToCell, type JettonTransferBody } from "../src/ir-to-boc.js";
+import { jettonBodyToCell, JETTON_TRANSFER_OP, type JettonTransferBody } from "../src/ir-to-boc.js";
 
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "contracts", "jetton");
 const jc = JSON.parse(fs.readFileSync(path.join(SRC, "jetton-compiled.json"), "utf8"));
@@ -55,15 +54,19 @@ test("PP#3-A.2: our send_jetton body moves jettons through the real jetton walle
   const operatorJW = jettonWalletOf(operator.address, master);
   assert.equal(await readJettonBalance(bc, operatorJW), MINT, "mint created the operator jetton wallet with balance");
 
-  // ── OUR send_jetton: CAL → canonical_to_inner → TEP-74 body cell → op::transfer to operatorJW ──
+  // ── OUR send_jetton TEP-74 body → op::transfer to operatorJW ──
+  // This JettonTransferBody is EXACTLY what canonical_to_inner emits for `wallet.send_jetton`
+  // {jetton_master, recipient, amount, query_id} with the D4 defaults (response_destination ⇒ agent,
+  // forward ⇒ 0, payload ⇒ absent) — that codec→body step is verified in
+  // orchestrator/test/j1-jetton-codec.test.ts; reconstructed here so pp2's CI job stays independent of
+  // the orchestrator build. The cell is OUR publication-layer serialization (jettonBodyToCell, J1-B).
   const SEND = 250n;
-  const cal = {
-    cal_version: "0.1.0", action: "wallet.send_jetton", agent_id: operator.address.toRawString(), nonce: 1n, expiration_tick: 10n ** 7n,
-    preconditions: { op: "gte", lhs: { const: 1n }, rhs: { const: 1n } }, invariants: [],
-    steps: [{ verb: "wallet.send_jetton", params: { jetton_master: master.toRawString(), recipient: recipient.address.toRawString(), amount: SEND, query_id: 770003n }, post_conditions: [] }],
+  const body: JettonTransferBody = {
+    kind: "jetton_transfer", op: BigInt(JETTON_TRANSFER_OP), query_id: 770003n, amount: SEND,
+    destination: recipient.address.toRawString(), response_destination: operator.address.toRawString(),
+    custom_payload: null, forward_ton_amount: 0n, forward_payload: null,
   };
-  const body = canonicalToInner(cal).outActions[0]!.msg.body as unknown as JettonTransferBody;
-  const transferCell = jettonBodyToCell(body); // OUR publication-layer serialization
+  const transferCell = jettonBodyToCell(body);
 
   // the owner (operator) sends op::transfer + OUR body to its jetton wallet → it forwards to the recipient JW
   await operator.send({ to: operatorJW, value: toNano("0.2"), body: transferCell });
