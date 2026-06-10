@@ -82,11 +82,16 @@ byte-order key sort) — no new canonicalization machinery. Pinned so the hash i
 - **NOT hashed:** the derived agent jetton-wallet address, the attached TON gas budget, the serialized
   TEP-74 cell — all **codec/publication-layer** outputs (D1; review §6.2/§8.3), exactly as `send_ton`'s
   `ir_to_boc` bytes are not hashed.
-- **Field presence / defaults (Decision D4):** `jetton_master, recipient, amount, response_destination,
-  forward_ton_amount, query_id` are **REQUIRED and explicit** (no implicit defaults — the restricted-JCS
-  forbids present-vs-absent ambiguity). `forward_payload` is the **only** optional field: absent ⇒ no
-  payload (TEP-74 `forward_payload` = empty). All integers are decimal-free canonical integers; addresses
-  are canonical address strings (same rules as `send_ton`'s `to`).
+- **Field presence / defaults (Decision D4 — REVISED, see addendum below):** a **deterministic
+  canonical normalization** fills omitted fields with fixed defaults **before** hashing, so the hashed
+  CAL is always fully explicit (the restricted-JCS still sees no present-vs-absent ambiguity — it hashes
+  the normalized form). Defaults: `response_destination ⇒ the agent (sender)`, `forward_ton_amount ⇒ 0`,
+  `forward_payload ⇒ absent`. **`amount`, `recipient`, `jetton_master` are REQUIRED** (no safe default).
+  **`query_id` is REQUIRED and explicit — NOT auto-generated** (an auto/random query_id is
+  non-deterministic and would diverge across TS/Rust/Go and break vector reproducibility; see addendum).
+  All integers are decimal-free canonical integers; addresses are canonical address strings (same rules
+  as `send_ton`'s `to`). The normalization is identical in TS/Rust/Go (it is itself a freeze-surface
+  rule, frozen in PFC2-4).
 - **The ⊆ rule (publication, §7):** the codec may shorten, never extend authorization. The emitted TEP-74
   body's `amount`/`destination` MUST equal the CAL's `amount`/`recipient`; the attached TON value MUST be
   ≤ the authorized budget (`forward_ton_amount` + a bounded gas allowance), never more. Widening on either
@@ -116,7 +121,7 @@ The standard transfer body (`transfer#0f8a7ea5`):
 1. **D1** — agent jetton wallet is a codec-derived output, `jetton_master` in the CAL (recommended) — or carry the jetton wallet explicitly?
 2. **D2** — reuse the send effect, no `*_CONFIRMED` reducer event (settlement = M2 off-chain) — recommended.
 3. **D3** — a new `jetton_transfer` scope in Annex A (capability-gated like `ton_transfer`); its tier-implication, if any.
-4. **D4** — required-explicit params + `forward_payload` the only optional field; `custom_payload` fixed-absent this increment.
+4. **D4 (revised, §9)** — deterministic canonical **normalization** for omitted defaults (`response_destination ⇒ sender`, `forward_ton_amount ⇒ 0`, `forward_payload ⇒ absent`); `amount`/`recipient`/`jetton_master`/**`query_id` REQUIRED-explicit** (query_id never auto-generated — a parity/determinism hazard); `custom_payload` fixed-absent this increment.
 
 My recommendation: accept all four as written. They keep `send_jetton` a clean, isolated verb that
 extends the proven `send_ton` path without touching the base authorization model (charter SC-5).
@@ -126,7 +131,41 @@ No change to vectors, validator, reducer, canonicalization code, or the TS/Rust/
 semantic contract only; PFC2-2 (validator) and PFC2-3 (reducer) implement it, PFC2-4 freezes vectors, and
 PP#3 proves it on testnet.
 
-## 8. Related
+## 8. Non-goals (explicitly OUT of scope for PFC-2)
+
+PFC-2's first increment is `wallet.send_jetton` and nothing else. The following are **not** in this line
+(each is a separate future increment or its own freeze line), so reviewers can bound the Freeze-Surface
+delta precisely:
+
+- **NFT (TEP-62)** — `wallet.send_nft` (rides the same nested-body machinery later).
+- **Multisig v2.1** — `owners[]` / `threshold` (changes the authorization model — separate, higher-risk).
+- **Agentic-Wallet SBT (TEP)** — on-chain identity standard.
+- **Jetton mint / burn** — issuance/destruction (a master-contract privilege, not an agent transfer).
+- **Jetton administration / metadata / governance** — admin ops, metadata updates, discovery (TEP-89 etc.).
+- **`custom_payload`** — fixed-absent this increment (a future field; §5).
+- Promoting the M2 reconciliation contract to *normative* (it stays operational/non-normative).
+
+The only new capability PFC-2 grants is the `jetton_transfer` scope over `wallet.send_jetton` (§2, D3).
+
+## 9. Addendum (2026-06-10) — D4 normalization + the `query_id` ruling
+
+Refines D4 after PFC2-1 review. **Two points, pinned:**
+
+1. **Deterministic defaults via normalization (accepted).** `response_destination ⇒ sender`,
+   `forward_ton_amount ⇒ 0`, `forward_payload ⇒ absent` may be omitted by the author and are filled by a
+   normalization step **before** canonical hashing. The normalization is byte-identical across TS/Rust/Go
+   and is itself frozen (PFC2-4). This gives ergonomics without re-introducing present-vs-absent hash
+   ambiguity — the **normalized** form is what is hashed and is always fully explicit.
+2. **`query_id` is REQUIRED-explicit, never auto-generated.** An auto/random `query_id` is
+   non-deterministic: TS, Rust, and Go would each produce a different value ⇒ different `cal_hash` ⇒
+   cross-language parity failure (PFC2-5/6) and non-reproducible NORMATIVE vectors (PFC2-4). The author
+   supplies `query_id`; the consensus layer never invents it. (If a deployment wants a derived id, it must
+   derive it *deterministically* off the CAL — outside the hashed surface — but the canonical CAL carries
+   the explicit value.)
+
+This addendum corrects the original §4 phrasing ("all required-explicit"); the §4 text above now reflects it.
+
+## 10. Related
 - `pfc2-charter.md` (PFC2-0) — the line, the design-review choosing jetton, the PFC2-0..7 path.
 - `cal-to-w5-mapping-review.md` §6.5 — nested transfer bodies (deferred from v0.1.0); §6.2/§8.3 publication-layer boundary.
 - `orchestrator/src/w5/canonical-to-inner.ts` — the `send_ton` `encodeSendTon` this extends.
