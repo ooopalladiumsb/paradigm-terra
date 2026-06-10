@@ -5,6 +5,12 @@
 release* to *maintaining a released line*. This document is the post-release backlog and, more
 importantly, the **rule for where each item is allowed to land**.
 
+> **STATUS: v1.x MAINTENANCE PROGRAM = COMPLETE (2026-06-10).** All Tier-M items closed — M1 CI hardening ·
+> M2 Registry reconciliation · M3 durability · A1 long-duration soak · A2 distributed observers — every one
+> merged with the Freeze Surface byte-identical (orchestrator suite 113/113). Further changes are bug/security
+> fixes, operational incidents, or **Tier C → PFC-2 → v2.0.0**. PFC-2 is kicked off in `pfc2-charter.md`
+> (first verb `wallet.send_jetton`).
+
 ## The one rule this roadmap encodes
 
 Per `release-governance.md`, the freeze line decides the version axis:
@@ -34,7 +40,7 @@ artifact; each ships as an ordinary operational PR up the `L1 → L2 → L3 → 
 | **`rust-parity` runner stabilization** ✅ **M1, CLOSED** | provision the CI runner for the repo's musl-static / `rust-lld` build so the optional `rust-parity` job goes green, then **promote it to required** | PATCH→policy | DONE (`post-release/m1-rust-ci-runner`, PR #5): `targets: x86_64-unknown-linux-musl` on the toolchain step reproduced the freeze build model on the runner (all 4 jobs green); `rust-parity` promoted optional → required. Full TS == Rust == Go gate now enforced on 1.x. |
 | **Remote / incremental backups** ✅ **M3, CLOSED** | extend PR-1.7 local backup→restore to off-host and incremental (snapshot + WAL deltas) — see `m3-charter.md` | MINOR | DONE (PRs #10–#13): M3-A incremental (`backup-incremental.ts`, `restoreChain == node@t`) + M3-C remote sink (`backup-sink.ts`, round-trip == node@t, real cloud gated). Suite 103/103, SC-4/SC-5 held. |
 | **WAL archival / compaction** ✅ **M3, CLOSED** | bound on-disk growth: archive/compact the event log behind snapshots without breaking byte-exact replay — see `m3-charter.md` | MINOR | DONE (M3-B, PR #12): `wal-compaction.ts` — rebase snapshot + archive prefix; `replay-from-compacted == replay-from-full`, graceful corrupt-snapshot fallback. |
-| **Distributed observers** ▶ **A2, ACTIVE** | scale PR-1.8's single live observer to multiple independent tailers (consensus on the published root) — see `a2-distributed-observers-charter.md` | MINOR | architect ruling 2026-06-10: observer fleet w/ quorum; distinguishes NODE_DRIFT (quorum contradicts node) from OBSERVER_SPLIT (a faulty tailer). Observe-only, decides nothing. Last Tier-M operational item. Branch `post-release/a2-distributed-observers`. |
+| **Distributed observers** ✅ **A2, CLOSED** | scale PR-1.8's single live observer to multiple independent tailers (consensus on the published root) — see `a2-distributed-observers-charter.md` | MINOR | DONE (PRs #16–#17): `observer-fleet.ts` — `ObserverFleet` quorum verdict distinguishes NODE_DRIFT (quorum unanimously contradicts the node) from OBSERVER_SPLIT (a faulty tailer isolated, node corroborated). Observe-only, 6/6. **Last Tier-M operational item.** |
 | **Long-duration soak program** ✅ **A1 code CLOSED** (wall-clock run operational) | run the 7–30 day continuous soak the PR-1 charter named (PR-1.9 proved the gate over 120 ticks) — see `a1-soak-charter.md` | PATCH/process | DONE (PRs #14–#15): `soak-program.ts` extends PR-1.9 `SoakMonitor` to SC-1/4/6 (restore-equivalence + fd/disk + duration); accelerated proof 4/4 + runbook. The literal 7/30-day run is OPERATED on infra; the code gate is the accelerated test + SC-Freeze. |
 | **`path_segment` gas — advisory** | the one §C.3 weight out of band in all three tree-walkers (Gate #2 baseline) — *measure only* on the 1.x line | PATCH | the unit **counts** are consensus-locked anti-grief weights (§C.4); a re-weight is **not** a 1.x change — it is Tier C. |
 
