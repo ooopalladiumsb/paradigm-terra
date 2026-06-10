@@ -1,5 +1,11 @@
 # PFC2-1 — Semantic Design: `wallet.send_jetton` (TEP-74)
 
+> **⚠ RECLASSIFIED (2026-06-10) — these semantics are CORRECT and REUSED, but jetton ships as a Tier-M
+> publication feature, not PFC-2.** The consensus surface already finalizes `send_jetton`
+> (`pfc2-jetton-reclassification.md`). Implemented by the **J1** track (`j1-jetton-publication-charter.md`,
+> v1.1.0). **Correction:** the scope is the frozen `jetton_access` (§2/D3's proposed `jetton_transfer` was
+> wrong). All other decisions (D1/D2/D4 + the TEP-74 mapping + normalization) stand and feed J1-A.
+
 **Date:** 2026-06-10 · **Status:** semantic design (NO code). PFC-2 line, on `pfc2/consensus`. Defines the
 verb's meaning **before** any Freeze-Surface change. Ratifying this doc (merge) fixes the decisions the
 later stages (validator → reducer → vectors → references → PP#3 → freeze) implement. Follows

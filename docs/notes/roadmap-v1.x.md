@@ -8,8 +8,11 @@ importantly, the **rule for where each item is allowed to land**.
 > **STATUS: v1.x MAINTENANCE PROGRAM = COMPLETE (2026-06-10).** All Tier-M items closed — M1 CI hardening ·
 > M2 Registry reconciliation · M3 durability · A1 long-duration soak · A2 distributed observers — every one
 > merged with the Freeze Surface byte-identical (orchestrator suite 113/113). Further changes are bug/security
-> fixes, operational incidents, or **Tier C → PFC-2 → v2.0.0**. PFC-2 is kicked off in `pfc2-charter.md`
-> (first verb `wallet.send_jetton`).
+> fixes, operational incidents, or **Tier C → PFC-2 → v2.0.0**. **Next operational track: J1 —
+> `wallet.send_jetton` publication path** (Tier M, v1.1.0, `j1-jetton-publication-charter.md`): jetton was
+> found to already finalize through the frozen consensus, so it is a publication feature, not a freeze-line
+> change (`pfc2-jetton-reclassification.md`). A *genuine* PFC-2 is reserved for **Multisig v2.1** (moves the
+> authorization model).
 
 ## The one rule this roadmap encodes
 
@@ -52,9 +55,14 @@ dedicated freeze branch, regenerated evidence (vectors re-promoted to NORMATIVE,
 re-verified in TS *and* Go), and an explicit new freeze decision (`pfc2-consensus-freeze`). The release
 that carries it is `2.0.0`.
 
-- **New verb classes** — jetton, nft, bounded-mode beyond the frozen set, etc. New verbs change validator
-  / reducer / gas semantics ⇒ Freeze Surface.
-- **Multi-owner (Multisig v2.1) flows** — a new ownership/authorization model ⇒ consensus.
+- **New verb classes** — ~~jetton, nft~~, bounded-mode beyond the frozen set, etc. ⚠ **CORRECTION
+  (2026-06-10):** `jetton`/`nft` are **already registered** in the frozen §2.3 taxonomy with frozen scopes
+  (`jetton_access`/`nft_access`) and generic validator/reducer/gas — `wallet.send_jetton` **finalizes
+  through the frozen consensus today** (`pfc2-jetton-reclassification.md`). They are **Tier M publication
+  features**, not Tier C: shipped by the **J1 track** (`j1-jetton-publication-charter.md`, v1.1.0). Only a
+  verb whose semantics are NOT already frozen, or bounded-mode expansion, would be Tier C here.
+- **Multi-owner (Multisig v2.1) flows** — a new ownership/authorization model ⇒ consensus. **← the
+  reserved first verb for a genuine PFC-2** (it actually moves the authorization Freeze Surface).
 - **Agentic Wallet SBT — TEP** — the on-chain identity standard; a normative external contract surface.
 - **Tolk normative on-chain artifacts** — promoting on-chain contracts to normative status.
 - **Any gas-weight change** (incl. the `path_segment` re-weight, if ever pursued) — the unit counts are
