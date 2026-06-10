@@ -58,6 +58,18 @@ jobs:
       - name: parity-go (go test ./... across every Go module)
         run: make parity-go
 
+  pp2:
+    name: pp2 (publication ir_to_boc round-trip incl. J1 jetton)
+    runs-on: ubuntu-latest
+    # Publication layer (§8.3, OUT of the freeze): offline ir_to_boc round-trip, send_ton + J1-B jetton.
+    # Touches no normative vector or proof — freeze-gate stays byte-identical.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: pp2 (typecheck + round-trip tests)
+        run: make pp2
+
   m2-registry:
     name: m2-registry (SC-1 — reproducible contract build)
     runs-on: ubuntu-latest
