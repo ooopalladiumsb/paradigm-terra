@@ -1,0 +1,71 @@
+{
+  "result": "PP#3-A DRY (no broadcast)",
+  "network": "ton-testnet (planned)",
+  "jetton": {
+    "source": "ton-blockchain/token-contract/main/ft (official standard TEP-74 jetton)",
+    "minterCodeHash": "f95ba0330b38cdf3459b1e811e5fc6fa6cfee566d7b764455c0468140365a737",
+    "walletCodeHash": "a760d629d5343e76d045017d9dc216fc8a307a8377815feb2b0a5c490e733486"
+  },
+  "addresses": {
+    "operator": "kQDKLzsxK0SFTZ9ucs0MLjikhpe0RvIPzjCYdE_BanfbgC3S",
+    "operator_raw": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+    "jetton_master": "kQCVJejKJIVA8b45PgMwv0va_YSClEaKP01GRtgXC8z8Tj_x",
+    "jetton_master_raw": "0:9525e8ca248540f1be393e0330bf4bdafd848294468a3f4d4646d8170bccfc4e",
+    "operator_jetton_wallet": "kQDg8IQ90xZoR7379flJ_o6CaJxezpGrQyAjBi83w_FUPph5",
+    "operator_jetton_wallet_raw": "0:e0f0843dd3166847bdfbf5f949fe8e82689c5ece91ab432023062f37c3f1543e",
+    "recipient_owner_raw": "0:d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7",
+    "recipient_jetton_wallet_raw": "0:80fe44acfa2c6bb2665aac3abeeff9ca567a50ea9b1183a5a0bcef376bb235c2"
+  },
+  "send_jetton": {
+    "cal_action": "wallet.send_jetton",
+    "amount": "250",
+    "recipient": "0:d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7",
+    "query_id": "770003",
+    "tep74_body": {
+      "kind": "jetton_transfer",
+      "op": "260734629",
+      "query_id": "770003",
+      "amount": "250",
+      "destination": "0:d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7",
+      "response_destination": "0:ca2f3b312b44854d9f6e72cd0c2e38a48697b446f20fce3098744fc16a77db80",
+      "custom_payload": null,
+      "forward_ton_amount": "0",
+      "forward_payload": null
+    },
+    "attached_ton_nano": "50000000",
+    "inner_body_hash": "b1e66f03079f81bd63448216a3dbeb0f8bca2b75b46581687e162d43117297d2"
+  },
+  "plan": [
+    {
+      "step": "A deploy minter",
+      "to": "jetton_master (via stateInit)",
+      "value_ton": "0.2",
+      "note": "operator → master with {minterCode, minterData}"
+    },
+    {
+      "step": "B mint",
+      "to": "jetton_master",
+      "op": "0x15 (mint)",
+      "value_ton": "0.2",
+      "mint_amount": "1000",
+      "note": "admin=operator mints to operator owner ⇒ operator jetton wallet created with balance"
+    },
+    {
+      "step": "C send_jetton",
+      "to": "operator_jetton_wallet",
+      "body": "TEP-74 transfer",
+      "value_ton": "0.050",
+      "note": "OUR codec/ir_to_boc external; moves SEND_AMOUNT jettons to recipient"
+    },
+    {
+      "step": "D observe",
+      "note": "recipient jetton wallet balance += SEND_AMOUNT; record in M2 registry (correlated)"
+    }
+  ],
+  "gas_estimate_ton": {
+    "deploy": "~0.1",
+    "mint": "~0.1",
+    "send_jetton": "0.050",
+    "total_budget": "~0.5"
+  }
+}
