@@ -1,0 +1,28 @@
+{
+  "result": "PP#3-B SETTLED",
+  "network": "ton-testnet",
+  "jetton_master": "0:9525e8ca248540f1be393e0330bf4bdafd848294468a3f4d4646d8170bccfc4e",
+  "operator_jetton_wallet": "0:e0f0843dd3166847bdfbf5f949fe8e82689c5ece91ab432023062f37c3f1543e",
+  "recipient_jetton_wallet": "0:80fe44acfa2c6bb2665aac3abeeff9ca567a50ea9b1183a5a0bcef376bb235c2",
+  "send": {
+    "amount": "250",
+    "recipient": "0:d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7",
+    "query_id": "770003",
+    "external_message_hash": "e6fcf399d2656385c79249cb6cf7c475d9f333564b2984a2e30bd23445fd422e",
+    "tx_hash": "05d96c4fcd3bc10e5e575ab9e57c60cf742e3b039f0151bef52541cd7be541d3"
+  },
+  "balances": {
+    "operator_before": "1000",
+    "operator_after": "750",
+    "recipient_before": "0",
+    "recipient_after": "250"
+  },
+  "m2": {
+    "registry": "0:36a31800352b72464ae093b4fd427732cdb75ec44c35ae24a9d9872335bf3a83",
+    "record_key": "0xe6fcf399d2656385c79249cb6cf7c475d9f333564b2984a2e30bd23445fd422e",
+    "correlated": false,
+    "note": "step E (M2 upsert) hit a client-side @ton/core cross-instance bug at message assembly (no tx broadcast); fixed in pp3b-run.mjs; resume with PP3_SEND_EXTHASH on explicit re-authorization"
+  },
+  "verdict": "SETTLED",
+  "independently_verified": "get_wallet_data on both jetton wallets (operator 750, recipient 250) via testnet.toncenter; explorer: testnet.tonscan.org"
+}
