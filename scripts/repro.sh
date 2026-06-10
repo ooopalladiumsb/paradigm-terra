@@ -90,6 +90,13 @@ m2_registry() {
   (cd m2-registry && npm install --silent && npm run build --silent && npm run typecheck --silent && npm test --silent)
 }
 
+# pp2 — publication-layer (§8.3, OUT of the freeze): ir_to_boc round-trip incl. J1-B jetton (TEP-74).
+# Standalone package (own node_modules, @ton/core); offline tests only (network scripts live in pp2/scripts).
+pp2() {
+  echo "→ pp2: publication-layer ir_to_boc round-trip (send_ton + J1-B jetton)"
+  (cd pp2 && npm install --silent && npx tsc --noEmit && npm test --silent)
+}
+
 case "${1:-help}" in
   setup)           bash "$ROOT/scripts/setup.sh" ;;
   typecheck)       typecheck ;;
@@ -108,6 +115,7 @@ case "${1:-help}" in
   ovt3-soak)       ovt3_soak ;;
   ovt3-griefing)   ovt3_griefing ;;
   m2-registry)     m2_registry ;;
+  pp2)             pp2 ;;
   freeze-check)    freeze_check ;;
   help|*)          grep -E '^#   scripts/repro.sh ' "$0" | sed 's/^#   /  /' ;;
 esac
