@@ -50,8 +50,9 @@ test("failure_mode.* (config) stays out of v0.1.0 → rejected as ExtendedAction
   assert.throws(() => canonicalToInner(cal([{ verb: "failure_mode.enter_bounded", params: {}, post_conditions: [] }])), (e) => e instanceof W5CodecError && e.code === "W5_EXTENDED_NOT_IN_V0_1_0");
 });
 
-test("recognized message verb without a v0.1.0 body encoder → rejected, not mis-encoded", () => {
-  assert.throws(() => canonicalToInner(cal([{ verb: "wallet.send_jetton", params: { to: DEST, amount_nano: 1n }, post_conditions: [] }])), (e) => e instanceof W5CodecError && e.code === "W5_UNIMPLEMENTED_VERB");
+test("recognized message verb without a body encoder → rejected, not mis-encoded", () => {
+  // wallet.send_jetton now has a J1-A encoder; wallet.send_nft is still recognized-but-unimplemented.
+  assert.throws(() => canonicalToInner(cal([{ verb: "wallet.send_nft", params: { to: DEST, amount_nano: 1n }, post_conditions: [] }])), (e) => e instanceof W5CodecError && e.code === "W5_UNIMPLEMENTED_VERB");
 });
 
 test("read / cancel steps are codec no-ops (not serialized to on-chain actions)", () => {
