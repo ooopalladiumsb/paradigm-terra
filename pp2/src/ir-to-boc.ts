@@ -71,7 +71,7 @@ const isJetton = (b: IrBody): b is JettonTransferBody => b !== null && "kind" in
 // TEP-74: transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
 //   response_destination:MsgAddress custom_payload:(Maybe ^Cell)
 //   forward_ton_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
-function jettonBodyToCell(b: JettonTransferBody): Cell {
+export function jettonBodyToCell(b: JettonTransferBody): Cell {
   if (b.amount <= 0n) throw new W5BocError("W5_JETTON_BAD_AMOUNT", "jetton amount must be > 0");
   return beginCell()
     .storeUint(JETTON_TRANSFER_OP, 32)
