@@ -5,13 +5,42 @@ All notable changes to Paradigm Terra are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) under the policy in
 [`docs/notes/release-governance.md`](docs/notes/release-governance.md).
 
-**Current release: `v1.0.0`** (2026-06-09) — the inaugural cut, riding the PFC-1 freeze line. The freeze
-tag (`pfcN-consensus-freeze`) and the release tag (`vX.Y.Z`) are distinct: the freeze tag marks *what was
-proven*, the release tag marks *what was shipped on top of it*.
+**Current release: `v1.1.0`** (2026-06-10) — adds the `wallet.send_jetton` publication path on the SAME
+PFC-1 freeze line. The freeze tag (`pfcN-consensus-freeze`) and the release tag (`vX.Y.Z`) are distinct:
+the freeze tag marks *what was proven*, the release tag marks *what was shipped on top of it*.
 
 ## [Unreleased]
 
 _Nothing yet — the next change above the Freeze Surface starts here._
+
+## [1.1.0] — 2026-06-10
+
+The **jetton publication release** (J1 track), riding the unchanged PFC-1 freeze line
+(`pfc1-consensus-freeze`). MINOR: a new operational capability above the Freeze Surface — the
+`freeze-gate` stayed **byte-identical** throughout, so the frozen consensus core is unchanged.
+
+Key finding (`docs/notes/pfc2-jetton-reclassification.md`): `wallet.send_jetton` was assumed Tier C (a new
+freeze line, PFC-2) but **already finalizes through the frozen consensus** (registered in §2.3 with the
+frozen `jetton_access` scope; generic validator/reducer/gas). So jetton is a **Tier-M publication feature**
+— the only missing piece was the publication codec (§8.3, outside the freeze). PFC-2 (a *real* new freeze
+line) is reserved for Multisig v2.1.
+
+### Added — J1 (`wallet.send_jetton` publication path)
+- **J1-A — publication codec** (`orchestrator/src/w5/canonical-to-inner.ts`): `encodeSendJetton` emits the
+  TEP-74 `transfer` body (op `0x0f8a7ea5`), with the ⊆ rule on both the jetton amount and the attached TON,
+  the D4 normalization defaults, and required-explicit `query_id` (never auto-generated).
+- **J1-B — `ir_to_boc` jetton** (`pp2/src/ir-to-boc.ts`): TEP-74 transfer-body cell codec + offline
+  round-trip (IR == IR'). New `pp2` CI job.
+- **J1-C — Proof Package #3** (live, ton-testnet): deployed the official standard jetton (vendored
+  `ton-blockchain/token-contract`, compiled with pinned func-js), minted, and drove OUR `send_jetton`
+  end-to-end — recipient jetton balance `0 → 250`, operator `1000 → 750` (⊆ exact). Settlement recorded +
+  correlated in the M2 reconciliation registry. Verdict **SETTLED** (`pp2/artifacts/pp3/pp3b-evidence.json`,
+  `docs/notes/pp3-b-gate.md`). Pre-validated offline against the real jetton in `@ton/sandbox`.
+
+### Notes
+- Semantics: `docs/notes/pfc2-1-send-jetton-semantics.md`. Out of scope (Non-goals): nft, multisig, SBT,
+  jetton mint/burn, jetton admin, `custom_payload`/`forward_payload`.
+- The base CAL authorization model is unchanged; this is purely the §8.3 publication layer.
 
 ## [1.0.0] — 2026-06-09
 

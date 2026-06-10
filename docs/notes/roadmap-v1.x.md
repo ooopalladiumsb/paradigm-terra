@@ -8,11 +8,12 @@ importantly, the **rule for where each item is allowed to land**.
 > **STATUS: v1.x MAINTENANCE PROGRAM = COMPLETE (2026-06-10).** All Tier-M items closed — M1 CI hardening ·
 > M2 Registry reconciliation · M3 durability · A1 long-duration soak · A2 distributed observers — every one
 > merged with the Freeze Surface byte-identical (orchestrator suite 113/113). Further changes are bug/security
-> fixes, operational incidents, or **Tier C → PFC-2 → v2.0.0**. **Next operational track: J1 —
-> `wallet.send_jetton` publication path** (Tier M, v1.1.0, `j1-jetton-publication-charter.md`): jetton was
-> found to already finalize through the frozen consensus, so it is a publication feature, not a freeze-line
-> change (`pfc2-jetton-reclassification.md`). A *genuine* PFC-2 is reserved for **Multisig v2.1** (moves the
-> authorization model).
+> fixes, operational incidents, or **Tier C → PFC-2 → v2.0.0**. **J1 — `wallet.send_jetton` publication
+> path: ✅ CLOSED → released as v1.1.0 (2026-06-10)** (`release-notes-v1.1.0.md`): J1-A codec · J1-B
+> `ir_to_boc` · J1-C **PP#3 SETTLED live on ton-testnet** (recipient `0→250`, ⊆ exact, M2-correlated).
+> jetton was found to already finalize through the frozen consensus, so it shipped as a publication
+> feature, freeze-gate byte-identical (`pfc2-jetton-reclassification.md`). A *genuine* PFC-2 is reserved
+> for **Multisig v2.1** (moves the authorization model).
 
 ## The one rule this roadmap encodes
 
