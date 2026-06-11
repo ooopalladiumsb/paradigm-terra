@@ -30,8 +30,13 @@ function clampSub(a: bigint, b: bigint): bigint {
   return a > b ? a - b : 0n;
 }
 
-/** Compute the gas bill for a terminal CAL outcome (§9.4). */
-export function settle(outcome: Outcome, cal: Json, state: Json, bytesWritten: bigint): GasBill {
+/**
+ * Compute the gas bill for a terminal CAL outcome (§9.4). `ownerAuth` (PFC2-M4) is the
+ * owner-authorization weight from `ownerAuthUnits(k)`; it defaults to 0, so non-owner-gated
+ * outcomes and pre-PFC-2 callers price exactly as v1. It only enters the consumed-gas outcomes
+ * (FINALIZED / FAILED_EXEC), where the owner verification actually ran.
+ */
+export function settle(outcome: Outcome, cal: Json, state: Json, bytesWritten: bigint, ownerAuth: bigint = 0n): GasBill {
   const fee = flatValidationFee(state);
   const maxGas = maxExpectedDynamicGas(cal, fee);
 
@@ -55,7 +60,7 @@ export function settle(outcome: Outcome, cal: Json, state: Json, bytesWritten: b
     case "FINALIZED":
     case "FAILED_EXEC": {
       // consumed gas, capped at the escrowed budget (overrun ⇒ OUT_OF_GAS path)
-      const raw = toNano(gasUnits(cal, bytesWritten), gasPrice(state));
+      const raw = toNano(gasUnits(cal, bytesWritten, ownerAuth), gasPrice(state));
       const consumed = raw > maxGas ? maxGas : raw;
       return {
         feeRetained: fee,

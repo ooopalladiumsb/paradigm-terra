@@ -29,6 +29,7 @@ import {
   gasUnits,
   getIn,
   maxExpectedDynamicGas,
+  ownerAuthUnits,
   settle,
   toNano,
   type GasBill,
@@ -156,6 +157,20 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
   const boundedMode = getIn(snapshot, ["failure_mode", "is_bounded_mode"]) === true;
   const maxGas = maxExpectedDynamicGas(cal, fee);
 
+  // PFC2-M4 §9.2: owner-authorization gas, linear in k = owner signatures actually verified.
+  // k = 0 for non-owner-gated actions (operator-only path → exact v1 cost); 1 for a v1
+  // single-owner record; the verified-signer count for a v2 owners[] record. A v1 agent and its
+  // migrated 1-of-1 form both yield k = 1 ⇒ identical owner-auth gas (SC-4). Enters only the
+  // consumed-gas outcomes (FINALIZED / FAILED_EXEC); pre-validation failures never charge it.
+  const ownerAuth = ((): bigint => {
+    if (!(isOwnerRequired(action) || boundedMode)) return 0n;
+    const ownersNode = getIn(snapshot, ["registry", "agents", agent, "owners"]);
+    const k = Array.isArray(ownersNode)
+      ? BigInt((Array.isArray(trace.ownerSigners) ? trace.ownerSigners : []).filter((s) => typeof s === "string" && s !== "").length)
+      : 1n;
+    return ownerAuthUnits(k);
+  })();
+
   const events: Event[] = [];
   const idBase = (): Event => ({ cal_hash: calHashHex, agent_id: agent, nonce });
   const result = (stage: TerminalStage, reason: ReasonCode | null, detail: string, bill: GasBill): ValidationResult => ({
@@ -187,7 +202,7 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
     return result("EXPIRED", null, `expired after VALIDATED: tick ${tick} > expiration ${expiration}`, bill);
   };
   const execFail = (reason: ReasonCode, detail: string, committed: Json[]): ValidationResult => {
-    const bill = settle("FAILED_EXEC", cal, snapshot, effectsBytes(committed));
+    const bill = settle("FAILED_EXEC", cal, snapshot, effectsBytes(committed), ownerAuth);
     events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, gas_consumed_ptra: bill.dynamicGasConsumed, gas_refunded_ptra: bill.gasRefunded, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
@@ -295,7 +310,7 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
 
     // 11. dynamic gas vs escrowed budget (§9.3) → OUT_OF_GAS on overrun
     const bytesWritten = effectsBytes(committed);
-    const rawGas = toNano(gasUnits(cal, bytesWritten), gasPrice(snapshot));
+    const rawGas = toNano(gasUnits(cal, bytesWritten, ownerAuth), gasPrice(snapshot));
     if (rawGas > maxGas) return execFail("OUT_OF_GAS", `dynamic gas ${rawGas} > budget ${maxGas}`, committed);
     const consumed = rawGas;
 
@@ -318,7 +333,7 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
 
     // --- cal.settled + cal.finalized: refund unused gas ---
     events.push({ event_type: "cal.settled", cal_hash: calHashHex });
-    const bill = settle("FINALIZED", cal, snapshot, bytesWritten);
+    const bill = settle("FINALIZED", cal, snapshot, bytesWritten, ownerAuth);
     events.push({
       event_type: "cal.finalized",
       ...idBase(),
