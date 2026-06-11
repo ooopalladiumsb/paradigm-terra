@@ -41,24 +41,46 @@ These are the items the offline work cannot produce. **PP#4-B does NOT open unti
       · the OWNER quorum keys are the proof's deterministic seeds (offline) — only the anchoring
         OPERATOR key needs live custody (it sends the single anchor message; it does NOT change the
         proven authorization, which is fixed in the offline payload)
-[ ] anchor transport decided
-      · how the 32-byte STATE_ROOT is carried on-chain (e.g. a comment/payload in a self-transfer, or a
-        dedicated anchor cell) — pin the exact body encoding before broadcast, reproducibly
-[ ] re-confirmation: orchestrator/test/pp4-multisig-anchor.test.ts green → anchor root still 0x4a14…d4f0
+[x] anchor transport decided — PINNED (2026-06-12, §2.1 below). Dedicated typed anchor cell, operator-independent.
+[x] re-confirmation: orchestrator/test/pp4-multisig-anchor.test.ts green (3/3) → anchor root still 0x4a14…d4f0
 ```
+
+Two boxes remain (`funded operator wallet`, `key custody`) — operator-supplied, the only items left before §3.
+Everything the offline work can produce is done: the anchor root is re-confirmed and the on-chain body is pinned.
+
+### 2.1 Anchor transport — PINNED (box 3)
+
+The 32-byte STATE_ROOT is carried as a **dedicated typed anchor cell**, fixed offline and independent of the
+operator wallet (the outer W5 wrapping + the operator signature are applied at broadcast time, §3 step 2/4):
+
+```
+anchor body cell = op:uint32 (= ANCHOR_OP) || state_root:bits256 (raw 32 bytes)   [288 bits, single cell]
+  ANCHOR_OP        = 0x50544131  (ASCII "PTA1" — Paradigm Terra Anchor v1; disjoint from op 0 / TEP-74)
+  on-chain effect  = self-transfer (operator → operator, bounce=false) whose message body == this cell
+
+For STATE_ROOT 0x4a14f8f11f37657e62aa6670822a18544fe1fea560aac17f16cd9234efc4d4f0:
+  body cell hash   = 0x79543a1b015462d0920125b5e41eb5c57f38b2f7d7a243fb689f13e5a103d0bc
+  body BoC (b64)   = te6cckEBAQEAJgAASFBUQTFKFPjxHzdlfmKqZnCCKhhUT+H+pWCqwX8WzZI078TU8AQJrCo=
+```
+
+Codec: `pp2/src/anchor-body.ts` (`anchorBodyCell` / `parseAnchorRoot` / `anchorBodyBoc`). Determinism +
+round-trip + op-guard + malformed-root rejection pinned in `pp2/test/pp4-anchor-body.test.ts` (5/5, suite 23/23).
+The hash + BoC above are the byte-exact off-ramp values for §3 step 3, and the reconstruction target for step 5.
 
 ## 3. PP#4-B runbook (the single live step — GATED on §2)
 
 ```
 Step  Action                                                    Irreversible?
 1     read-only: confirm operator wallet active + funded        no
-2     build the anchor external message carrying STATE_ROOT      no (offline construction)
-      0x4a14…d4f0 (the §0 payload), per the §2 transport
-3     PRE-BROADCAST GATE: re-run the offline proof; assert the   no (the last off-ramp)
-      anchor root is byte-identical to the message payload
+2     wrap the §2.1 PINNED anchor body (BoC above) in a W5       no (offline construction)
+      external message from the operator wallet (self-transfer,
+      bounce=false); sign with the custodied operator key
+3     PRE-BROADCAST GATE: assert the message body hash ==        no (the last off-ramp)
+      0x79543a…d0bc (§2.1) AND re-run the offline proof (root
+      still 0x4a14…d4f0). Abort on any drift.
 4     BROADCAST the anchor message to ton-testnet               YES — the single proof tx
-5     observe: fetch the tx; confirm it landed and its payload   no (read)
-      == STATE_ROOT 0x4a14…d4f0  ("inspect before classifying")
+5     observe: fetch the tx; reconstruct via parseAnchorRoot     no (read)
+      → assert body == STATE_ROOT 0x4a14…d4f0 ("inspect first")
 6     record evidence → pp2/artifacts/pp4/pp4b-evidence.json     no (idempotent write)
 ```
 
