@@ -43,22 +43,37 @@ statically owner-gated. Two coherent framings for PP#4's on-chain leg:
 It makes the multisig authorization gate the *direct* cause of (or block on) a real testnet TON transfer,
 which is the strongest faithful demonstration of "the envelope authorizes the on-chain effect."
 
-## 2. The quorum CAL structure (Framing A, to be finalized in M8-R1)
+> **⚠ SUPERSEDED by the M8-R1 grounding (2026-06-11): Framing A is NOT achievable on the frozen surface.**
+> `BOUNDED_MODE_WHITELIST` (`dsl/src/taxonomy.ts`) = `{failure_mode.emergency_withdraw, failure_mode.exit_bounded,
+> oracles.force_update, oracles.submit_feed, agent.freeze, cal.cancel}` — `wallet.send_ton` is **NOT** in it,
+> and the §10.2 admission gate (`BOUNDED_BLOCKED`) runs *before* the owner/quorum gate. So a bounded-mode
+> `send_ton` is rejected at §10.2 and never reaches the quorum gate — the §10.4 bridge fails (the very open
+> item this §1 flagged). The owner-gateable and W5-publishing sets are therefore strictly disjoint with no
+> bridge on the v0.1.0 surface; A would require adding a send verb to `OWNER_REQUIRED_ACTIONS` — a NEW Tier-C
+> change, OUT of the M0 charter's "static M-of-N over the *existing* envelope" (§4). **Ruled (2026-06-11):
+> PP#4 = Framing B**, the in-charter proof.
+
+## 2. The quorum CAL structure (Framing B — RULED)
+
+PP#4 gates a **`treasury.transfer`** (a statically owner-required action, no bounded mode needed). The
+finalized CAL changes consensus state; its STATE_ROOT (`stateRootOf`, cal-reducer §7.3) is the on-chain
+artifact, anchored on testnet (the PFC-1 anchor pattern), NOT a W5 send.
 
 ```
-snapshot.registry.agents[A] = { operator_pubkey, owners: [K1,K2,K3] (sorted), threshold: 2, granted_scopes }
-state.failure_mode.is_bounded_mode = true        # §10.4 escalation → send_ton becomes owner-required
-CAL: action = wallet.send_ton, steps=[send_ton(to, amount)], signatures.owner_sigs = [env_K1, env_K2]
-     (each a TC v2 Contract-A signData envelope; ordered by matched pubkey; distinct)
+snapshot.registry.agents[A] = { operator_pubkey, owners: [K1,K2,K3] (sorted, distinct), threshold: 2,
+                                granted_scopes: ["treasury_access:transfer"] }
+CAL: action = treasury.transfer, steps=[transfer(amount)], signatures.owner_sigs = [env_K1, env_K2]
+     (each a TC v2 Contract-A signData envelope over canonical_bytes(cal_without_signatures);
+      ordered by matched pubkey; distinct)
 trace.ownerSigners = [K1, K2]                      # node-verified, 2 of 3 ≥ threshold 2
-→ validate() → FINALIZED → W5 publication (operator path) → testnet send
+→ validate() → FINALIZED → reducer applies → STATE_ROOT_after  (the anchor payload)
 
-Sub-threshold twin: trace.ownerSigners = [K1] (1 < 2) → QUORUM_NOT_MET → no cal.validated → never published.
+Sub-threshold twin: trace.ownerSigners = [K1] (1 < 2) → QUORUM_NOT_MET → no cal.validated → state UNCHANGED
+                    → STATE_ROOT_after == STATE_ROOT_before (nothing to anchor).
 ```
 
-Bounded mode also appends the §7.1/§10.3 emergency invariant set and applies the §10.2 whitelist — M8-R1
-must confirm `wallet.send_ton` is bounded-allowed (or pick a whitelisted send), and that the emergency
-invariants hold over the trace. (Open item for R1; not a blocker for the envelope proof.)
+`treasury.transfer` is owner-required in the FROZEN taxonomy, so no bounded mode / §10.2 whitelist / §7.1
+emergency-invariant complications — the quorum gate is exercised directly on the chartered envelope.
 
 ## 3. Offline proof — ALREADY ACHIEVABLE (not a prediction)
 
@@ -71,11 +86,11 @@ ms_quorum_not_met     1-of-3 → QUORUM_NOT_MET       (the sub-threshold path is
 ms_migrated_1of1...   SC-4 byte-identity anchor
 ```
 
-M8-R1 (offline) wires these into a realistic bounded-mode `send_ton` CAL with REAL Contract-A owner
-envelopes (multiple keys), runs it through the validator→reducer→W5-publication, and validates the W5
-external message in a local TVM via `@ton/sandbox` (the PP#3-A.2 pattern, `pp2/test/pp3-sandbox.test.ts`):
-the operator's W5 wallet executes the published send EXACTLY as PP#2 — confirming the on-chain effect is
-the unchanged operator path. **No broadcast in R1.**
+M8-R1 (offline) wires these into a realistic `treasury.transfer` CAL with REAL Contract-A owner envelopes
+(multiple Ed25519 keys, signData over the canonical CAL bytes), runs it through validator→reducer, and
+computes the consensus `STATE_ROOT` (`stateRootOf`) before/after: the quorum-pass transfer moves the root,
+the sub-threshold twin leaves it unchanged. The moved root is the **anchor payload** for PP#4-B. **No
+broadcast in R1** — the anchor commit to testnet is the gated live step.
 
 ## 4. Reproducibility evidence (to pin in M8-R1)
 
@@ -93,10 +108,10 @@ live legs are deferred to an explicit PP#4-B decision:
 
 ```
 PP#4-B (GATED — requires explicit go-ahead, a funded testnet operator, and key custody):
-  1. read-only funding check of the operator wallet (the PP#2 W5R1 wallet, or a fresh one)
-  2. broadcast the quorum-authorized bounded-mode send_ton; observe the TON transfer on testnet
-  3. attempt the sub-threshold twin; confirm the node never publishes it (QUORUM_NOT_MET pre-broadcast)
-  4. record evidence (tx hash, on-chain effect == authorized action) → pp4b-evidence.json
+  1. read-only funding check of the anchoring operator wallet
+  2. anchor the quorum-finalized STATE_ROOT on ton-testnet (a single external message carrying the root)
+  3. confirm the sub-threshold twin produced no state change (STATE_ROOT unchanged → nothing anchored)
+  4. record evidence (anchor tx hash, anchored root == the offline quorum-finalized root) → pp4b-evidence.json
 ```
 
 This R0 doc and the M8-R1 offline proof do NOT touch the network. The broadcast is a separate, explicitly
@@ -106,9 +121,9 @@ authorized step — it is a *confirmation* of the offline-proven envelope, not a
 
 ```
 M8-R0  Readiness review (this) ............... offline, no code, no broadcast  ← DONE
-M8-R1  Offline proof scaffold ................ bounded-mode quorum send_ton CAL + real owner envelopes +
-                                               validator→reducer→W5 publication + @ton/sandbox TVM check;
-                                               sub-threshold twin rejected. NO broadcast.
+M8-R1  Offline proof scaffold ................ quorum treasury.transfer CAL + real owner envelopes +
+                                               validator→reducer→STATE_ROOT (anchor payload); sub-threshold
+                                               twin rejected (root unchanged). NO broadcast.
 PP#4-B Broadcast ............................. GATED — explicit decision; the only live-network step.
 PFC2   pfc2-consensus-freeze ruling .......... seals the re-frozen surface (the M1 §6 envelope, proven)
 v2.0.0 Release ............................... pfc2/consensus merges to main (charter §7)

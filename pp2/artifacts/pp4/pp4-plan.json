@@ -1,0 +1,32 @@
+{
+  "result": "PP#4-R1 OFFLINE (no broadcast)",
+  "framing": "B — anchor a quorum-authorized treasury.transfer STATE_ROOT (in-charter)",
+  "network": "ton-testnet (anchor planned, GATED — PP#4-B)",
+  "agent": "0:abababababababababababababababababababababababababababababababab",
+  "authorization_set": {
+    "owners": [
+      "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+      "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1"
+    ],
+    "threshold": "2"
+  },
+  "quorum_pass": {
+    "signers_presented": 2,
+    "terminal_stage": "FINALIZED",
+    "reason_code": null,
+    "effect_committed": true,
+    "anchor_state_root": "0x4a14f8f11f37657e62aa6670822a18544fe1fea560aac17f16cd9234efc4d4f0"
+  },
+  "sub_threshold": {
+    "signers_presented": 1,
+    "terminal_stage": "FAILED",
+    "reason_code": "QUORUM_NOT_MET",
+    "effect_committed": false
+  },
+  "anchor_payload": {
+    "state_root": "0x4a14f8f11f37657e62aa6670822a18544fe1fea560aac17f16cd9234efc4d4f0",
+    "note": "the quorum-finalized consensus STATE_ROOT; PP#4-B commits this on ton-testnet"
+  },
+  "broadcast": "GATED — requires explicit go-ahead + funded testnet operator + key custody (PP#4-B)"
+}
