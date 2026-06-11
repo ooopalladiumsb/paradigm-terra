@@ -9,10 +9,12 @@ pub mod apply;
 pub mod delta;
 pub mod errors;
 pub mod fold;
+pub mod migrate;
 pub mod state;
 pub mod u256;
 
 pub use apply::apply;
 pub use errors::ApplyError;
 pub use fold::{materialize, scan_state_roots};
+pub use migrate::{migrate_registry_v1_to_v2, owner_record_well_formed, MAX_OWNERS};
 pub use state::{genesis, state_root_of};

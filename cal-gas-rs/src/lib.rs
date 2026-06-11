@@ -27,7 +27,7 @@ pub use pricing::{
 pub use settle::{settle, GasBill, Outcome};
 pub use u256::U256;
 pub use units::{
-    effects_bytes, gas_units, mcp_call_units, static_gas_units, INVARIANT_BASE, MCP_READ,
-    MCP_WRITE, STATE_RENT_PER_BYTE,
+    effects_bytes, gas_units, mcp_call_units, owner_auth_units, static_gas_units, ED25519_VERIFY_WEIGHT,
+    INVARIANT_BASE, MCP_READ, MCP_WRITE, OWNER_AUTH_BASE, STATE_RENT_PER_BYTE,
 };
 pub use util::{as_big, get_in};

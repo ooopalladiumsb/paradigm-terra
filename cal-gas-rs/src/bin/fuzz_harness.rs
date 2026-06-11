@@ -61,7 +61,9 @@ fn handle(line: &str) -> String {
         Ok(u) => u,
         Err(_) => return "ERR COMPUTE".to_string(),
     };
-    let gu = match gas_units(cal, &bytes_written) {
+    // Owner-auth gas is exercised by the validator parity vectors; the gas-only fuzz harness
+    // keeps the operator-path baseline (owner_auth = 0), byte-identical to its pre-M4 behaviour.
+    let gu = match gas_units(cal, &bytes_written, &U256::ZERO) {
         Ok(u) => u,
         Err(_) => return "ERR COMPUTE".to_string(),
     };
@@ -69,7 +71,7 @@ fn handle(line: &str) -> String {
     let cv = if can_validate(cal, state) { "1" } else { "0" };
     let mut bills = Vec::with_capacity(OUTCOMES.len());
     for o in OUTCOMES {
-        match settle(o, cal, state, &bytes_written) {
+        match settle(o, cal, state, &bytes_written, &U256::ZERO) {
             Ok(b) => bills.push(quad(&b)),
             Err(_) => return "ERR COMPUTE".to_string(),
         }

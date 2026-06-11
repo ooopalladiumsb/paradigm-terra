@@ -27,6 +27,11 @@ pub struct ExecutionTrace {
     pub operator_sig_present: bool,
     /// Whether a valid owner_sig co-signature is present (§8.2 structural check).
     pub owner_sig_present: bool,
+    /// PFC2-M5 (Multisig v2.1): the node's per-envelope owner-match verdicts for a v2 owners[]
+    /// agent, in PRESENTED ORDER — the matched owner pubkey, or "" for no valid match. `None` ⇒
+    /// a v1 single-owner record (the legacy owner_sig_present gate applies). `validate` stays pure
+    /// over this (it sorts/dedupes/counts; it does not verify signatures). Mirrors `ownerSigners`.
+    pub owner_signers: Option<Vec<String>>,
     /// Validator-local pinned MCP schema hash (§4.4). Compared to
     /// `state.registry.mcp_schema_hash`; mismatch fails the CAL with
     /// `SCHEMA_MISMATCH` (no-charge, ingress-class). Empty string = no pin.

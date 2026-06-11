@@ -3,6 +3,7 @@
 use paradigm_terra_canonical::jcs::JcsValue;
 
 use crate::errors::ApplyError;
+use crate::migrate::owner_record_well_formed;
 use crate::state::{delete_in, get_in, set_in};
 use crate::u256::U256;
 
@@ -17,6 +18,29 @@ fn bad() -> ApplyError {
     ApplyError::new("BAD_DELTA")
 }
 
+/// PFC2-M3 §1.1: enforce the well-formed v2 owner-record bound at the point a Delta commits
+/// `registry/agents/<a>/owners` or `.../threshold`. Fires only once BOTH fields are present (a
+/// partially-built record is a transient intermediate). Mirrors `enforceOwnerRecord` in delta.ts.
+fn enforce_owner_record(state: &JcsValue, full: &[&str]) -> Result<(), ApplyError> {
+    if full.len() != 4 || full[0] != "registry" || full[1] != "agents" {
+        return Ok(());
+    }
+    if full[3] != "owners" && full[3] != "threshold" {
+        return Ok(());
+    }
+    let rec = match get_in(state, &["registry", "agents", full[2]]) {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+    if rec.get("owners").is_none() || rec.get("threshold").is_none() {
+        return Ok(()); // not yet complete
+    }
+    if !owner_record_well_formed(rec.get("owners"), rec.get("threshold")) {
+        return Err(ApplyError::new("BAD_OWNER_RECORD"));
+    }
+    Ok(())
+}
+
 /// Validate + apply one Delta (a JcsValue `{ns, op, path, value?}`).
 pub fn apply_delta_json(state: &JcsValue, d: &JcsValue) -> Result<JcsValue, ApplyError> {
     let ns = d.get("ns").and_then(|x| x.as_str()).ok_or_else(bad)?;
@@ -28,7 +52,11 @@ pub fn apply_delta_json(state: &JcsValue, d: &JcsValue) -> Result<JcsValue, Appl
     }
 
     match op {
-        "set" => Ok(set_in(state, &full, d.get("value").cloned().unwrap_or(JcsValue::Null))),
+        "set" => {
+            let next = set_in(state, &full, d.get("value").cloned().unwrap_or(JcsValue::Null));
+            enforce_owner_record(&next, &full)?;
+            Ok(next)
+        }
         "delete" => Ok(delete_in(state, &full)),
         "add" | "sub" => {
             let cur = match get_in(state, &full) {

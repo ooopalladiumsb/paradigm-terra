@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use paradigm_terra_canonical::jcs::JcsValue;
 use paradigm_terra_cal_gas::{
     as_big, can_validate, effects_bytes, flat_validation_fee, gas_price, gas_units, get_in,
-    max_expected_dynamic_gas, settle, to_nano, GasBill, GasError, Outcome as GasOutcome, U256,
+    max_expected_dynamic_gas, owner_auth_units, settle, to_nano, GasBill, GasError, Outcome as GasOutcome, U256,
 };
 use paradigm_terra_dsl::emergency::effective_invariants;
 use paradigm_terra_dsl::taxonomy::{implied_scopes, is_bounded_allowed, is_owner_required, is_registered_action, required_scopes};
@@ -93,6 +93,7 @@ struct Ctx<'a> {
     fee: U256,
     bounded_mode: bool,
     max_gas: U256,
+    owner_auth: U256,
 }
 
 fn build_ctx<'a>(cal: &'a JcsValue, cal_hash_hex: &'a str, snapshot: &'a JcsValue, trace: &'a ExecutionTrace) -> Ctx<'a> {
@@ -104,7 +105,50 @@ fn build_ctx<'a>(cal: &'a JcsValue, cal_hash_hex: &'a str, snapshot: &'a JcsValu
     let fee = flat_validation_fee(snapshot);
     let bounded_mode = matches!(get_in(snapshot, &["failure_mode", "is_bounded_mode"]), Some(JcsValue::Bool(true)));
     let max_gas = max_expected_dynamic_gas(cal, fee);
-    Ctx { cal, cal_hash_hex, snapshot, trace, agent, action, nonce, expiration, tick, fee, bounded_mode, max_gas }
+    // PFC2-M4 §9.2: owner-authorization gas, linear in k = owner signatures verified. k = 0 for
+    // non-owner actions (operator-only path → exact v1 cost); 1 for a v1 single-owner record; the
+    // verified-signer count for a v2 owners[] record. v1 and migrated 1-of-1 both yield k = 1 (SC-4).
+    let owner_auth = if is_owner_required(&action) || bounded_mode {
+        let k = match get_in(snapshot, &["registry", "agents", &agent, "owners"]) {
+            Some(JcsValue::Array(_)) => trace
+                .owner_signers
+                .as_ref()
+                .map(|s| s.iter().filter(|x| !x.is_empty()).count() as u64)
+                .unwrap_or(0),
+            _ => 1,
+        };
+        owner_auth_units(k)
+    } else {
+        U256::ZERO
+    };
+    Ctx { cal, cal_hash_hex, snapshot, trace, agent, action, nonce, expiration, tick, fee, bounded_mode, max_gas, owner_auth }
+}
+
+/// PFC2-M1 §2: the multisig owner-authorization quorum check. Pure over the presented signer set.
+/// Structural failures (cardinality / non-owner / duplicate / unsorted) → INVALID_SIGNATURE_SET,
+/// checked BEFORE the quorum count (< threshold → QUORUM_NOT_MET). Registry owners/threshold are
+/// assumed well-formed (reducer-enforced, PFC2-M3). Mirrors `multisigQuorum`.
+fn multisig_quorum(owners: &[&str], threshold: U256, signers: &[String]) -> Option<(&'static str, String)> {
+    if signers.len() > owners.len() {
+        return Some(("INVALID_SIGNATURE_SET", format!("cardinality {} > owners {}", signers.len(), owners.len())));
+    }
+    for s in signers {
+        if s.is_empty() || !owners.iter().any(|o| *o == s.as_str()) {
+            return Some(("INVALID_SIGNATURE_SET", "non-owner signer".to_string()));
+        }
+    }
+    for i in 1..signers.len() {
+        if signers[i] == signers[i - 1] {
+            return Some(("INVALID_SIGNATURE_SET", "duplicate signer".to_string()));
+        }
+        if signers[i] < signers[i - 1] {
+            return Some(("INVALID_SIGNATURE_SET", "owner_sigs not sorted by matched pubkey".to_string()));
+        }
+    }
+    if U256::from_u64(signers.len() as u64) < threshold {
+        return Some(("QUORUM_NOT_MET", format!("got {} of {} owner signatures", signers.len(), threshold.to_dec_str())));
+    }
+    None
 }
 
 fn mk_take(events: &mut Vec<JcsValue>, stage: &'static str, reason: Option<&'static str>, detail: String, bill: GasBill) -> ValidationResult {
@@ -134,7 +178,7 @@ fn phase_a(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<Option<ValidationResul
 
     // 2. expiration before VALIDATED (§3.4) — no PTRA
     if c.tick > c.expiration {
-        let bill = settle(GasOutcome::ExpiredPre, c.cal, c.snapshot, &U256::ZERO)?;
+        let bill = settle(GasOutcome::ExpiredPre, c.cal, c.snapshot, &U256::ZERO, &U256::ZERO)?;
         let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
         p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&c.tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
@@ -159,12 +203,30 @@ fn phase_a(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<Option<ValidationResul
     }
     let owner_required = is_owner_required(&c.action) || c.bounded_mode;
     if owner_required {
-        if !c.trace.owner_sig_present {
-            return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond)?));
-        }
-        let owner_pubkey = get_in(c.snapshot, &["registry", "agents", &c.agent, "owner_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
-        if owner_pubkey.is_empty() {
-            return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "agent has no owner_pubkey in registry", GasOutcome::FailedPrecond)?));
+        match get_in(c.snapshot, &["registry", "agents", &c.agent, "owners"]) {
+            Some(JcsValue::Array(owners_arr)) => {
+                // PFC2-M2 §2: multi-owner (AuthorizationSet v2) quorum gate.
+                let owners: Vec<&str> = owners_arr.iter().filter_map(JcsValue::as_str).collect();
+                if owners.is_empty() {
+                    return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "agent has no owners in registry", GasOutcome::FailedPrecond)?));
+                }
+                let threshold = as_big(get_in(c.snapshot, &["registry", "agents", &c.agent, "threshold"]), U256::ZERO);
+                let empty: Vec<String> = Vec::new();
+                let signers = c.trace.owner_signers.as_ref().unwrap_or(&empty);
+                if let Some((code, detail)) = multisig_quorum(&owners, threshold, signers) {
+                    return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, code, &detail, GasOutcome::FailedPrecond)?));
+                }
+            }
+            _ => {
+                // v1 single-owner envelope (legacy; migration to owners[] is PFC2-M3).
+                if !c.trace.owner_sig_present {
+                    return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "owner_sig required", GasOutcome::FailedPrecond)?));
+                }
+                let owner_pubkey = get_in(c.snapshot, &["registry", "agents", &c.agent, "owner_pubkey"]).and_then(JcsValue::as_str).unwrap_or("");
+                if owner_pubkey.is_empty() {
+                    return Ok(Some(pre_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "CAPABILITY_DENIED", "agent has no owner_pubkey in registry", GasOutcome::FailedPrecond)?));
+                }
+            }
         }
     }
 
@@ -204,7 +266,7 @@ fn phase_a(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<Option<ValidationResul
 fn phase_b(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<ValidationResult, GasError> {
     // 8. expiration recheck
     if c.tick > c.expiration {
-        let bill = settle(GasOutcome::ExpiredPost, c.cal, c.snapshot, &U256::ZERO)?;
+        let bill = settle(GasOutcome::ExpiredPost, c.cal, c.snapshot, &U256::ZERO, &U256::ZERO)?;
         let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
         p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&c.tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
@@ -221,7 +283,7 @@ fn phase_b(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<ValidationResult, GasE
         let tr = c.trace.steps.get(i);
         if tr.map(|t| t.ok) != Some(true) {
             let detail = tr.and_then(|t| t.error_detail.clone()).unwrap_or_else(|| format!("step {i} failed"));
-            return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "STEP_ERROR", &detail, &committed);
+            return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "STEP_ERROR", &detail, &committed, &c.owner_auth);
         }
         committed.extend(tr.unwrap().effects.iter().cloned());
         if let Some(JcsValue::Array(pcs)) = get_in(step, &["post_conditions"]) {
@@ -231,7 +293,7 @@ fn phase_b(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<ValidationResult, GasE
                 let o = eval_expr(Some(pc), Scope::PostCondition, &b);
                 if !is_true(&o) {
                     let reason = if o.code == "EVALUATION_FALSE" { "POSTCOND_FALSE" } else { "STEP_ERROR" };
-                    return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, reason, "post_condition not satisfied", &committed);
+                    return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, reason, "post_condition not satisfied", &committed, &c.owner_auth);
                 }
             }
         }
@@ -239,9 +301,9 @@ fn phase_b(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<ValidationResult, GasE
 
     // 11. dynamic gas vs budget (§9.3)
     let bytes_written = effects_bytes(&JcsValue::Array(committed.clone()))?;
-    let raw_gas = to_nano(gas_units(c.cal, &bytes_written)?, gas_price(c.snapshot));
+    let raw_gas = to_nano(gas_units(c.cal, &bytes_written, &c.owner_auth)?, gas_price(c.snapshot));
     if raw_gas > c.max_gas {
-        return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "OUT_OF_GAS", "dynamic gas exceeds budget", &committed);
+        return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "OUT_OF_GAS", "dynamic gas exceeds budget", &committed, &c.owner_auth);
     }
     let consumed = raw_gas;
 
@@ -256,7 +318,7 @@ fn phase_b(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<ValidationResult, GasE
 
     // 12. expiration recheck (defensive)
     if c.tick > c.expiration {
-        let bill = settle(GasOutcome::ExpiredPost, c.cal, c.snapshot, &U256::ZERO)?;
+        let bill = settle(GasOutcome::ExpiredPost, c.cal, c.snapshot, &U256::ZERO, &U256::ZERO)?;
         let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
         p.extend([("event_type", si("cal.expired")), ("tick_expired", ii(&c.tick)), ("gas_consumed_ptra", ii(&U256::ZERO)), ("gas_refunded_ptra", ii(&bill.gas_refunded)), ("ton_ingress_fee_paid", ii(&U256::ZERO))]);
         events.push(JcsValue::object(p));
@@ -273,13 +335,13 @@ fn phase_b(c: &Ctx, events: &mut Vec<JcsValue>) -> Result<ValidationResult, GasE
         let b = Bindings { before: Some(c.trace.state_before.clone()), after: Some(c.trace.state_after.clone()), ..Default::default() };
         let o = eval_expr(Some(inv), Scope::Invariant, &b);
         if !is_true(&o) {
-            return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "INVARIANT_FALSE", "invariant not satisfied", &committed);
+            return exec_fail(events, c.cal, c.snapshot, c.cal_hash_hex, &c.agent, &c.nonce, &c.tick, "INVARIANT_FALSE", "invariant not satisfied", &committed, &c.owner_auth);
         }
     }
 
     // --- cal.settled + cal.finalized ---
     events.push(JcsValue::object(vec![("event_type", si("cal.settled")), ("cal_hash", si(c.cal_hash_hex))]));
-    let bill = settle(GasOutcome::Finalized, c.cal, c.snapshot, &bytes_written)?;
+    let bill = settle(GasOutcome::Finalized, c.cal, c.snapshot, &bytes_written, &c.owner_auth)?;
     {
         let mut p = id_pairs(c.cal_hash_hex, &c.agent, &c.nonce);
         p.extend([
@@ -352,7 +414,7 @@ fn pre_fail(
     detail: &str,
     outcome: GasOutcome,
 ) -> Result<ValidationResult, GasError> {
-    let bill = settle(outcome, cal, snapshot, &U256::ZERO)?;
+    let bill = settle(outcome, cal, snapshot, &U256::ZERO, &U256::ZERO)?;
     let mut p = id_pairs(cal_hash, agent, nonce);
     p.extend([
         ("event_type", si("cal.failed")),
@@ -379,9 +441,10 @@ fn exec_fail(
     reason: &'static str,
     detail: &str,
     committed: &[JcsValue],
+    owner_auth: &U256,
 ) -> Result<ValidationResult, GasError> {
     let bytes_written = effects_bytes(&JcsValue::Array(committed.to_vec()))?;
-    let bill = settle(GasOutcome::FailedExec, cal, snapshot, &bytes_written)?;
+    let bill = settle(GasOutcome::FailedExec, cal, snapshot, &bytes_written, owner_auth)?;
     let mut p = id_pairs(cal_hash, agent, nonce);
     p.extend([
         ("event_type", si("cal.failed")),

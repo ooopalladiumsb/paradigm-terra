@@ -44,7 +44,7 @@ pub struct GasBill {
 }
 
 /// Compute the gas bill for a terminal CAL outcome (§9.4).
-pub fn settle(outcome: Outcome, cal: &JcsValue, state: &JcsValue, bytes_written: &U256) -> GasResult<GasBill> {
+pub fn settle(outcome: Outcome, cal: &JcsValue, state: &JcsValue, bytes_written: &U256, owner_auth: &U256) -> GasResult<GasBill> {
     let fee = flat_validation_fee(state);
     let max_gas = max_expected_dynamic_gas(cal, fee);
 
@@ -81,7 +81,7 @@ pub fn settle(outcome: Outcome, cal: &JcsValue, state: &JcsValue, bytes_written:
         },
         Outcome::Finalized | Outcome::FailedExec => {
             // consumed gas, capped at the escrowed budget (overrun ⇒ OUT_OF_GAS path)
-            let raw = to_nano(gas_units(cal, bytes_written)?, gas_price(state));
+            let raw = to_nano(gas_units(cal, bytes_written, owner_auth)?, gas_price(state));
             let consumed = if raw > max_gas { max_gas } else { raw };
             GasBill {
                 fee_retained: fee,
