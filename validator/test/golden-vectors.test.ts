@@ -32,6 +32,8 @@ function toTrace(j: any): ExecutionTrace {
       effects: s.effects as Json[],
       errorDetail: s.error_detail as string | undefined,
     })),
+    // PFC2-M5: present only for v2 multisig vectors; absent ⇒ legacy v1 single-owner gate.
+    ...(j.owner_signers !== undefined ? { ownerSigners: j.owner_signers as string[] } : {}),
   };
 }
 
@@ -70,4 +72,14 @@ test("golden validator vectors reproduce events, economics, and bill", () => {
     assert.equal(res.bill.gasRefunded.toString(), o.bill.gas_refunded, `${v.id}: bill.refunded`);
     assert.equal(res.bill.totalAgentCharge.toString(), o.bill.total_agent_charge, `${v.id}: bill.total`);
   }
+});
+
+test("SC-4: migrated 1-of-1 (ms_migrated_1of1_equals_v1) OUTPUT is byte-identical to v1 single-owner (treasury_finalized)", () => {
+  const by = (id: string) => golden.vectors.find((v: any) => v.id === id);
+  const ms7 = by("ms_migrated_1of1_equals_v1");
+  const v1 = by("treasury_finalized");
+  assert.ok(ms7 && v1, "both anchor vectors present");
+  // Only registry/trace ENCODING (owners[] vs owner_pubkey) differs; the consensus OUTPUT — event
+  // sequence, terminal stage, reason code, every economic field, and the full §9.4 bill — matches.
+  assert.deepEqual(ms7.output, v1.output, "SC-4 output byte-identity (migrated 1-of-1 == v1)");
 });
