@@ -15,3 +15,4 @@ export * from "./errors.js";
 export * from "./delta.js";
 export * from "./apply.js";
 export * from "./fold.js";
+export * from "./migrate.js";
