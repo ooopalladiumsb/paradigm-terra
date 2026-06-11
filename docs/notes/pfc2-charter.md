@@ -4,7 +4,8 @@
 > consensus surface already finalizes `wallet.send_jetton` (registry + `jetton_access` scope frozen;
 > generic validator/reducer/gas), so jetton is a **Tier-M publication feature** (`j1-jetton-publication-charter.md`,
 > v1.1.0), not a freeze-line change. See `pfc2-jetton-reclassification.md`. PFC-2 as a *real* new freeze
-> line is **reserved for Multisig v2.1** (a genuine authorization-model change). Kept for audit trail.
+> line is **re-anchored on Multisig v2.1** by `pfc2-multisig-charter.md` (PFC2-M0, 2026-06-11) — a genuine
+> authorization-model change. This document is kept for audit trail.
 
 **Date:** 2026-06-10 · **Status:** charter / pre-registration (no code). **Tier C — this MOVES the
 Freeze Surface.** Opens a new freeze line above PFC-1 (`pfc1-consensus-freeze`, v1.0.0). Ratify before any

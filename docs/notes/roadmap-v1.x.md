@@ -64,6 +64,8 @@ that carries it is `2.0.0`.
   verb whose semantics are NOT already frozen, or bounded-mode expansion, would be Tier C here.
 - **Multi-owner (Multisig v2.1) flows** — a new ownership/authorization model ⇒ consensus. **← the
   reserved first verb for a genuine PFC-2** (it actually moves the authorization Freeze Surface).
+  **CHARTERED (2026-06-11):** `pfc2-multisig-charter.md` (PFC2-M0) — static M-of-N quorum (`owners[]` +
+  `threshold`) over the existing `OWNER_REQUIRED_ACTIONS` envelope; rotation/weighting deferred.
 - **Agentic Wallet SBT — TEP** — the on-chain identity standard; a normative external contract surface.
 - **Tolk normative on-chain artifacts** — promoting on-chain contracts to normative status.
 - **Any gas-weight change** (incl. the `path_segment` re-weight, if ever pursued) — the unit counts are
