@@ -40,7 +40,9 @@ func clampSub(a, b *big.Int) *big.Int {
 }
 
 // Settle computes the gas bill for a terminal CAL outcome (§9.4).
-func Settle(outcome Outcome, cal, state canonical.Value, bytesWritten *big.Int) (*GasBill, *GasError) {
+// ownerAuth (PFC2-M4, from OwnerAuthUnits(k)) defaults the operator path to 0 and only enters the
+// consumed-gas outcomes (Finalized / FailedExec), where the owner verification actually ran.
+func Settle(outcome Outcome, cal, state canonical.Value, bytesWritten *big.Int, ownerAuth *big.Int) (*GasBill, *GasError) {
 	fee := FlatValidationFee(state)
 	maxGas := MaxExpectedDynamicGas(cal, fee)
 
@@ -81,7 +83,7 @@ func Settle(outcome Outcome, cal, state canonical.Value, bytesWritten *big.Int) 
 		}, nil
 	case Finalized, FailedExec:
 		// consumed gas, capped at the escrowed budget (overrun ⇒ OUT_OF_GAS path)
-		gu, e := GasUnits(cal, bytesWritten)
+		gu, e := GasUnits(cal, bytesWritten, ownerAuth)
 		if e != nil {
 			return nil, e
 		}

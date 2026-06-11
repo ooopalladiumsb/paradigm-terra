@@ -57,6 +57,37 @@ func asBigField(v canonical.Value, ok bool) *big.Int {
 
 func intVal(n *big.Int) canonical.Value { return canonical.Int(n.String()) }
 
+// multisigQuorum (PFC2-M1 §2) is the multisig owner-authorization check, pure over the presented
+// signer set. Structural failures (cardinality / non-owner / duplicate / unsorted) →
+// INVALID_SIGNATURE_SET, checked BEFORE the quorum count (< threshold → QUORUM_NOT_MET). Registry
+// owners/threshold are assumed well-formed (reducer-enforced, PFC2-M3). Mirrors multisigQuorum.
+func multisigQuorum(owners []string, threshold *big.Int, signers []string) (reason, detail string, fail bool) {
+	if len(signers) > len(owners) {
+		return "INVALID_SIGNATURE_SET", "cardinality exceeds owners", true
+	}
+	ownerSet := make(map[string]bool, len(owners))
+	for _, o := range owners {
+		ownerSet[o] = true
+	}
+	for _, s := range signers {
+		if s == "" || !ownerSet[s] {
+			return "INVALID_SIGNATURE_SET", "non-owner signer", true
+		}
+	}
+	for i := 1; i < len(signers); i++ {
+		if signers[i] == signers[i-1] {
+			return "INVALID_SIGNATURE_SET", "duplicate signer", true
+		}
+		if signers[i] < signers[i-1] {
+			return "INVALID_SIGNATURE_SET", "owner_sigs not sorted by matched pubkey", true
+		}
+	}
+	if big.NewInt(int64(len(signers))).Cmp(threshold) < 0 {
+		return "QUORUM_NOT_MET", "owner signatures below threshold", true
+	}
+	return "", "", false
+}
+
 func arrField(v canonical.Value, path []string) []canonical.Value {
 	if x, ok := getIn(v, path); ok {
 		if a, ok := x.([]canonical.Value); ok {
@@ -186,6 +217,25 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 		boundedMode = true
 	}
 
+	// PFC2-M4 §9.2: owner-authorization gas, linear in k = owner signatures verified. k = 0 for
+	// non-owner actions (operator-only path → exact v1 cost); 1 for a v1 single-owner record; the
+	// verified-signer count for a v2 owners[] record. v1 and migrated 1-of-1 both yield k = 1 (SC-4).
+	ownerAuth := big.NewInt(0)
+	if dsl.IsOwnerRequired(action) || boundedMode {
+		var k uint64 = 1
+		if ownersV, ok := getIn(snapshot, []string{"registry", "agents", agent, "owners"}); ok {
+			if _, isArr := ownersV.([]canonical.Value); isArr {
+				k = 0
+				for _, s := range trace.OwnerSigners {
+					if s != "" {
+						k++
+					}
+				}
+			}
+		}
+		ownerAuth = calgas.OwnerAuthUnits(k)
+	}
+
 	var events []canonical.Value
 	mk := func(stage, reason, detail string, bill *calgas.GasBill) *ValidationResult {
 		return &ValidationResult{Events: events, TerminalStage: stage, ReasonCode: reason, ReasonDetail: detail, Bill: bill}
@@ -196,7 +246,7 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 	// cal.failed (Tier-2 revision). FailedPrecond → §9.4 spam charge
 	// min(fee, balance); FailedNoCharge → §9.1 ingress-class, zero. events == bill.
 	preFail := func(reason, detail string, outcome calgas.Outcome) (*ValidationResult, error) {
-		bill, ge := calgas.Settle(outcome, cal, snapshot, big.NewInt(0))
+		bill, ge := calgas.Settle(outcome, cal, snapshot, big.NewInt(0), big.NewInt(0))
 		if ge != nil {
 			return nil, ge
 		}
@@ -208,7 +258,7 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 		if err != nil {
 			return nil, err
 		}
-		bill, ge := calgas.Settle(calgas.FailedExec, cal, snapshot, bw)
+		bill, ge := calgas.Settle(calgas.FailedExec, cal, snapshot, bw, ownerAuth)
 		if ge != nil {
 			return nil, ge
 		}
@@ -242,7 +292,7 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 
 		// 2. expiration before VALIDATED (§3.4)
 		if tick.Cmp(expiration) > 0 {
-			bill, ge := calgas.Settle(calgas.ExpiredPre, cal, snapshot, big.NewInt(0))
+			bill, ge := calgas.Settle(calgas.ExpiredPre, cal, snapshot, big.NewInt(0), big.NewInt(0))
 			if ge != nil {
 				return nil, ge
 			}
@@ -275,12 +325,33 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 		}
 		ownerRequired := dsl.IsOwnerRequired(action) || boundedMode
 		if ownerRequired {
-			if !trace.OwnerSigPresent {
-				return preFail("CAPABILITY_DENIED", "owner_sig required", calgas.FailedPrecond)
-			}
-			ownerPubkeyV, _ := getIn(snapshot, []string{"registry", "agents", agent, "owner_pubkey"})
-			if asStr(ownerPubkeyV) == "" {
-				return preFail("CAPABILITY_DENIED", "agent has no owner_pubkey in registry", calgas.FailedPrecond)
+			ownersV, hasOwners := getIn(snapshot, []string{"registry", "agents", agent, "owners"})
+			ownersArr, isArr := ownersV.([]canonical.Value)
+			if hasOwners && isArr {
+				// PFC2-M2 §2: multi-owner (AuthorizationSet v2) quorum gate.
+				owners := make([]string, 0, len(ownersArr))
+				for _, o := range ownersArr {
+					if s, ok := o.(string); ok {
+						owners = append(owners, s)
+					}
+				}
+				if len(owners) == 0 {
+					return preFail("CAPABILITY_DENIED", "agent has no owners in registry", calgas.FailedPrecond)
+				}
+				thV, thOk := getIn(snapshot, []string{"registry", "agents", agent, "threshold"})
+				threshold := asBigField(thV, thOk)
+				if reason, detail, fail := multisigQuorum(owners, threshold, trace.OwnerSigners); fail {
+					return preFail(reason, detail, calgas.FailedPrecond)
+				}
+			} else {
+				// v1 single-owner envelope (legacy; migration to owners[] is PFC2-M3).
+				if !trace.OwnerSigPresent {
+					return preFail("CAPABILITY_DENIED", "owner_sig required", calgas.FailedPrecond)
+				}
+				ownerPubkeyV, _ := getIn(snapshot, []string{"registry", "agents", agent, "owner_pubkey"})
+				if asStr(ownerPubkeyV) == "" {
+					return preFail("CAPABILITY_DENIED", "agent has no owner_pubkey in registry", calgas.FailedPrecond)
+				}
 			}
 		}
 
@@ -320,7 +391,7 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 	phaseB := func() (*ValidationResult, error) {
 		// 8. expiration recheck (defensive; constant tick → never fires here)
 		if tick.Cmp(expiration) > 0 {
-			bill, ge := calgas.Settle(calgas.ExpiredPost, cal, snapshot, big.NewInt(0))
+			bill, ge := calgas.Settle(calgas.ExpiredPost, cal, snapshot, big.NewInt(0), big.NewInt(0))
 			if ge != nil {
 				return nil, ge
 			}
@@ -359,7 +430,7 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 		if err != nil {
 			return nil, err
 		}
-		gu, ge := calgas.GasUnits(cal, bytesWritten)
+		gu, ge := calgas.GasUnits(cal, bytesWritten, ownerAuth)
 		if ge != nil {
 			return nil, ge
 		}
@@ -378,7 +449,7 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 
 		// 12. expiration recheck (defensive)
 		if tick.Cmp(expiration) > 0 {
-			bill, ge := calgas.Settle(calgas.ExpiredPost, cal, snapshot, big.NewInt(0))
+			bill, ge := calgas.Settle(calgas.ExpiredPost, cal, snapshot, big.NewInt(0), big.NewInt(0))
 			if ge != nil {
 				return nil, ge
 			}
@@ -399,7 +470,7 @@ func makeValidator(cal canonical.Value, calHash string, snapshot canonical.Value
 
 		// --- cal.settled + cal.finalized ---
 		events = append(events, canonical.NewObject(canonical.P("event_type", "cal.settled"), canonical.P("cal_hash", calHash)))
-		bill, ge := calgas.Settle(calgas.Finalized, cal, snapshot, bytesWritten)
+		bill, ge := calgas.Settle(calgas.Finalized, cal, snapshot, bytesWritten, ownerAuth)
 		if ge != nil {
 			return nil, ge
 		}
