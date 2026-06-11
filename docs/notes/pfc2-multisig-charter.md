@@ -162,6 +162,12 @@ None of these is a defect of the *frozen v1.0.0* line — PFC-1 stands; PFC-2 is
 
 ## 9. Open questions for PFC2-M1 (semantic design) to rule
 
+> **RULED in `pfc2-m1-multisig-semantics.md` (2026-06-11):** (1) new `QUORUM_NOT_MET` *and* a second code
+> `INVALID_SIGNATURE_SET` (malformed set) — checked before quorum; (2) `owner_sigs[]` ordered ascending by
+> matched owner pubkey, duplicates rejected pre-hash; (3) PP#4 proves the auth envelope only (W5 single-key);
+> (4) `1 ≤ threshold ≤ owners.length ≤ MAX_OWNERS=16`, enforced at the reducer. M1 is the normative source.
+
+
 1. **`QUORUM_NOT_MET` vs `CAPABILITY_DENIED`** — new reason code (clearer telemetry, new vector) or reuse
    (smaller surface)? Lean: new code; multisig telemetry needs to distinguish "wrong/insufficient signers"
    from "no capability".
