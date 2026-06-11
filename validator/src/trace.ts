@@ -42,6 +42,21 @@ export interface ExecutionTrace {
    */
   readonly ownerSigPresent: boolean;
   /**
+   * PFC-2 (Multisig v2.1, `pfc2-m1-multisig-semantics.md` §1.3): the node's per-envelope
+   * owner-match verdict for a multi-owner agent. One entry per presented `owner_sigs[]`
+   * envelope, IN PRESENTED ORDER: the matched `owners[]` pubkey if that envelope's Contract-A
+   * commit verified against a registry owner, else the empty string `""` (no valid owner match).
+   *
+   * Implementation refinement of M1 §1.3 (which described a "distinct verified set"): the
+   * validator needs the PRESENTED SEQUENCE — not a pre-deduped set — to decide
+   * `INVALID_SIGNATURE_SET` (unsorted / duplicate / non-owner / cardinality) vs `QUORUM_NOT_MET`
+   * (well-formed but sub-threshold). The node computes each entry via the existing
+   * `owner-sig.ts` `computeOwnerSigners(...)`; `validate()` stays PURE over this array (it sorts/
+   * dedupes/counts, it does not verify signatures). Absent/`undefined` ⇒ the agent is a v1
+   * single-owner record and the legacy `ownerSigPresent` gate applies (migration is PFC2-M3).
+   */
+  readonly ownerSigners?: readonly string[];
+  /**
    * Validator-local pinned MCP schema hash (§4.4). Compared to
    * `state.registry.mcp_schema_hash`; mismatch fails the CAL with
    * `SCHEMA_MISMATCH` (no-charge, ingress-class). The empty string means

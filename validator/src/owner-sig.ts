@@ -197,3 +197,20 @@ export function ownerSigPresent(env: OwnerCoSignature, ownerPubkeyHex: string): 
     ownerPubkeyHex,
   );
 }
+
+/**
+ * PFC-2 (Multisig v2.1): compute `ExecutionTrace.ownerSigners` for a multi-owner agent.
+ * For each presented owner co-signature envelope, IN PRESENTED ORDER, return the matched
+ * `owners[]` pubkey if its Contract-A commit verifies against a registry owner, else `""`.
+ *
+ * Each envelope is verified against the owner set via the existing single-key `ownerSigPresent`;
+ * the FIRST owner it verifies against is its match (a valid Ed25519 signature binds to exactly
+ * one pubkey, so "first" is unique in practice). This is node-side (real curve arithmetic);
+ * `validate()` consumes the result purely and decides INVALID_SIGNATURE_SET / QUORUM_NOT_MET.
+ */
+export function computeOwnerSigners(
+  envelopes: readonly OwnerCoSignature[],
+  owners: readonly string[],
+): string[] {
+  return envelopes.map((env) => owners.find((pk) => ownerSigPresent(env, pk)) ?? "");
+}
