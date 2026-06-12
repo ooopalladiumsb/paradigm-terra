@@ -113,13 +113,27 @@ R0 (this) and R1 do NOT touch the network. The broadcast is a separate, explicit
 ## 6. The PP#5 path
 
 ```
-R0     Readiness review (this) ............ offline, no code, no broadcast  ← DONE
-R1     Offline proof scaffold ............. vendor standard TEP-62 NFT (+ pinned code hashes) → sandbox:
-                                            deploy + mint to operator + OUR send_nft → owner flips;
-                                            deterministic transfer-body vectors. NO broadcast.
+R0     Readiness review .................. offline, no code, no broadcast  ← DONE
+R1     Offline proof scaffold ............ DONE — vendored standard TEP-62 NFT (pp2/contracts/nft/, code
+                                          hashes pinned in nft-compiled.json, PP#5-A build test); @ton/sandbox
+                                          proof (pp5-sandbox.test.ts): deploy collection + mint item #0 to
+                                          operator + OUR send_nft → owner flips operator→recipient; a
+                                          non-owner attempt aborts exit 401 (ownership unchanged). Reference
+                                          body pinned in pp2/artifacts/pp5/pp5-plan.json (cell hash
+                                          0xc19cb8f2…). pp2 suite 32/32. NO broadcast.
 PP#5-B Broadcast .......................... GATED — explicit decision + funded operator; the only live step.
 (no freeze ruling — publication layer; PP#5 confirms v2.1.0's send_nft live, no version bump required
  unless batched into a later release note.)
+```
+
+### R1 evidence (offline, pinned)
+
+```
+nft standard       ton-blockchain/token-contract/main/nft (TEP-62), vendored verbatim; func-js 0.11.0
+collection codeHash 8e5aab17e2e503bec75c2f453b9dacf11a98bbb2cc202994710952a7271c7780
+item codeHash       ba4d975d2b66231c1f0a0ccca6e8ff8f7ba0610c4b7639584b8e98303dc3128c
+sandbox proof       pp2/test/pp5-sandbox.test.ts — owner flips operator→recipient; non-owner → exit 401
+reference body      pp2/artifacts/pp5/pp5-plan.json — cell hash 0xc19cb8f2c5c61336681fb65a79b052f7b02272686e9fd5e3d834c9ca7bd8f625
 ```
 
 ## 7. Related
