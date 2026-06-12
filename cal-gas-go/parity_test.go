@@ -81,7 +81,7 @@ func TestParityWithTypeScriptGoldenVectors(t *testing.T) {
 		}
 		check("static_gas_units", su.String(), v.Output.StaticGasUnits)
 
-		gu, ge := GasUnits(cal, bytes)
+		gu, ge := GasUnits(cal, bytes, big.NewInt(0))
 		if ge != nil {
 			t.Fatalf("%s: total: %v", v.ID, ge)
 		}
@@ -97,7 +97,7 @@ func TestParityWithTypeScriptGoldenVectors(t *testing.T) {
 		}
 
 		for _, oc := range outcomes {
-			b, ge := Settle(oc, cal, state, bytes)
+			b, ge := Settle(oc, cal, state, bytes, big.NewInt(0))
 			if ge != nil {
 				t.Fatalf("%s/%s: settle: %v", v.ID, oc, ge)
 			}

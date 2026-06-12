@@ -50,7 +50,11 @@ func applyDeltaJSON(state, d canonical.Value) (canonical.Value, *ApplyError) {
 	switch op {
 	case "set":
 		val, _ := o.Get("value")
-		return setIn(state, full, val), nil
+		next := setIn(state, full, val)
+		if e := enforceOwnerRecord(next, full); e != nil {
+			return nil, e
+		}
+		return next, nil
 	case "delete":
 		return deleteIn(state, full), nil
 	case "add", "sub":

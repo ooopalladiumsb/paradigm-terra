@@ -29,6 +29,10 @@ const SIG = "0x" + "ab".repeat(64);
 // produced by the node verifying signatures.* against these exact pubkey bytes.
 const OPERATOR_PUBKEY = "0x" + "11".repeat(32);
 const OWNER_PUBKEY = "0x" + "22".repeat(32);
+// PFC2-M5 (Multisig v2.1): a three-owner set, already ascending (31 < 32 < 33).
+const OWNER_K1 = "0x" + "31".repeat(32);
+const OWNER_K2 = "0x" + "32".repeat(32);
+const OWNER_K3 = "0x" + "33".repeat(32);
 const EFFECT: JcsValue = { ns: "ptra", op: "set", path: ["counters", "x"], value: 1n };
 
 type Obj = Record<string, JcsValue>;
@@ -113,6 +117,8 @@ function snap(opts: {
   bounded?: boolean;
   operatorPubkey?: string;
   ownerPubkey?: string;
+  owners?: string[]; // PFC2-M5: a v2 multi-owner record (owners[] + threshold) instead of owner_pubkey
+  threshold?: bigint;
 } = {}): Obj {
   const {
     balance = 10n ** 18n,
@@ -125,7 +131,13 @@ function snap(opts: {
   } = opts;
   const agent: Obj = { granted_scopes: scopes };
   if (operatorPubkey !== "") agent.operator_pubkey = operatorPubkey;
-  if (ownerPubkey !== "") agent.owner_pubkey = ownerPubkey;
+  if (opts.owners !== undefined) {
+    // v2 AuthorizationSet: the owners[]/threshold record (the v1 owner_pubkey is absent).
+    agent.owners = [...opts.owners];
+    agent.threshold = opts.threshold ?? BigInt(opts.owners.length);
+  } else if (ownerPubkey !== "") {
+    agent.owner_pubkey = ownerPubkey;
+  }
   return {
     cal: { in_flight: {}, nonces: { [A]: nonce } },
     failure_mode: { is_bounded_mode: bounded, capture_guard_counters: {} },
@@ -163,6 +175,7 @@ function trace(opts: {
   owner?: boolean;
   operator?: boolean;
   pinnedMcp?: string;
+  ownerSigners?: string[]; // PFC2-M5: node's presented-order owner-match verdicts (v2 multisig)
 }): ExecutionTrace {
   return {
     currentTick: opts.tick ?? 0n,
@@ -176,6 +189,7 @@ function trace(opts: {
     // Validators always pin in production; default to the snapshot's value so
     // the §4.4 gate is exercised in every vector (matched by default).
     pinnedMcpSchemaHash: opts.pinnedMcp ?? ZERO_HASH,
+    ...(opts.ownerSigners !== undefined ? { ownerSigners: opts.ownerSigners } : {}),
   };
 }
 
@@ -304,10 +318,65 @@ const specs: Spec[] = [
     snapshot: snap({ scopes: ["governance_scope:vote"] }),
     trace: trace({ owner: true }),
   },
+
+  // PFC2-M5 — Multisig v2.1 (AuthorizationSet v2). Same owner-required treasury.transfer, but the
+  // agent carries owners[]/threshold and the trace carries ownerSigners (presented order). The §8.2
+  // quorum gate decides FINALIZED / QUORUM_NOT_MET / INVALID_SIGNATURE_SET; M4 gas charges
+  // ownerAuthUnits(k). MS-7 is the SC-4 anchor: a migrated 1-of-1 whose OUTPUT is byte-identical to
+  // the v1 single-owner `treasury_finalized` vector (asserted in golden-vectors.test.ts).
+  {
+    id: "ms_quorum_pass",
+    description: "MS-1: 2-of-3 quorum met (owners[K1,K2,K3], threshold 2, signers[K1,K2]) → FINALIZED",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], owners: [OWNER_K1, OWNER_K2, OWNER_K3], threshold: 2n }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true, ownerSigners: [OWNER_K1, OWNER_K2] }),
+  },
+  {
+    id: "ms_quorum_not_met",
+    description: "MS-2: 1 of a 2-of-3 agent (signers[K1]) → QUORUM_NOT_MET",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], owners: [OWNER_K1, OWNER_K2, OWNER_K3], threshold: 2n }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true, ownerSigners: [OWNER_K1] }),
+  },
+  {
+    id: "ms_invalid_duplicate",
+    description: "MS-3: duplicate matched signer (signers[K1,K1]) → INVALID_SIGNATURE_SET",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], owners: [OWNER_K1, OWNER_K2, OWNER_K3], threshold: 2n }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true, ownerSigners: [OWNER_K1, OWNER_K1] }),
+  },
+  {
+    id: "ms_invalid_unsorted",
+    description: "MS-4: unsorted signers (signers[K2,K1]) → INVALID_SIGNATURE_SET",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], owners: [OWNER_K1, OWNER_K2, OWNER_K3], threshold: 2n }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true, ownerSigners: [OWNER_K2, OWNER_K1] }),
+  },
+  {
+    id: "ms_invalid_non_owner",
+    description: "MS-5: non-owner signer (signers[K1,'']) → INVALID_SIGNATURE_SET",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], owners: [OWNER_K1, OWNER_K2, OWNER_K3], threshold: 2n }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true, ownerSigners: [OWNER_K1, ""] }),
+  },
+  {
+    id: "ms_invalid_cardinality",
+    description: "MS-6: more signers than owners (owners[K1,K2] threshold 1, signers[K1,K2,K3]) → INVALID_SIGNATURE_SET",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], owners: [OWNER_K1, OWNER_K2], threshold: 1n }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true, ownerSigners: [OWNER_K1, OWNER_K2, OWNER_K3] }),
+  },
+  {
+    id: "ms_migrated_1of1_equals_v1",
+    description: "MS-7 (SC-4): migrated 1-of-1 (owners[OWNER_PUBKEY] threshold 1, signers[OWNER_PUBKEY]) → FINALIZED, OUTPUT byte-identical to treasury_finalized (v1 single-owner)",
+    cal: calTreasury(),
+    snapshot: snap({ scopes: ["treasury_access:transfer"], owners: [OWNER_PUBKEY], threshold: 1n }),
+    trace: trace({ before: TREASURY_BEFORE, after: TREASURY_AFTER, owner: true, ownerSigners: [OWNER_PUBKEY] }),
+  },
 ];
 
 function traceToJcs(t: ExecutionTrace): JcsValue {
-  return {
+  const o: Obj = {
     current_tick: t.currentTick,
     operator_sig_present: t.operatorSigPresent,
     owner_sig_present: t.ownerSigPresent,
@@ -315,11 +384,14 @@ function traceToJcs(t: ExecutionTrace): JcsValue {
     state_before: t.stateBefore,
     state_after: t.stateAfter,
     steps: t.steps.map((s): JcsValue => {
-      const o: Obj = { ok: s.ok, effects: [...s.effects] };
-      if (s.errorDetail !== undefined) o.error_detail = s.errorDetail;
-      return o;
+      const so: Obj = { ok: s.ok, effects: [...s.effects] };
+      if (s.errorDetail !== undefined) so.error_detail = s.errorDetail;
+      return so;
     }),
   };
+  // PFC2-M5: present only for v2 multisig vectors, so v1 vectors' trace_canonical is unchanged.
+  if (t.ownerSigners !== undefined) o.owner_signers = [...t.ownerSigners];
+  return o;
 }
 
 const CAL_HASH = (i: number): string => "0x" + (i + 1).toString(16).padStart(2, "0").repeat(32);
@@ -372,7 +444,7 @@ const doc = {
     spec_basis: "CAL Execution Specification v0.1.0-draft §3–§10 — lifecycle (§3), validator role (§4), capability matrix (Annex A DRAFT, 2026-05-28), signatures (§8.1/§8.2), nonce (§6), gas (§9), Bounded Mode (§10). §9.3 upfront escrow (2026-05-27): cal.validated emits escrow_ptra = Flat_Validation_Fee + Max_Expected_Dynamic_Gas; the terminal event carries gas_refunded_ptra so the treasury keeps escrow − refund (= fee + consumed) for every post-VALIDATED outcome. §9.4 Tier-2: pre-VALIDATED PRECOND_FALSE/CAPABILITY_DENIED retain min(fee, balance) on cal.failed; UNKNOWN_ACTION/NONCE_MISMATCH/PRECOND_ERROR retain nothing. §3.5: the §9.3 escrow-admission shortfall reports a dedicated INSUFFICIENT_ESCROW reason code, distinct from the post-VALIDATED OUT_OF_GAS dynamic-gas overrun. §10 (2026-05-28): when state.failure_mode.is_bounded_mode == true, the validator rejects any action absent from BOUNDED_MODE_WHITELIST with BOUNDED_BLOCKED (no-charge), escalates every action to owner-required per §10.4, and appends the DSL §7.1 emergency invariant set to the declared invariants per §10.3. §4.4 (2026-05-28): when the validator has pinned a non-empty mcp_schema_hash (trace.pinned_mcp_schema_hash), a mismatch with state.registry.mcp_schema_hash fails the CAL with SCHEMA_MISMATCH (no-charge, ingress-class). §8.1/§8.2 (2026-05-28): trace.operator_sig_present joins owner_sig_present (the node's verifier verdict; real Ed25519 curve arithmetic is deferred); the agent registry grows operator_pubkey + owner_pubkey, and gate 4 fails CAPABILITY_DENIED when a required *_sig is absent or the corresponding *_pubkey is missing from the registry (§9.4 spam charge).",
     generated_at: new Date().toISOString(),
     status:
-      "NORMATIVE — generated by the TypeScript reference implementation under the §9.3 upfront-escrow model with §10 Bounded Mode admission gate, §4.4 MCP schema-hash pin, and §8.1/§8.2 signature presence + pubkey availability gate (real Ed25519 deferred), and verified byte-for-byte by the Rust (validator-rs) and Go (cal-validator-go) parity implementations on 2026-05-28 (the emitted event sequence, terminal stage, reason code, economic event fields escrow_ptra/terminal_fee_debited_ptra/gas_consumed_ptra/gas_refunded_ptra, and full §9.4 bill). Cross-language differential fuzzing clean (validator 100k+ cases per seed, 0 divergences).",
+      "NORMATIVE — the PFC-2 Multisig v2.1 surface, regenerated under the owner-authorization model and RE-PROMOTED 2026-06-11 after cross-language re-verification. (M4) owner-required actions carry ownerAuthUnits(k)=OWNER_AUTH_BASE+k×ED25519_VERIFY_WEIGHT, k=owner signatures verified (v1 single-owner records ⇒ k=1, gas moved by 150 units×price). (M5) seven AuthorizationSet-v2 cases in the SAME set: ms_quorum_pass (2-of-3 FINALIZED), ms_quorum_not_met (QUORUM_NOT_MET), ms_invalid_{duplicate,unsorted,non_owner,cardinality} (INVALID_SIGNATURE_SET), and ms_migrated_1of1_equals_v1 — the SC-4 anchor whose OUTPUT is byte-identical to the v1 single-owner treasury_finalized vector (asserted in golden-vectors.test.ts). Verified BYTE-FOR-BYTE by the Rust (validator-rs, PFC2-M6) and Go (cal-validator-go, PFC2-M7) parity implementations: the quorum gate (QUORUM_NOT_MET/INVALID_SIGNATURE_SET, pure over owner_signers), the registry v1→v2 migration + §1.1 bounds (BAD_OWNER_RECORD), and the owner-auth gas all reproduce identically across TS==Rust==Go on all 30 vectors. This is the PFC-2 re-freeze of the moved values; the pfc2-consensus-freeze ruling (after M8 PP#4) seals it into v2.0.0. Operator path unchanged (non-owner actions byte-identical to v1).",
   },
   vectors,
 };

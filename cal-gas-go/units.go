@@ -16,7 +16,23 @@ const (
 	MCPWrite         = 200 // any other (mutating) MCP call
 	InvariantBase    = 5   // per invariant expression, plus its DSL cost
 	StateRentPerByte = 1
+	// PFC2-M4 (Multisig v2.1, §9.2): owner-authorization verification weight, linear in the number
+	// of owner signatures actually verified (NOT the owner-set size). The operator signature is
+	// unpriced (one raw verify, exactly as v1) — multisig prices only the owner model it introduces.
+	OwnerAuthBase       = 50  // fixed setup for the owner-authorization check (k >= 1)
+	ED25519VerifyWeight = 100 // per verified owner signature (one Ed25519 verify)
 )
+
+// OwnerAuthUnits is PFC2-M4 §9.2 owner-authorization gas, linear in k = owner signatures verified.
+// 0 when the action is not owner-gated, so the operator-only path keeps its exact v1 cost. A v1
+// single-owner action and its migrated 1-of-1 form both have k = 1 ⇒ identical price (SC-4).
+// Mirrors ownerAuthUnits.
+func OwnerAuthUnits(k uint64) *big.Int {
+	if k == 0 {
+		return big.NewInt(0)
+	}
+	return new(big.Int).SetUint64(OwnerAuthBase + k*ED25519VerifyWeight)
+}
 
 // dslCost is the cost of one embedded DSL expression. A bare AST is read as
 // v1.2; a {dsl_version, expr} envelope overrides the version (mirrors dslCost +
@@ -129,12 +145,15 @@ func StaticGasUnits(cal canonical.Value) (*big.Int, *GasError) {
 	return total, nil
 }
 
-// GasUnits returns total gas units = static units + state rent (1 per byte written).
-func GasUnits(cal canonical.Value, bytesWritten *big.Int) (*big.Int, *GasError) {
+// GasUnits returns total gas units = static units + state rent (1 per byte) + owner-auth weight.
+// ownerAuth (PFC2-M4, from OwnerAuthUnits(k)) is 0 for every non-owner-gated CAL, so those stay
+// byte-for-byte the v1 cost. Mirrors gasUnits(cal, bytes, ownerAuth=0).
+func GasUnits(cal canonical.Value, bytesWritten *big.Int, ownerAuth *big.Int) (*big.Int, *GasError) {
 	su, e := StaticGasUnits(cal)
 	if e != nil {
 		return nil, e
 	}
 	rent := new(big.Int).Mul(bytesWritten, big.NewInt(StateRentPerByte))
-	return new(big.Int).Add(su, rent), nil
+	total := new(big.Int).Add(su, rent)
+	return total.Add(total, ownerAuth), nil
 }

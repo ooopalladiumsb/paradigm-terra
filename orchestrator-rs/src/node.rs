@@ -125,6 +125,7 @@ fn trace_at(src: &ExecutionTrace, tick: &U256) -> ExecutionTrace {
         state_after: src.state_after.clone(),
         operator_sig_present: src.operator_sig_present,
         owner_sig_present: src.owner_sig_present,
+        owner_signers: src.owner_signers.clone(), // PFC2-M5: preserve the multisig signer set across the tick-pin re-run
         pinned_mcp_schema_hash: src.pinned_mcp_schema_hash.clone(),
     }
 }

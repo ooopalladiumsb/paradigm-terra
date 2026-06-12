@@ -29,6 +29,7 @@ import {
   gasUnits,
   getIn,
   maxExpectedDynamicGas,
+  ownerAuthUnits,
   settle,
   toNano,
   type GasBill,
@@ -51,7 +52,9 @@ export type ReasonCode =
   | "BOUNDED_BLOCKED" // §10.2 action not in Bounded-Mode whitelist
   | "SCHEMA_MISMATCH" // §4.4 validator's pinned MCP schema hash ≠ state.registry.mcp_schema_hash
   | "INSUFFICIENT_ESCROW" // §9.3 escrow gate: balance < fee + Max_Expected_Dynamic_Gas (pre-VALIDATED)
-  | "OUT_OF_GAS"; // §9.3 dynamic-gas overrun at execution (post-VALIDATED)
+  | "OUT_OF_GAS" // §9.3 dynamic-gas overrun at execution (post-VALIDATED)
+  | "QUORUM_NOT_MET" // PFC2-M1 §5: multisig owner-signature set well-formed but < threshold
+  | "INVALID_SIGNATURE_SET"; // PFC2-M1 §5: multisig owner_sigs[] malformed (unsorted/duplicate/non-owner/cardinality)
 
 export type Event = Record<string, Json>;
 
@@ -102,6 +105,42 @@ function capabilityGrants(snapshot: Json, agent: string, action: string): boolea
 }
 
 /**
+ * PFC2-M1 §1.1/§2: the multisig owner-authorization gate. Active when the agent's registry
+ * record carries an `owners[]` array (a v2 AuthorizationSet); a v1 `owner_pubkey` record is
+ * handled by the legacy single-owner branch (migration is PFC2-M3). Pure over the snapshot and
+ * `trace.ownerSigners` (the node's per-envelope owner-match verdicts, in presented order).
+ *
+ * The registry `owners`/`threshold` are assumed well-formed (sorted, distinct, 1 ≤ threshold ≤
+ * len ≤ MAX_OWNERS) — those bounds are reducer-enforced (PFC2-M3), NOT re-checked here (M1 §1.1).
+ * This gate validates the PRESENTED signature set and the quorum count only.
+ *
+ * Returns a `{code, detail}` failure (caller wraps with the §9.4 spam charge) or `null` to pass.
+ */
+function multisigQuorum(
+  owners: readonly string[],
+  threshold: bigint,
+  signers: readonly string[],
+): { code: ReasonCode; detail: string } | null {
+  // §2 structural checks over the presented set → INVALID_SIGNATURE_SET (before quorum).
+  if (signers.length > owners.length) {
+    return { code: "INVALID_SIGNATURE_SET", detail: `cardinality ${signers.length} > owners ${owners.length}` };
+  }
+  const ownerSet = new Set(owners);
+  for (const s of signers) {
+    if (s === "" || !ownerSet.has(s)) return { code: "INVALID_SIGNATURE_SET", detail: "non-owner signer" };
+  }
+  for (let i = 1; i < signers.length; i++) {
+    if (signers[i]! === signers[i - 1]!) return { code: "INVALID_SIGNATURE_SET", detail: "duplicate signer" };
+    if (signers[i]! < signers[i - 1]!) return { code: "INVALID_SIGNATURE_SET", detail: "owner_sigs not sorted by matched pubkey" };
+  }
+  // §2 quorum check over the (now well-formed, distinct) verified set.
+  if (BigInt(signers.length) < threshold) {
+    return { code: "QUORUM_NOT_MET", detail: `got ${signers.length}/${threshold} owner signatures` };
+  }
+  return null;
+}
+
+/**
  * Factory holding the parsed CAL context, the shared event buffer, and the two
  * lifecycle phases. `phaseA` runs the pre-VALIDATED gates (§ 1–7) and emits
  * `cal.validated`; `phaseB` runs the post-VALIDATED gates (§ 8–13) to a terminal
@@ -117,6 +156,20 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
   const fee = flatValidationFee(snapshot);
   const boundedMode = getIn(snapshot, ["failure_mode", "is_bounded_mode"]) === true;
   const maxGas = maxExpectedDynamicGas(cal, fee);
+
+  // PFC2-M4 §9.2: owner-authorization gas, linear in k = owner signatures actually verified.
+  // k = 0 for non-owner-gated actions (operator-only path → exact v1 cost); 1 for a v1
+  // single-owner record; the verified-signer count for a v2 owners[] record. A v1 agent and its
+  // migrated 1-of-1 form both yield k = 1 ⇒ identical owner-auth gas (SC-4). Enters only the
+  // consumed-gas outcomes (FINALIZED / FAILED_EXEC); pre-validation failures never charge it.
+  const ownerAuth = ((): bigint => {
+    if (!(isOwnerRequired(action) || boundedMode)) return 0n;
+    const ownersNode = getIn(snapshot, ["registry", "agents", agent, "owners"]);
+    const k = Array.isArray(ownersNode)
+      ? BigInt((Array.isArray(trace.ownerSigners) ? trace.ownerSigners : []).filter((s) => typeof s === "string" && s !== "").length)
+      : 1n;
+    return ownerAuthUnits(k);
+  })();
 
   const events: Event[] = [];
   const idBase = (): Event => ({ cal_hash: calHashHex, agent_id: agent, nonce });
@@ -149,7 +202,7 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
     return result("EXPIRED", null, `expired after VALIDATED: tick ${tick} > expiration ${expiration}`, bill);
   };
   const execFail = (reason: ReasonCode, detail: string, committed: Json[]): ValidationResult => {
-    const bill = settle("FAILED_EXEC", cal, snapshot, effectsBytes(committed));
+    const bill = settle("FAILED_EXEC", cal, snapshot, effectsBytes(committed), ownerAuth);
     events.push({ event_type: "cal.failed", ...idBase(), tick_failed: tick, reason_code: reason, gas_consumed_ptra: bill.dynamicGasConsumed, gas_refunded_ptra: bill.gasRefunded, ton_ingress_fee_paid: 0n });
     return result("FAILED", reason, detail, bill);
   };
@@ -190,9 +243,23 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
     }
     const ownerRequired = isOwnerRequired(action) || boundedMode;
     if (ownerRequired) {
-      if (!trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
-      if (asStr(getIn(snapshot, ["registry", "agents", agent, "owner_pubkey"])) === "") {
-        return spamFail("CAPABILITY_DENIED", `agent ${agent} has no owner_pubkey in registry`);
+      const ownersNode = getIn(snapshot, ["registry", "agents", agent, "owners"]);
+      if (Array.isArray(ownersNode)) {
+        // PFC2-M1 §2: multi-owner (AuthorizationSet v2) quorum gate.
+        const owners = ownersNode.filter((x): x is string => typeof x === "string");
+        if (owners.length === 0) return spamFail("CAPABILITY_DENIED", `agent ${agent} has no owners in registry`);
+        const threshold = asBig(getIn(snapshot, ["registry", "agents", agent, "threshold"]));
+        const signers = Array.isArray(trace.ownerSigners)
+          ? trace.ownerSigners.filter((x): x is string => typeof x === "string")
+          : [];
+        const fail = multisigQuorum(owners, threshold, signers);
+        if (fail) return spamFail(fail.code, `${fail.detail} for ${action}`);
+      } else {
+        // v1 single-owner envelope (legacy; migration to owners[] is PFC2-M3).
+        if (!trace.ownerSigPresent) return spamFail("CAPABILITY_DENIED", `owner_sig required for ${action}`);
+        if (asStr(getIn(snapshot, ["registry", "agents", agent, "owner_pubkey"])) === "") {
+          return spamFail("CAPABILITY_DENIED", `agent ${agent} has no owner_pubkey in registry`);
+        }
       }
     }
 
@@ -243,7 +310,7 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
 
     // 11. dynamic gas vs escrowed budget (§9.3) → OUT_OF_GAS on overrun
     const bytesWritten = effectsBytes(committed);
-    const rawGas = toNano(gasUnits(cal, bytesWritten), gasPrice(snapshot));
+    const rawGas = toNano(gasUnits(cal, bytesWritten, ownerAuth), gasPrice(snapshot));
     if (rawGas > maxGas) return execFail("OUT_OF_GAS", `dynamic gas ${rawGas} > budget ${maxGas}`, committed);
     const consumed = rawGas;
 
@@ -266,7 +333,7 @@ function makeValidator(cal: Json, calHashHex: string, snapshot: Json, trace: Exe
 
     // --- cal.settled + cal.finalized: refund unused gas ---
     events.push({ event_type: "cal.settled", cal_hash: calHashHex });
-    const bill = settle("FINALIZED", cal, snapshot, bytesWritten);
+    const bill = settle("FINALIZED", cal, snapshot, bytesWritten, ownerAuth);
     events.push({
       event_type: "cal.finalized",
       ...idBase(),

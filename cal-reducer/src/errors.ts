@@ -15,6 +15,7 @@ export const APPLY_ERROR_CODES = [
   "UNKNOWN_EVENT",
   "BAD_DELTA",
   "BAD_TICK",
+  "BAD_OWNER_RECORD", // PFC2-M3: registry owners[]/threshold violates the §1.1 well-formed bounds
 ] as const;
 export type ApplyErrorCode = (typeof APPLY_ERROR_CODES)[number];
 

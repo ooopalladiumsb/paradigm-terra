@@ -35,6 +35,11 @@ type ExecutionTrace struct {
 	// programmatically; no wallet, no Contract A) — computed BEFORE the trace is built.
 	OperatorSigPresent  bool
 	OwnerSigPresent     bool
+	// OwnerSigners (PFC2-M5, Multisig v2.1): the node's per-envelope owner-match verdicts for a v2
+	// owners[] agent, in PRESENTED ORDER — the matched owner pubkey, or "" for no valid match. nil
+	// ⇒ a v1 single-owner record (the legacy OwnerSigPresent gate applies). validate() stays pure
+	// over this (it sorts/dedupes/counts; it does not verify signatures). Mirrors ownerSigners.
+	OwnerSigners        []string
 	// PinnedMCPSchemaHash is the validator-local pinned MCP schema hash (§4.4).
 	// Compared to state.registry.mcp_schema_hash; mismatch fails the CAL with
 	// SCHEMA_MISMATCH (no-charge, ingress-class). Empty string = no pin.

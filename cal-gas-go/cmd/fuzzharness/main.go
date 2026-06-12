@@ -60,7 +60,7 @@ func handle(line string) string {
 	if e1 != nil {
 		return "ERR COMPUTE"
 	}
-	gu, e2 := calgas.GasUnits(cal, bytes)
+	gu, e2 := calgas.GasUnits(cal, bytes, big.NewInt(0))
 	if e2 != nil {
 		return "ERR COMPUTE"
 	}
@@ -71,7 +71,7 @@ func handle(line string) string {
 	}
 	bills := make([]string, 0, len(outcomes))
 	for _, oc := range outcomes {
-		b, e := calgas.Settle(oc, cal, state, bytes)
+		b, e := calgas.Settle(oc, cal, state, bytes, big.NewInt(0))
 		if e != nil {
 			return "ERR COMPUTE"
 		}

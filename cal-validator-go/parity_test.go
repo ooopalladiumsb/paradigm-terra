@@ -77,6 +77,16 @@ func buildTrace(j canonical.Value) ExecutionTrace {
 	if p, ok := get("pinned_mcp_schema_hash").(string); ok {
 		pinned = p
 	}
+	// PFC2-M5: present only for v2 multisig vectors; absent ⇒ legacy v1 single-owner gate.
+	var ownerSigners []string
+	if osv, ok := get("owner_signers").([]canonical.Value); ok {
+		ownerSigners = make([]string, 0, len(osv))
+		for _, s := range osv {
+			if str, ok := s.(string); ok {
+				ownerSigners = append(ownerSigners, str)
+			}
+		}
+	}
 	return ExecutionTrace{
 		CurrentTick:         bigOf(get("current_tick")),
 		Steps:               steps,
@@ -84,6 +94,7 @@ func buildTrace(j canonical.Value) ExecutionTrace {
 		StateAfter:          get("state_after"),
 		OperatorSigPresent:  boolOf(get("operator_sig_present")),
 		OwnerSigPresent:     boolOf(get("owner_sig_present")),
+		OwnerSigners:        ownerSigners,
 		PinnedMCPSchemaHash: pinned,
 	}
 }

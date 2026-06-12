@@ -50,6 +50,10 @@ fn build_trace(j: &JcsValue) -> ExecutionTrace {
         state_after: j.get("state_after").cloned().unwrap_or(JcsValue::Null),
         operator_sig_present: matches!(j.get("operator_sig_present"), Some(JcsValue::Bool(true))),
         owner_sig_present: matches!(j.get("owner_sig_present"), Some(JcsValue::Bool(true))),
+        owner_signers: match j.get("owner_signers") {
+            Some(JcsValue::Array(a)) => Some(a.iter().map(|s| s.as_str().unwrap_or("").to_string()).collect()),
+            _ => None,
+        },
         pinned_mcp_schema_hash: j.get("pinned_mcp_schema_hash").and_then(JcsValue::as_str).unwrap_or("").to_string(),
     }
 }

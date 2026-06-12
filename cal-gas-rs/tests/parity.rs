@@ -36,7 +36,7 @@ fn parity_with_typescript_golden_vectors() {
 
         let scalar: Vec<(&str, String, &str)> = vec![
             ("static_gas_units", static_gas_units(&cal).unwrap().to_dec_str(), s(out, "static_gas_units")),
-            ("gas_units", gas_units(&cal, &bytes).unwrap().to_dec_str(), s(out, "gas_units")),
+            ("gas_units", gas_units(&cal, &bytes, &U256::ZERO).unwrap().to_dec_str(), s(out, "gas_units")),
             ("gas_price", gas_price(&state).to_dec_str(), s(out, "gas_price")),
             ("flat_fee", fee.to_dec_str(), s(out, "flat_fee")),
             ("max_expected_gas", max_expected_dynamic_gas(&cal, fee).to_dec_str(), s(out, "max_expected_gas")),
@@ -59,7 +59,7 @@ fn parity_with_typescript_golden_vectors() {
         let bills = out.get("bills").expect("bills");
         for name in OUTCOMES {
             let oc = Outcome::from_str(name).unwrap();
-            let b = settle(oc, &cal, &state, &bytes).unwrap();
+            let b = settle(oc, &cal, &state, &bytes, &U256::ZERO).unwrap();
             let w = bills.get(name).expect("bill for outcome");
             for (field, got, want) in [
                 ("feeRetained", b.fee_retained.to_dec_str(), s(w, "feeRetained")),

@@ -6,9 +6,28 @@
  */
 
 import { ApplyError } from "./errors.js";
+import { ownerRecordWellFormed } from "./migrate.js";
 import { deleteIn, getIn, setIn, type Json, type State } from "./state.js";
 
 export const UINT256_MAX = 2n ** 256n - 1n;
+
+/**
+ * PFC2-M3 §1.1: enforce the well-formed v2 owner-record bound at the point Deltas commit it.
+ * A Delta writing `registry/agents/<a>/owners` or `.../threshold` makes the validator's quorum
+ * gate assume a sorted/distinct/in-bounds record — guarantee it here. Owner records may set
+ * `owners` and `threshold` in separate Deltas, so the check fires only once BOTH are present
+ * (a partially-built record is a transient intermediate, validated when the second field lands).
+ */
+function enforceOwnerRecord(state: State, full: readonly string[]): void {
+  if (full.length !== 4 || full[0] !== "registry" || full[1] !== "agents") return;
+  if (full[3] !== "owners" && full[3] !== "threshold") return;
+  const rec = getIn(state, ["registry", "agents", full[2]!]);
+  if (typeof rec !== "object" || rec === null || Array.isArray(rec)) return;
+  if (!("owners" in rec) || !("threshold" in rec)) return; // not yet complete
+  if (!ownerRecordWellFormed(rec["owners"], rec["threshold"])) {
+    throw new ApplyError("BAD_OWNER_RECORD", `registry.agents.${full[2]}`);
+  }
+}
 
 export type DeltaOp = "set" | "add" | "sub" | "delete";
 
@@ -31,8 +50,11 @@ export function applyDeltaJson(state: State, d: Json): State {
   const full = [ns, ...(path as string[])];
 
   switch (op as DeltaOp) {
-    case "set":
-      return setIn(state, full, d["value"] ?? null) as State;
+    case "set": {
+      const next = setIn(state, full, d["value"] ?? null) as State;
+      enforceOwnerRecord(next, full);
+      return next;
+    }
     case "delete":
       return deleteIn(state, full) as State;
     case "add": {
