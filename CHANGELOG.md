@@ -5,13 +5,42 @@ All notable changes to Paradigm Terra are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) under the policy in
 [`docs/notes/release-governance.md`](docs/notes/release-governance.md).
 
-**Current release: `v1.1.0`** (2026-06-10) — adds the `wallet.send_jetton` publication path on the SAME
-PFC-1 freeze line. The freeze tag (`pfcN-consensus-freeze`) and the release tag (`vX.Y.Z`) are distinct:
-the freeze tag marks *what was proven*, the release tag marks *what was shipped on top of it*.
+**Current release: `v2.0.0`** (2026-06-12) — the **Multisig v2.1** MAJOR on a NEW freeze line
+(`pfc2-consensus-freeze`, ruled 2026-06-12). The authorization model moved (single-owner gate → M-of-N
+quorum), so this is the first release that does NOT ride the PFC-1 line. The freeze tag marks *what was
+proven*; the release tag marks *what was shipped on top of it*.
 
 ## [Unreleased]
 
 _Nothing yet — the next change above the Freeze Surface starts here._
+
+## [2.0.0] — 2026-06-12
+
+The **Multisig v2.1** release (PFC-2). **MAJOR**: a real authorization-model change on a **new freeze line**
+(`pfc2-consensus-freeze`, ruled 2026-06-12, `docs/notes/pfc2-consensus-freeze-draft.md`). PFC-1 (v1.x)
+stands unchanged beneath it; v2.0.0 is its own self-consistent freeze with regenerated evidence.
+
+### Changed — the Tier-C surface that moved (deliberately re-frozen vs PFC-1)
+- **Validator §8.2** — the single-owner gate becomes an **M-of-N quorum** (`QUORUM_NOT_MET` /
+  `INVALID_SIGNATURE_SET`), pure over `ownerSigners` (M2).
+- **Registry** — `owner_pubkey` → `owners[] + threshold`; v1→1-of-1 migration; §1.1 bounds; `BAD_OWNER_RECORD` (M3).
+- **Gas §9.2** — `+ ownerAuthUnits(k)` on owner-required actions, linear in verified signatures; the
+  operator path stays **byte-identical** to v1 (M4).
+- **Golden vectors** — `validator/vectors/golden.json` re-promoted NORMATIVE: 30 vectors, TS == Rust == Go
+  byte-for-byte (M5/M6/M7), incl. SC-4 `migrated 1-of-1 == v1` behaviour-identity.
+
+### Added — PP#4-B (the on-chain authorization-envelope demonstration)
+- **Offline proof** (M8-R1): quorum 2-of-3 → FINALIZED + anchor; sub-threshold 1-of-3 → `QUORUM_NOT_MET`,
+  with real Ed25519 envelopes (`orchestrator/test/pp4-multisig-anchor.test.ts`).
+- **Pinned anchor transport** (`pp2/src/anchor-body.ts`): typed cell `op (ANCHOR_OP 0x50544131 "PTA1") ||
+  state_root:bits256`; determinism + round-trip pinned (`pp2/test/pp4-anchor-body.test.ts`).
+- **PP#4-B SETTLED** live on ton-testnet: tx `7aaabb93…`, on-chain body byte-identical to the pinned anchor
+  cell (root `0x4a14…d4f0`), SC-1…SC-5 all pass (`pp2/artifacts/pp4/pp4b-evidence.json`).
+
+### Unchanged from PFC-1 (explicitly out of PFC-2)
+- Operator signature model (one `operator_sig`, raw Ed25519); non-owner-gated actions (byte-identical gas
+  + verdict to v1); canonical/dsl/cal/reducer core beyond the `owners[]` record + quorum gate; jetton/nft
+  (Tier-M, shipped v1.1.0).
 
 ## [1.1.0] — 2026-06-10
 
