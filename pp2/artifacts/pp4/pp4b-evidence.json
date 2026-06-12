@@ -1,0 +1,51 @@
+{
+  "result": "PP#4-B SETTLED",
+  "network": "ton-testnet",
+  "framing": "B — quorum-authorized treasury.transfer STATE_ROOT anchor",
+  "operator": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "operator_friendly": "0QAo8C45oOxJk_67JzZj-Zri6_hjgGlzj9N-VwIXnOHBuN9j",
+  "custody": "Path 2 — TON Connect, operator confirmed in-wallet (key never exported)",
+  "authorization_set": {
+    "owners": [
+      "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+      "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1"
+    ],
+    "threshold": "2",
+    "signers_presented": 2,
+    "terminal_stage": "FINALIZED"
+  },
+  "anchor": {
+    "state_root": "0x4a14f8f11f37657e62aa6670822a18544fe1fea560aac17f16cd9234efc4d4f0",
+    "transport": "dedicated typed anchor cell — op:uint32 (ANCHOR_OP 0x50544131 'PTA1') || state_root:bits256; carried as the body of a W5 self-transfer (operator -> operator, bounce=false)",
+    "body_cell_hash": "0x79543a1b015462d0920125b5e41eb5c57f38b2f7d7a243fb689f13e5a103d0bc",
+    "body_boc_b64": "te6cckEBAQEAJgAASFBUQTFKFPjxHzdlfmKqZnCCKhhUT+H+pWCqwX8WzZI078TU8AQJrCo=",
+    "value_nano": "50000000",
+    "tx_hash": "7aaabb93ce1e4fd73bac455be6a0b51e02356a8bebd7f323e65db625b9c6f786",
+    "recv_twin_tx_hash": "b7656bcba4c1fe89d0de656e9472dffd1e13e20bd16c3d4f6d01f955f943df28",
+    "lt": "76074641000001",
+    "utime": 1781247577,
+    "explorer": "https://testnet.tonviewer.com/transaction/7aaabb93ce1e4fd73bac455be6a0b51e02356a8bebd7f323e65db625b9c6f786"
+  },
+  "offline_correlation": {
+    "pp4_plan": "pp2/artifacts/pp4/pp4-plan.json",
+    "anchored_root_equals_offline_root": true,
+    "onchain_body_hash_equals_pinned": true,
+    "body_byte_identical_to_anchorBodyCell": true,
+    "verifier": "pp2/src/anchor-body.ts parseAnchorRoot + Cell.equals(anchorBodyCell(root))"
+  },
+  "sub_threshold": {
+    "broadcast": false,
+    "signers_presented": 1,
+    "reason": "QUORUM_NOT_MET — no state change to anchor"
+  },
+  "success_criteria": {
+    "SC-1_landed_on_testnet": true,
+    "SC-2_onchain_payload_equals_offline_root_byte_identical": true,
+    "SC-3_offline_proof_reproduces_root": true,
+    "SC-4_sub_threshold_not_broadcast": true,
+    "SC-5_no_freeze_surface_defect": true
+  },
+  "provenance_note": "The operator first reported tx 75993d1283b22d0d3f0a2e50b0a3a13ba998754ca1bb9ed50848274fc76d2f75 — an earlier 1-nanoton empty self-transfer (wallet deploy/test), NOT the anchor. The genuine anchor is tx 7aaabb93… (value 50000000), whose out-message body is byte-identical to the pinned anchor cell. 'Inspect before classifying' (PP#2 §3.1) caught the mismatch and located the correct tx among the operator's transactions.",
+  "verdict": "SETTLED"
+}

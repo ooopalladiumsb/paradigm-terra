@@ -46,9 +46,12 @@ These are the items the offline work cannot produce. **PP#4-B does NOT open unti
     + body hash re-asserted == 0x79543a…d0bc against the operator address (pre-broadcast gate, offline)
 ```
 
-All four boxes are checked — §3 is OPEN. The single remaining act is the irreversible broadcast itself
-(runbook §3 step 4), performed by the operator via the Path-2 harness; this repo writes no evidence and
-flips no status until a real tx hash is observed on ton-testnet.
+**SETTLED 2026-06-12.** All four §2 boxes checked; the runbook §3 broadcast was performed by the operator
+via the Path-2 harness. On-chain anchor: tx `7aaabb93ce1e4fd73bac455be6a0b51e02356a8bebd7f323e65db625b9c6f786`
+(self-transfer, 50000000 nano), out-message body byte-identical to the pinned anchor cell
+(hash `0x79543a…d0bc`, decoded root `0x4a14…d4f0`). SC-1…SC-5 all pass. Evidence:
+`pp2/artifacts/pp4/pp4b-evidence.json`. (The operator first reported tx `75993d12…`, an earlier 1-nanoton
+empty self-transfer; "inspect before classifying" located the genuine anchor among the operator's txs.)
 
 ### 2.0 Broadcast package (Path 2)
 
