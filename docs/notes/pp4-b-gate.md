@@ -33,20 +33,41 @@ determinism        fixed Ed25519 PKCS8 seeds (owners 01/02/03, operator 0f) → 
 These are the items the offline work cannot produce. **PP#4-B does NOT open until every box is checked:**
 
 ```
-[ ] funded ton-testnet operator wallet (the anchoring sender)
-      · address: ____________________   · state: active   · balance ≥ ~0.1 TON (one external message + fees)
-      · funded from the testnet faucet; read-only balance confirmed
-[ ] key custody confirmed for the operator wallet
-      · who holds the operator signing key, where, and the sign+broadcast procedure
-      · the OWNER quorum keys are the proof's deterministic seeds (offline) — only the anchoring
-        OPERATOR key needs live custody (it sends the single anchor message; it does NOT change the
-        proven authorization, which is fixed in the offline payload)
+[x] funded ton-testnet operator wallet (the anchoring sender) — supplied 2026-06-12
+      · address: 0QAo8C45oOxJk_67JzZj-Zri6_hjgGlzj9N-VwIXnOHBuN9j
+                 (raw 0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8, wc 0, non-bounceable testnet)
+      · state: active   · testnet TON funded (operator-confirmed)
+[x] key custody confirmed — PATH 2 (TON Connect, manual confirm in wallet); operator key never leaves the wallet
+      · the OWNER quorum keys are the proof's deterministic seeds (offline) — only the anchoring OPERATOR
+        key needs custody; under Path 2 it stays in the operator's wallet (no key material is exported)
+      · broadcast procedure: pp2/anchor-broadcast/ harness → tc.sendTransaction(pinned body) → user confirms
 [x] anchor transport decided — PINNED (2026-06-12, §2.1 below). Dedicated typed anchor cell, operator-independent.
 [x] re-confirmation: orchestrator/test/pp4-multisig-anchor.test.ts green (3/3) → anchor root still 0x4a14…d4f0
+    + body hash re-asserted == 0x79543a…d0bc against the operator address (pre-broadcast gate, offline)
 ```
 
-Two boxes remain (`funded operator wallet`, `key custody`) — operator-supplied, the only items left before §3.
-Everything the offline work can produce is done: the anchor root is re-confirmed and the on-chain body is pinned.
+All four boxes are checked — §3 is OPEN. The single remaining act is the irreversible broadcast itself
+(runbook §3 step 4), performed by the operator via the Path-2 harness; this repo writes no evidence and
+flips no status until a real tx hash is observed on ton-testnet.
+
+### 2.0 Broadcast package (Path 2)
+
+The TON Connect `sendTransaction` request (validUntil computed at click time):
+
+```json
+{
+  "validUntil": "<now + 600s>",
+  "messages": [{
+    "address": "0QAo8C45oOxJk_67JzZj-Zri6_hjgGlzj9N-VwIXnOHBuN9j",
+    "amount":  "50000000",
+    "payload": "te6cckEBAQEAJgAASFBUQTFKFPjxHzdlfmKqZnCCKhhUT+H+pWCqwX8WzZI078TU8AQJrCo="
+  }]
+}
+```
+
+Harness: `pp2/anchor-broadcast/` (single static HTML; TonConnectUI). Broadcast button is disabled unless
+(1) the BoC re-hashes to `0x79543a…d0bc`, (2) the connected wallet is on testnet, (3) it is the pinned
+operator address. The value is a 0.05-TON self-send (returns to the operator minus fees).
 
 ### 2.1 Anchor transport — PINNED (box 3)
 

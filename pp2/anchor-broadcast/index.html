@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PP#4-B — Multisig STATE_ROOT anchor broadcast</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; max-width: 760px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    h1 { font-size: 1.2rem; } h2 { font-size: 1rem; margin-top: 1.5rem; }
+    code, pre { background: #f4f4f4; border-radius: 4px; padding: 0.1rem 0.3rem; word-break: break-all; }
+    pre { padding: 0.6rem; white-space: pre-wrap; }
+    button { font: inherit; padding: 0.5rem 1rem; margin: 0.3rem 0.3rem 0.3rem 0; cursor: pointer; }
+    #broadcast { background: #b00020; color: #fff; border: none; border-radius: 4px; }
+    #broadcast:disabled { background: #ccc; }
+    .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; background: #eee; font-size: 0.85rem; }
+    .ok { color: #0a7d28; } .warn { color: #b00020; }
+    #result { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>PP#4-B — Multisig STATE_ROOT anchor</h1>
+  <p>One-shot TON Connect broadcast of the <strong>pinned</strong> anchor body to <strong>ton-testnet</strong>.
+     Self-transfer (operator → operator, bounce=false). You confirm in your wallet — the key never leaves it.</p>
+
+  <h2>What you are about to sign (fixed, verify before confirming)</h2>
+  <pre id="req-preview"></pre>
+  <p>Expected on-chain message body cell hash: <code id="body-hash"></code></p>
+
+  <h2>1. Connect (testnet)</h2>
+  <button id="connect">Connect wallet</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <p>Status: <span class="pill" id="status">disconnected</span> <span id="addr"></span></p>
+  <p id="net-guard"></p>
+
+  <h2>2. Broadcast (the single irreversible step)</h2>
+  <button id="broadcast" disabled>Broadcast anchor → ton-testnet</button>
+  <div id="result"></div>
+
+  <script type="module">
+    import { TonConnectUI } from "https://esm.sh/@tonconnect/ui@2.4.4";
+    import { Address, Cell } from "https://esm.sh/@ton/core@0.63.1";
+
+    // ─── Pinned PP#4-B constants (must match pp4-b-gate.md §2.1 / pp2/src/anchor-body.ts) ───
+    const OPERATOR   = "0QAo8C45oOxJk_67JzZj-Zri6_hjgGlzj9N-VwIXnOHBuN9j"; // non-bounceable testnet (self)
+    const OPERATOR_RAW = "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8";
+    const ROOT       = "0x4a14f8f11f37657e62aa6670822a18544fe1fea560aac17f16cd9234efc4d4f0";
+    const BODY_BOC   = "te6cckEBAQEAJgAASFBUQTFKFPjxHzdlfmKqZnCCKhhUT+H+pWCqwX8WzZI078TU8AQJrCo=";
+    const BODY_HASH  = "0x79543a1b015462d0920125b5e41eb5c57f38b2f7d7a243fb689f13e5a103d0bc";
+    const AMOUNT_NANO = "50000000"; // 0.05 TON, self-send (returns to operator minus fees)
+
+    // ─── Client-side pre-broadcast guard: the BoC really hashes to the pinned value ───
+    const bodyCell = Cell.fromBase64(BODY_BOC);
+    const localHash = "0x" + bodyCell.hash().toString("hex");
+    document.getElementById("body-hash").textContent = BODY_HASH + (localHash === BODY_HASH ? "  ✓ verified locally" : "  ✗ DRIFT — DO NOT BROADCAST");
+
+    const buildRequest = () => ({
+      validUntil: Math.floor(Date.now() / 1000) + 600,
+      // network omitted on purpose: the connected wallet MUST be on testnet (guarded below)
+      messages: [{ address: OPERATOR, amount: AMOUNT_NANO, payload: BODY_BOC }],
+    });
+    document.getElementById("req-preview").textContent = JSON.stringify(buildRequest(), null, 2);
+
+    // ─── TON Connect ───
+    const manifestUrl = new URL("./manifest.json", location.href).toString();
+    const tc = new TonConnectUI({ manifestUrl, buttonRootId: null });
+
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (s) => ($("status").textContent = s);
+
+    function onWallet(wallet) {
+      if (!wallet) { setStatus("disconnected"); $("addr").textContent = ""; $("broadcast").disabled = true; $("disconnect").disabled = true; $("net-guard").textContent = ""; return; }
+      const raw = wallet.account.address; // raw 0:hex
+      const chain = wallet.account.chain;  // "-3" testnet, "-239" mainnet
+      $("addr").textContent = raw;
+      $("disconnect").disabled = false;
+      setStatus("connected");
+      const isTestnet = chain === "-3";
+      const isOperator = raw.toLowerCase() === OPERATOR_RAW.toLowerCase();
+      let guard = [];
+      if (!isTestnet) guard.push('<span class="warn">✗ wallet is NOT on testnet (chain ' + chain + ') — switch to testnet</span>');
+      if (!isOperator) guard.push('<span class="warn">✗ connected wallet ≠ pinned operator ' + OPERATOR_RAW + '</span>');
+      if (localHash !== BODY_HASH) guard.push('<span class="warn">✗ body hash drift</span>');
+      $("net-guard").innerHTML = guard.length ? guard.join("<br>") : '<span class="ok">✓ testnet + operator address + body hash all verified — safe to broadcast</span>';
+      $("broadcast").disabled = guard.length > 0;
+    }
+    tc.onStatusChange(onWallet);
+
+    $("connect").onclick = () => tc.openModal();
+    $("disconnect").onclick = () => tc.disconnect();
+
+    $("broadcast").onclick = async () => {
+      $("broadcast").disabled = true;
+      const req = buildRequest();
+      try {
+        const res = await tc.sendTransaction(req);
+        const extCell = Cell.fromBase64(res.boc);
+        const extHash = "0x" + extCell.hash().toString("hex");
+        $("result").innerHTML =
+          '<p class="ok">✓ Submitted. The wallet accepted and broadcast the external message.</p>' +
+          '<p>external message hash: <code>' + extHash + '</code></p>' +
+          '<p>signed BoC (base64): <code>' + res.boc + '</code></p>' +
+          '<p><strong>Next:</strong> open <a href="https://testnet.tonviewer.com/' + OPERATOR + '" target="_blank">testnet.tonviewer.com/' + OPERATOR + '</a>, ' +
+          'find the new tx, copy its <strong>tx hash</strong> and confirm the message body == ' + ROOT + '. Send the tx hash back.</p>';
+      } catch (e) {
+        $("result").innerHTML = '<p class="warn">✗ ' + (e && e.message ? e.message : String(e)) + '</p>';
+        $("broadcast").disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
