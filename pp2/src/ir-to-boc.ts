@@ -21,6 +21,8 @@ import { Address, beginCell, Cell, SendMode, storeOutList, loadOutList, internal
 
 /** TEP-74 `transfer` opcode (J1-B jetton body). */
 export const JETTON_TRANSFER_OP = 0x0f8a7ea5;
+/** TEP-62 NFT `transfer` opcode (the nft body). */
+export const NFT_TRANSFER_OP = 0x5fcc3d14;
 
 /** J1-B — the TEP-74 `transfer` body the jetton codec emits (mirrors the orchestrator IR's jetton body).
  * `custom_payload`/`forward_payload` are fixed-absent this increment (Non-goals, PFC2-1 §8). */
@@ -36,9 +38,22 @@ export interface JettonTransferBody {
   readonly forward_payload: null;
 }
 
+/** The TEP-62 NFT `transfer` body the nft codec emits (mirrors the orchestrator IR's nft body). Unlike
+ * jetton there is NO amount (an NFT item is indivisible). `custom_payload`/`forward_payload` fixed-absent. */
+export interface NftTransferBody {
+  readonly kind: "nft_transfer";
+  readonly op: bigint; // == NFT_TRANSFER_OP
+  readonly query_id: bigint; // uint64
+  readonly new_owner: string; // raw — the NFT's new owner
+  readonly response_destination: string; // raw
+  readonly custom_payload: null;
+  readonly forward_amount: bigint; // nanoTON (VarUInteger 16)
+  readonly forward_payload: null;
+}
+
 /** Mirrors `orchestrator/src/w5/canonical-to-inner.ts` (the publication-layer IR; re-declared here so
  * pp2 never imports another package's types). A jetton message body carries the TEP-74 transfer. */
-export type IrBody = { readonly comment: string } | JettonTransferBody | null;
+export type IrBody = { readonly comment: string } | JettonTransferBody | NftTransferBody | null;
 export interface OutMessage {
   /** raw "0:<64hex>". For a jetton transfer this is the (resolved) agent jetton wallet — the orchestrator
    *  IR leaves it "" with jettonMaster; the resolution step fills it before serialization here. */
@@ -67,6 +82,7 @@ export class W5BocError extends Error {
 }
 
 const isJetton = (b: IrBody): b is JettonTransferBody => b !== null && "kind" in b && b.kind === "jetton_transfer";
+const isNft = (b: IrBody): b is NftTransferBody => b !== null && "kind" in b && b.kind === "nft_transfer";
 
 // TEP-74: transfer#0f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress
 //   response_destination:MsgAddress custom_payload:(Maybe ^Cell)
@@ -96,10 +112,36 @@ function cellToJettonBody(s: ReturnType<Cell["beginParse"]>): JettonTransferBody
   return { kind: "jetton_transfer", op: BigInt(JETTON_TRANSFER_OP), query_id, amount, destination, response_destination, custom_payload: null, forward_ton_amount, forward_payload: null };
 }
 
-// ── body codec: null = empty cell; {comment} = text comment (op 0); jetton = TEP-74 transfer (op 0f8a7ea5) ──
+// TEP-62: transfer#5fcc3d14 query_id:uint64 new_owner:MsgAddress response_destination:MsgAddress
+//   custom_payload:(Maybe ^Cell) forward_amount:(VarUInteger 16) forward_payload:(Either Cell ^Cell)
+// No amount field — an NFT item is indivisible.
+export function nftBodyToCell(b: NftTransferBody): Cell {
+  return beginCell()
+    .storeUint(NFT_TRANSFER_OP, 32)
+    .storeUint(b.query_id, 64)
+    .storeAddress(Address.parseRaw(b.new_owner))
+    .storeAddress(Address.parseRaw(b.response_destination))
+    .storeMaybeRef(null) // custom_payload absent
+    .storeCoins(b.forward_amount)
+    .storeBit(false) // forward_payload: Either-left, inline empty (absent this increment)
+    .endCell();
+}
+function cellToNftBody(s: ReturnType<Cell["beginParse"]>): NftTransferBody {
+  s.loadUint(32); // op (already matched)
+  const query_id = s.loadUintBig(64);
+  const new_owner = s.loadAddress().toRawString();
+  const response_destination = s.loadAddress().toRawString();
+  if (s.loadMaybeRef() !== null) throw new W5BocError("W5_NFT_CUSTOM_PAYLOAD", "custom_payload is fixed-absent this increment");
+  const forward_amount = s.loadCoins();
+  if (s.loadBit() !== false) throw new W5BocError("W5_NFT_FORWARD_PAYLOAD", "forward_payload is fixed-absent this increment");
+  return { kind: "nft_transfer", op: BigInt(NFT_TRANSFER_OP), query_id, new_owner, response_destination, custom_payload: null, forward_amount, forward_payload: null };
+}
+
+// ── body codec: null = empty cell; {comment} = text comment (op 0); jetton = TEP-74 (0f8a7ea5); nft = TEP-62 (5fcc3d14) ──
 function bodyToCell(body: IrBody): Cell {
   if (body === null) return beginCell().endCell();
   if (isJetton(body)) return jettonBodyToCell(body);
+  if (isNft(body)) return nftBodyToCell(body);
   return beginCell().storeUint(0, 32).storeStringTail(body.comment).endCell();
 }
 function cellToBody(cell: Cell): IrBody {
@@ -112,8 +154,9 @@ function cellToBody(cell: Cell): IrBody {
       return { comment: s.loadStringTail() };
     }
     if (op === JETTON_TRANSFER_OP) return cellToJettonBody(s);
+    if (op === NFT_TRANSFER_OP) return cellToNftBody(s);
   }
-  throw new W5BocError("W5_UNKNOWN_BODY", "message body is neither empty, a text comment, nor a TEP-74 transfer");
+  throw new W5BocError("W5_UNKNOWN_BODY", "message body is neither empty, a text comment, a TEP-74 jetton transfer, nor a TEP-62 nft transfer");
 }
 
 /** Build the W5 InnerRequest cell from the IR. Enforces the same ⊆ invariants as the codec
@@ -129,8 +172,8 @@ export function irToCell(inner: InnerRequest): Cell {
     }
     if (a.msg.valueNano < 0n) throw new W5BocError("W5_NEGATIVE_VALUE", "value must be non-negative");
     if (a.msg.dest === "") throw new W5BocError("W5_JETTON_DEST_UNRESOLVED", "dest is unresolved — resolve the agent jetton wallet (get_wallet_address) before serialization");
-    // a jetton transfer bounces (so a failed jetton-wallet hop returns the TON); a bare transfer does not.
-    const bounce = isJetton(a.msg.body);
+    // a jetton/nft transfer bounces (so a failed jetton-wallet / nft-item hop returns the TON); a bare transfer does not.
+    const bounce = isJetton(a.msg.body) || isNft(a.msg.body);
     return {
       type: "sendMsg",
       mode: a.mode as SendMode,

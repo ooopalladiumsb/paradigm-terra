@@ -5,14 +5,35 @@ All notable changes to Paradigm Terra are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) under the policy in
 [`docs/notes/release-governance.md`](docs/notes/release-governance.md).
 
-**Current release: `v2.0.0`** (2026-06-12) — the **Multisig v2.1** MAJOR on a NEW freeze line
-(`pfc2-consensus-freeze`, ruled 2026-06-12). The authorization model moved (single-owner gate → M-of-N
-quorum), so this is the first release that does NOT ride the PFC-1 line. The freeze tag marks *what was
-proven*; the release tag marks *what was shipped on top of it*.
+**Current release: `v2.1.0`** (2026-06-12) — adds the `wallet.send_nft` publication path (TEP-62) above
+the Freeze Surface. MINOR on the 2.x line: a new operational capability, `freeze-gate` byte-identical —
+it touches neither the PFC-1 nor the PFC-2 normative surface.
 
 ## [Unreleased]
 
 _Nothing yet — the next change above the Freeze Surface starts here._
+
+## [2.1.0] — 2026-06-12
+
+The **NFT publication release**. MINOR: a new publication capability above the Freeze Surface — the third
+`wallet.*` verb after `send_ton` (v1.0.0) and `send_jetton` (v1.1.0). The consensus already finalizes
+`wallet.send_nft` via the generic validator/reducer/gas (`nft_access` scope); only the §8.3 publication
+codec was missing. `freeze-gate` stayed byte-identical throughout.
+
+### Added — `wallet.send_nft` (TEP-62 publication path)
+- **IR codec** (`orchestrator/src/w5/canonical-to-inner.ts`): `encodeSendNft` emits a TEP-62 `transfer`
+  body (op `0x5fcc3d14`). Two differences from jetton: **no amount** (an NFT item is indivisible) and
+  `dest = nft_item` **directly** (no `get_wallet_address` master-derivation). The ⊆ rule binds the item +
+  `new_owner` (no redirection) and the attached TON (`forward_amount + 0.05 TON`, exact-value mode, bounces).
+- **BoC codec** (`pp2/src/ir-to-boc.ts`): `nftBodyToCell` / `cellToNftBody` + op-dispatch; offline
+  round-trip IR → BOC → IR'.
+- Tests: `orchestrator/test/send-nft-codec.test.ts` (12) + `pp2/test/send-nft-boc.test.ts` (6); send_ton /
+  send_jetton regressions green (orchestrator 128/128, pp2 29/29).
+
+### Notes
+- Semantics: `docs/notes/send-nft-semantics.md`. Out of scope (Non-goals): `custom_payload` /
+  `forward_payload`, NFT mint/burn, collection deploy. **PP#5** (live ton-testnet proof) is the
+  network-gated follow-on (a deployed TEP-62 item + funded operator), not part of this offline increment.
 
 ## [2.0.0] — 2026-06-12
 
