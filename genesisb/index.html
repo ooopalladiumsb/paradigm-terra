@@ -105,9 +105,19 @@
       });
       try {
         const r = await tc.sendTransaction({ validUntil: Math.floor(Date.now() / 1000) + 600, messages });
-        res.innerHTML = '<span class="ok">✓ submitted</span> — signed BoC: <code>' + r.boc.slice(0, 48) + '…</code><br>' +
-          'inspect your wallet address on <a href="https://testnet.tonviewer.com/' + (plan.operator || plan.publisher) + '" target="_blank">tonviewer</a>, ' +
-          'then send me the tx hash for this step.';
+        // Belt-and-suspenders: some wallets sign + return the BoC but do NOT reliably broadcast it.
+        // Relay the signed external message straight to the network so the tx is guaranteed to land.
+        let relay = "";
+        try {
+          const resp = await fetch("https://testnet.toncenter.com/api/v3/message", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ boc: r.boc }),
+          });
+          relay = resp.ok ? '<span class="ok">✓ relayed to the network via toncenter</span>'
+                          : '<span class="warn">relay HTTP ' + resp.status + ' (the wallet may still broadcast it)</span>';
+        } catch (e) { relay = '<span class="warn">relay error: ' + (e.message || e) + '</span>'; }
+        res.innerHTML = '<span class="ok">✓ signed</span> · ' + relay + '<br>' +
+          'signed BoC (full): <code style="font-size:0.75rem">' + r.boc + '</code><br>' +
+          'inspect <a href="https://testnet.tonviewer.com/' + (plan.operator || plan.publisher) + '" target="_blank">your wallet on tonviewer</a>, then tell me — I verify on-chain.';
       } catch (e) {
         res.innerHTML = '<span class="warn">✗ ' + (e && e.message ? e.message : String(e)) + '</span>';
       }
