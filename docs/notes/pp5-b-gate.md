@@ -6,6 +6,23 @@ irreversible ton-testnet transactions of PP#5-B. Publication layer (§8.3) — *
 prerequisites, the expected effect, and the resume plan in advance, so the broadcast is a confirmation,
 not a discovery. **Nothing here touches the network** — the live steps are §3, gated on §2.
 
+## ✅ SETTLED — 2026-06-13
+
+PP#5-B is **SETTLED on ton-testnet**. The NFT item's owner flipped operator → recipient via OUR `send_nft`:
+
+```
+deploy + mint tx : 8525fc1c8e7056ce53d146e7811b82468b88ed2e0717c7c2f7dbbb5bc47d2bb8
+send_nft tx      : 687c7d704bd71072ea5c736dacf03954e9fdbecffeaccaabf8c04eec37bf3d76
+item             : 0:151ff7be…  owner 0:28f02e39…(operator) → 0:fac4ffaf…(recipient)  ✅
+SC-1…SC-5        : all pass · evidence pp2/artifacts/pp5/pp5b-evidence.json
+```
+
+Provenance: step 2 was signed LOCALLY at the live seqno (`pp2/scripts/pp5b-send-local.ts`) and relayed
+(toncenter, HTTP 200). The Tonkeeper TON-Connect path produced stale-seqno signatures (msg_seqno 2 vs
+wallet_seqno 3) and did not broadcast — caught 3× by reading the on-chain owner before classifying; SETTLED
+was stamped only once the owner actually flipped. **The `wallet.*` live-proof line (send_ton / send_jetton /
+send_nft) is now complete.**
+
 ## 0. What PP#5-B confirms
 
 PP#5 (R1, `pp5-nft-proof.md`) is proven OFFLINE against the real official-standard TEP-62 NFT in
