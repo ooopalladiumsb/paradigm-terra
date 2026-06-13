@@ -67,14 +67,28 @@ Estimated XL–XXL (months), per the roadmap. Framing A is M–L (weeks), Tier-M
 - **Framing B opens PFC-3** with its own charter; it does NOT proceed under this charter.
 - **PTRA-token-as-jetton** may proceed Tier-M independently of the governance/oracle framing.
 
-## 5. The decision needed now
+## 5. The decision — RATIFIED: **Staged** (2026-06-13)
 
-Ratify the Layer-3 framing (the AskUserQuestion that follows this charter):
 ```
-[ ] A — read-model projections (Tier-M, extends Layer 2; governance/oracle/ptra state mirrored on-chain)
-[ ] B — authoritative on-chain economy (Tier-C → PFC-3 → v3.0.0; on-chain voting/aggregation/token)
-[ ] Staged — A read-models now (Tier-M), then PFC-3 charter for the B decision pieces (RECOMMENDED rhythm)
+[ ] A — read-model projections only
+[ ] B — authoritative on-chain economy (PFC-3)
+[x] Staged — A read-models NOW (Tier-M), then a PFC-3 charter for the B decision pieces
 ```
+
+**Layer 3 proceeds under Framing A (Tier-M read-models)**, extending the Layer-2 invariant (`layer2-toolchain-charter.md`
+§2.1: contracts reflect, never decide). The on-chain governance/oracle/PTRA *economy* (Framing B — on-chain
+voting/aggregation/staking-emission) is **explicitly deferred to a future PFC-3 charter** (its own freeze line,
+MAJOR v3.0.0); it does NOT proceed here. PTRA-token-as-jetton may ship Tier-M independently if/when wanted.
+
+### Stage-A suite (on the tolk harness, Tier-M, freeze-gate byte-identical)
+```
+L3.1 governance-view  — projects state.governance (proposal tallies + params); "reflects tallies, never votes"
+L3.2 oracle-view      — projects state.oracles.feeds;                          "reflects feeds, never aggregates"
+L3.3 ptra-view        — projects state.ptra.balances (+ stakes);              "reflects balances, never mints/stakes"
+L3.x genesis          — extend tolk/src/genesis.ts to include the L3 read-models (one suite)
+```
+Each: owner-gated projection write, byte-identical read-back, non-owner → 401, NO decision op (unknown → 0xffff).
+When Stage-A is complete, open the **PFC-3 charter** for Framing B (the decision pieces).
 
 ## 6. Related
 - `layer2-toolchain-charter.md` — the Framing A read-model pattern + the binding invariant Layer 3-A reuses.
