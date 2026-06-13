@@ -135,9 +135,26 @@ DoD-4  A stranger can reproduce each contract's codeHash from source + the pinne
 
 ```
 R0   This charter (toolchain ruling + Framing A) ..................... ✅ RATIFIED 2026-06-13 (Framing A)
-L2.0 Shared build harness + worked example ........................... ← NEXT — offline, the first build PR
-L2.1 Registry read-model (build + golden + sandbox) .................. offline
-…    Treasury / FailureStateManager / Capability / genesis ........... offline, each gated for live deploy
+L2.0 Shared build harness + worked example ........................... ✅ DONE (tolk/, example-counter)
+L2.1 Registry read-model (build + golden + sandbox) .................. ✅ DONE (tolk/contracts/registry.tolk)
+L2.2 Treasury view ................................................... ← NEXT — offline
+…    FailureStateManager / Capability / Anchor index / genesis ....... offline, each gated for live deploy
+```
+
+### L2.1 Registry — Definition of Done (observational only)
+
+The Registry projects `state.registry` (mcp_schema_hash + agents) and **is observational only** — it
+stores the off-chain-computed `AgentRecord` *verbatim* (as an opaque ref it never parses), keyed by
+agent_id, written solely by the trusted off-chain publisher (`owner`). It NEVER adds/removes an agent on
+its own authority, changes owners, computes a threshold, or re-derives consensus.
+
+```
+[x] reproducible golden codeHash (1ED1C543…), pinned compiler, drift-guarded (tolk build test)
+[x] sandbox: deploy → owner upsert → getAgent reads the record back byte-identically
+[x] sandbox: registry-wide mcp_schema_hash mirrors; re-upsert is idempotent on count
+[x] invariant: a non-owner write aborts 401 (owner-gated projection)
+[x] invariant: NO consensus-deriving op exists — any unknown op aborts 0xffff (reflects, never computes)
+[ ] live testnet deploy — a separate GATED step (funded operator), not part of this offline increment
 ```
 
 PP#4-B and PP#5-B continue to wait on a funded operator and do NOT block Layer 2 (independent tracks).
