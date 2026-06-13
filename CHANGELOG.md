@@ -19,6 +19,11 @@ it touches neither the PFC-1 nor the PFC-2 normative surface.
 - **L2.0 — shared Tolk build harness** (`tolk/`): reproducible `@ton/tolk-js` (pinned 1.4.1) compilation →
   golden code-hash drift guard + `@ton/sandbox` behavior tests, with a worked example (`example-counter`).
   New `tolk` CI job + `make tolk`. `freeze-gate` byte-identical.
+- **L2.1 — Registry read-model** (`tolk/contracts/registry.tolk`): projects `state.registry`
+  (mcp_schema_hash + agents) on-chain, **observational only** (Framing A) — stores the off-chain
+  `AgentRecord` verbatim (opaque ref), owner-gated, never derives consensus. Golden codeHash `1ED1C543…`;
+  sandbox proves byte-identical read-back, owner-gating (non-owner → 401), and no consensus-deriving op
+  (unknown op → 0xffff). `AgentRecord` codec in `tolk/src/agent-record.ts`.
 
 ## [2.1.0] — 2026-06-12
 
