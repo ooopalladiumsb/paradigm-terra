@@ -84,6 +84,20 @@ jobs:
       - name: m2-registry (build + typecheck + SC-1 tests)
         run: make m2-registry
 
+  tolk:
+    name: tolk (L2.0 — Tolk build harness)
+    runs-on: ubuntu-latest
+    # L2.0 shared Tolk build harness (Layer 2, Tier M, above the Freeze Surface): reproducible
+    # @ton/tolk-js build → golden codeHash drift guard + @ton/sandbox behavior tests. Touches no
+    # normative vector or proof — freeze-gate stays byte-identical. Not in the required set yet;
+    # promote once observed green (the M1 pattern).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: tolk (build + typecheck + harness tests)
+        run: make tolk
+
   rust-parity:
     name: rust-parity (TS == Rust)
     runs-on: ubuntu-latest
