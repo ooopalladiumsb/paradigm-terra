@@ -5,6 +5,21 @@ irreversible ton-testnet deployment of the Layer-2 observational suite. **Tier-M
 (Framing A read-models, v2.2.0). Follows the PP#3-B/PP#4-B/PP#5-B discipline. **Nothing here touches the
 network** — the live steps are §3, gated on §2.
 
+## ✅ SETTLED — 2026-06-13
+
+Genesis-B is **SETTLED on ton-testnet**. The full Layer-2 observational suite is live — one W5 external
+from the publisher with 5 deploy out-messages:
+
+```
+deploy tx : 78ffc1eaf669c758360c461dae620133a88e11e7ed02013a924d8c82ba995544 (out_msgs=5, seqno 4→5)
+registry 0:3b356abd… · treasury 0:917431cd… · failure-state 0:125be9b7… · capability 0:e0a72a6b… · anchor-index 0:4c38c982…
+each: active · owner == publisher · initial state empty (agentCount/nav/mode/anchorCount = 0) ✅
+SC-1…SC-5 : all pass · evidence tolk/artifacts/genesis/genesis-b-evidence.json
+```
+
+Signed locally (one external, 5 deploys, live seqno, 1-hour window) and relayed via toncenter (HTTP 200).
+**The Layer-2 observational suite is live; the v2.x operational contour is closed.**
+
 ## 0. What Genesis-B confirms
 
 L2.6 (`layer2-toolchain-charter.md`) proved OFFLINE that the full suite deploys from genesis in
