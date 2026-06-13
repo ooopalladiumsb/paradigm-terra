@@ -27,10 +27,16 @@ export const GENESIS_DATA: Readonly<Record<string, (owner: Address) => Cell>> = 
   capability: (o) => beginCell().storeAddress(o).storeUint(0, 32).storeMaybeRef(null).endCell(),
   // anchor-index: owner, latestVersion:uint64, anchorCount:uint32, anchors:dict
   "anchor-index": (o) => beginCell().storeAddress(o).storeUint(0n, 64).storeUint(0, 32).storeMaybeRef(null).endCell(),
+  // L3 — governance-view: owner, gasPriceNanoPtraPerUnit:uint64, proposalCount:uint32, proposals:dict
+  "governance-view": (o) => beginCell().storeAddress(o).storeUint(0n, 64).storeUint(0, 32).storeMaybeRef(null).endCell(),
+  // L3 — oracle-view: owner, feedCount:uint32, feeds:dict
+  "oracle-view": (o) => beginCell().storeAddress(o).storeUint(0, 32).storeMaybeRef(null).endCell(),
+  // L3 — ptra-view: owner, accountCount:uint32, accounts:dict
+  "ptra-view": (o) => beginCell().storeAddress(o).storeUint(0, 32).storeMaybeRef(null).endCell(),
 };
 
-/** The Layer-2 observational suite, in genesis deploy order. */
-export const GENESIS_CONTRACTS = ["registry", "treasury", "failure-state", "capability", "anchor-index"] as const;
+/** The observational suite (Layer 2 + Layer 3 Stage-A), in genesis deploy order. */
+export const GENESIS_CONTRACTS = ["registry", "treasury", "failure-state", "capability", "anchor-index", "governance-view", "oracle-view", "ptra-view"] as const;
 
 export interface GenesisEntry {
   readonly name: string;

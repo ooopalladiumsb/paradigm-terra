@@ -37,6 +37,16 @@ projections of frozen consensus, never a source of truth) — `freeze-gate` byte
   `DEE68103…`; sandbox proves byte-identical read-back, that a re-upsert REPLACES verbatim (no median/
   average — the latest settled value wins), non-owner → 401, unknown op → 0xffff. `FeedRecord` codec in
   `tolk/src/feed-record.ts`.
+- **L3.3 — PTRA view** (`tolk/contracts/ptra-view.tolk`): projects `state.ptra.balances` (per-account
+  balance / staked / accrued rewards), **observational only** ("reflects balances, never mints or stakes")
+  — stores the settled `PtraRecord` verbatim (opaque ref, owner-gated), no mint/transfer/stake/claim op.
+  Golden codeHash `61930FA7…`; sandbox proves byte-identical read-back, that a re-upsert REPLACES verbatim
+  (a balance can go DOWN — impossible for a minting contract), non-owner → 401, unknown op → 0xffff.
+  `PtraRecord` codec in `tolk/src/ptra-record.ts`.
+- **L3 genesis extension** (`tolk/src/genesis.ts`): the genesis manifest now deploys **8** read-models —
+  the Layer-2 five + governance-view / oracle-view / ptra-view — to all-empty initial state, distinct
+  deterministic addresses (`tolk/artifacts/genesis/genesis-manifest.json`). **Layer 3 Stage-A complete**
+  (all read-models Tier-M, freeze-gate byte-identical; the on-chain economy = Framing B = a future PFC-3).
 
 ## [2.2.0] — 2026-06-13
 
