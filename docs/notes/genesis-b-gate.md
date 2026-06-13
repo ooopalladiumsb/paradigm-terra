@@ -31,13 +31,21 @@ offline proof     tolk/test/genesis.test.ts — full suite deploys to all-empty 
 ## 2. Operational prerequisites — REQUIRED before §3 (operator-supplied; NOT done here)
 
 ```
-[ ] funded ton-testnet publisher wallet (the suite owner + deployer)
-      · address: ____________________   · balance ≥ ~0.5 TON (5 deploys × ~0.05–0.1 + fees)
-[ ] key custody confirmed (Path 2 TON Connect, or a custodied signer)
-[ ] re-derived, pinned for the real publisher (offline, deterministic):
-      · genesisManifest(realPublisher) → the five LIVE addresses + code hashes (record as genesis-b-plan)
-[ ] re-confirmation: tolk suite green (28/0); manifest re-derivation drift-guard still holds
+[x] funded ton-testnet publisher wallet — 0QAo8C45oOxJk_67JzZj-Zri6_hjgGlzj9N-VwIXnOHBuN9j
+      (raw 0:28f02e39…c1b8), active ~1.9 TON (same wallet as PP#5-B)
+[x] key custody — PATH 2 (TON Connect, manual confirm in wallet)
+[x] re-derived + pinned for the real publisher (tolk/artifacts/genesis/genesis-b-plan.json):
+      · registry       0:3b356abd96f2998c314fb494bdcaf35646673c2e6ff55e0986fa6027692ec29e
+      · treasury       0:917431cdbb0975d8e2ae660937943b859cea6d1d4bfab141e8aa71a74ef51b82
+      · failure-state  0:125be9b7148f1791dcc06b09e783102620943268a76868a753c1fbb657260091
+      · capability     0:e0a72a6b02f3ab8ed484daf85410b87a88007430c7e61cbc5553677f27c21bd0
+      · anchor-index   0:4c38c982d1ca1c12914a9002309b0e168c5f1a2dc616d07a153c4df64c52dcd2
+[x] sandbox confirmation — tolk/scripts/genesis-b-plan.ts: all five deploy active, owner==publisher,
+    empty initial state. tolk suite 28/28.
 ```
+
+All boxes checked — §3 is OPEN. The five deploys (batched 4+1 for TON Connect) are the only acts left,
+performed by the publisher via the Path-2 harness (gh-pages `/genesisb/`).
 
 ## 3. Genesis-B runbook (the live steps — GATED on §2)
 

@@ -1,0 +1,41 @@
+{
+  "result": "PP#5-B broadcast plan (operator-bound) — OFFLINE, no broadcast",
+  "network": "ton-testnet",
+  "operator": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "recipient": "0:fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+  "query_id": "880013",
+  "derived": {
+    "collection_address": "0:c72cdb972e8c80d295680cd9763d3c4cf1bc79d99f31198ac1956f8a8c3dd3e6",
+    "item0_address": "0:151ff7bea548ccdaac92c3c7f38f50a4f8701dcd30c22b719bda1801fa4b4dbb",
+    "send_nft_body_hash": "0x50d1521c741bb06eb3de2a5e6ff697477cff260e67206d8b1f87ae7b5b797d45"
+  },
+  "tonconnect_requests": {
+    "step1_deploy_collection_and_mint": {
+      "messages": [
+        {
+          "address": "0QDHLNuXLoyA0pVoDNl2PTxM8bx52Z8xGYrBlW-KjD3T5v5Z",
+          "amount": "500000000",
+          "stateInit": "te6cckECJwEABFIAAgE0ARQBFP8A9KQT9LzyyAsCAgFiAw0CAs0ECAPr0QY4BIrfAA6GmBgLjYSK3wfSAYAOmP6Z/2omh9IGmf6mpqGEEINJ6cqClAXUcUG6+CgOhBCFRlgFa4QAhkZYKoAueLEn0BCmW1CeWP5Z+A54tkwCB9gHAbKLnjgvlwyJLgAPGBEuABcYEZAmAB8YEvgsIH+XhAUGBwBgNQLTP1MTu/LhklMTugH6ANQwKBA0WfAGjhIBpENDyFAFzxYTyz/MzMzJ7VSSXwXiAKY1cAPUMI43gED0lm+lII4pBqQggQD6vpPywY/egQGTIaBTJbvy9AL6ANQwIlRLMPAGI7qTAqQC3gSSbCHis+YwMlBEQxPIUAXPFhPLP8zMzMntVAAoAfpAMEFEyFAFzxYTyz/MzMzJ7VQCASAJDAIBIAoLAC0AcjLP/gozxbJcCDIywET9AD0AMsAyYAAbPkAdMjLAhLKB8v/ydCAAPUWvAEcCHwBXeAGMjLBVjPFlAE+gITy2sSzMzJcfsAgCASAOEwIBIA8QAEO4tdMe1E0PpA0z/U1NQwECRfBNDUMdQw0HHIywcBzxbMyYAgEgERIAL7Xa/aiaH0gaZ/qamoYNiDoaYfph/0gGEAAttPR9qJofSBpn+pqahgKL4J4AjgA+ALAAJbyC32omh9IGmf6mpqGC3oahgsQDU4AFHgXHNB2JMn/XZObMfzNcXX8McA0ucfpvyuBC85w4NwAAAAAAAAAAEBUYJgIAFhcAGABQVC1URVNULU5GVAAQcHQtdGVzdC8BFP8A9KQT9LzyyAsZAgFiGiUCAs4bIgIBIBwhAs8MiHHAJJfA+DQ0wMBcbCSXwPg+kD6QDH6ADFx1yH6ADH6ADBzqbQA8AIEs44UMGwiNFIyxwXy4ZUB+kDUMBAj8APgBtMf0z+CEF/MPRRSMLrjAjA0NDU1ghAvyyaiErrjAl8EhA/y8IB0gAqwyEDdeMkATUTXHBfLhkfpAIfAB+kDSADH6ACDXScIA8uLEggr68IAboSGUUxWgod4i1wsBwwAgkgahkTbiIML/8uGSIZQQKjdb4w0CkzAyNOMNVQLwAx4fAHyCEAUTjZHIUAnPFlALzxZxJEkUVEagcIAQyMsFUAfPFlAF+gIVy2oSyx/LPyJus5RYzxcBkTLiAckB+wAQRwBqJvABghDVMnbbEDdEAG1xcIAQyMsFUAfPFlAF+gIVy2oSyx/LPyJus5RYzxcBkTLiAckB+wAAcnCCEIt3FzUFyMv/UATPFhAkgEBwgBDIywVQB88WUAX6AhXLahLLH8s/Im6zlFjPFwGRMuIByQH7AAARPpEMHC68uFNgAgEgIyQAOztRNDTP/pAINdJwgCafwH6QNQwECQQI+AwcFltbYAAdAPIyz9YzxYBzxbMye1UgAAmhH5/gBQBLAAAAZIAFHgXHNB2JMn/XZObMfzNcXX8McA0ucfpvyuBC85w4NxArJMqP",
+          "payload": "te6cckEBAwEASQABMQAAAAEAAAAAAAAAAAAAAAAAAAAAQC+vCAgBAUOABR4FxzQdiTJ/12TmzH8zXF1/DHANLnH6b8rgQvOcODcQAgAMaXRlbS0wy9km6w=="
+        }
+      ]
+    },
+    "step2_send_nft": {
+      "messages": [
+        {
+          "address": "kQAVH_e-pUjM2qySw8fzj1Ck-HAdzTDCK3Gb2hgB-ktNu6lj",
+          "amount": "100000000",
+          "payload": "te6cckEBAQEAUgAAn1/MPRQAAAAAAA1tjYAfWJ/1++E3B3Vyvx+K8vV6oot4hkHAXcg8RYtav25+TRAAo8C45oOxJk/67JzZj+Zri6/hjgGlzj9N+VwIXnOHBuAI6u6LWA=="
+        }
+      ]
+    }
+  },
+  "sandbox_confirmation": "sandbox OK — deploy+mint+send_nft flips owner operator→recipient with these exact builders",
+  "item_data_note": "item0 = contractAddress({itemCode, index0 + collection}) — matches collection get_nft_address_by_index(0)",
+  "void_itemData": "c9be9b0490405588bb1a8bf9b8575ac6ef917beeb031247aca0c7028ee412556",
+  "void_codes": {
+    "collection": "8e5aab17e2e503bec75c2f453b9dacf11a98bbb2cc202994710952a7271c7780",
+    "item": "ba4d975d2b66231c1f0a0ccca6e8ff8f7ba0610c4b7639584b8e98303dc3128c"
+  },
+  "verdict": "READY — PENDING-DEPLOY (operator broadcasts step1 then step2 via Path-2 harness)"
+}

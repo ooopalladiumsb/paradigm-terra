@@ -1,0 +1,74 @@
+{
+  "result": "Genesis-B broadcast plan (publisher-bound) — OFFLINE, no broadcast",
+  "network": "ton-testnet",
+  "publisher": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "contracts": [
+    {
+      "name": "registry",
+      "codeHash": "1ed1c543a79e1b3186b5a4e67c3848f6b20541f8f697993c27a1162e9d443f4d",
+      "address": "0:3b356abd96f2998c314fb494bdcaf35646673c2e6ff55e0986fa6027692ec29e"
+    },
+    {
+      "name": "treasury",
+      "codeHash": "40df89f7eb7648b2440a9ba9a39ea890eab778e235f5a4863e73488b72e33e93",
+      "address": "0:917431cdbb0975d8e2ae660937943b859cea6d1d4bfab141e8aa71a74ef51b82"
+    },
+    {
+      "name": "failure-state",
+      "codeHash": "4b51086d22c8284435510c1e9fa96a9841f6736f1b3e619b8e09dd15ebc4417b",
+      "address": "0:125be9b7148f1791dcc06b09e783102620943268a76868a753c1fbb657260091"
+    },
+    {
+      "name": "capability",
+      "codeHash": "e6407a9e5c0f2c6333aa1e928b23821e347cd15ac057ce0884df878a52d3e567",
+      "address": "0:e0a72a6b02f3ab8ed484daf85410b87a88007430c7e61cbc5553677f27c21bd0"
+    },
+    {
+      "name": "anchor-index",
+      "codeHash": "f51ed423994e2df76880b5d39e593f712a515873fd30d2a28740a5b65419c2ca",
+      "address": "0:4c38c982d1ca1c12914a9002309b0e168c5f1a2dc616d07a153c4df64c52dcd2"
+    }
+  ],
+  "tonconnect_requests": {
+    "batch1": {
+      "messages": [
+        {
+          "address": "0QA7NWq9lvKZjDFPtJS9yvNWRmc8Lm_1XgmG-mAnaS7Cngsy",
+          "amount": "100000000",
+          "stateInit": "te6cckECDwEAAWcAAgE0AQ4BFP8A9KQT9LzyyAsCAgFiAwUB+ND4kfJAINdJwSCRMODTH+1E0PpI0//TH/QE0SWCEFJFRwG6jjA1+JIjxwXy4ZED0//XTFMVgwf0Dm+hMVAmgwf0FwSTAqQC3wHI+lLL/8sf9ADJ7VTgMgSCEFJFRwK6jhr4kiLHBfLhkQLXC/8ByPpSy/8Syx/0AMntVOAEAAiED/LwAgEgBgsCASAHCgIBIAgJACu2yX2omh9JBjp/5jpj5j6AmjBg/o1wACO3p72omh9JBjp/5jpj/oCGOjAAI7hR3tRND6SNP/MdMfMfQEMdGAIBIAwNACO79K7UTQ+kgx0//THzH0BDHRgAMbhg7tRND6SDHT/zHTHzH0BNGDB/QOb6ExgAi4AFHgXHNB2JMn/XZObMfzNcXX8McA0ucfpvyuBC85w4NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAg1Iiam",
+          "_contract": "registry"
+        },
+        {
+          "address": "0QCRdDHNuwl12OKuZgk3lDuFnOptHUv6sUHoqnGnTvUbgheC",
+          "amount": "100000000",
+          "stateInit": "te6cckECDgEAAT8AAgE0AQ0BFP8A9KQT9LzyyAsCAgFiAwQAptD4kfJAINdJwSCRMODTH+1E0PpI0z8x0/8x+gAx+gAx0QKCEFRSUwG6jiP4kiLHBfLhkdM/0//6APoAMATI+lITyz/L/wH6AgH6AsntVOCED/LwAgEgBQoCASAGCQIDeqAHCAAnp8naiaH0kGOmfmOn/mP0AGP0AaMAJ6Tv2omh9JBjpn+n/mP0AGP0AGOjACm4Ud7UTQ+kjTPzHT/zH6ADH6ADHRgCAnILDAAprxB2omh9JBjpn5jp//0AGP0AGOjAACmtTvaiaH0kGOmfmOn/mP0AfQAY6MAAlYAFHgXHNB2JMn/XZObMfzNcXX8McA0ucfpvyuBC85w4NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEEx/SeM=",
+          "_contract": "treasury"
+        },
+        {
+          "address": "0QASW-m3FI8XkdzAawnngxAmIJQyaKdoaKdTwfu2VyYAkQOX",
+          "amount": "100000000",
+          "stateInit": "te6cckECDgEAATwAAgE0AQ0BFP8A9KQT9LzyyAsCAgFiAwQAotD4kfJAINdJwSCRMODTH+1E0PpI0z8x0wcx0gAx0/8x0QKCEEZTVAG6jiH4kiLHBfLhkdM/0wfSANcL/wTI+lITyz/LB8oAy//J7VTghA/y8AIBIAUMAgEgBgkCAnUHCAAoqnftRND6SDHTP9MHMdIAMdP/MdEAKKjj7UTQ+kgx0z8x0wfSADHT/zHRAgEgCgsAKbSjvaiaH0kaZ+Y6YOY6QAY6f+Y6MAAptWxdqJofSQY6Z+Y6YOY6QBp/5jowACm8H+dqJofSQY6Z+Y6YOY6QAY6f/owAlYAFHgXHNB2JMn/XZObMfzNcXX8McA0ucfpvyuBC85w4NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACOeAk1k=",
+          "_contract": "failure-state"
+        },
+        {
+          "address": "0QDgpyprAvOrjtSE2vhUELh6iAB0MMfmHLxVU2d_J8Ib0AxA",
+          "amount": "100000000",
+          "stateInit": "te6cckEBDAEA8QACATQBCwEU/wD0pBP0vPLICwICAWIDBACo0PiR8kAg10nBIJEw4NMf7UTQ+kjTH/QE0QSCEENBUAG6jiz4kiLHBfLhkQLT/9dMUxSDB/QOb6ExUCWDB/QXA5MBpAHfyPpSyx/0AMntVOCED/LwAgEgBQoCASAGCQIB5wcIACqpeu1E0PpIMdMfMfQE0YMH9A5voTEAHKk97UTQ+kgx0x/0BDHRAB24Ud7UTQ+kjTHzH0BDHRgAJb7iD2omh9JBjpj5j6AmjBg/o1wAS4AFHgXHNB2JMn/XZObMfzNcXX8McA0ucfpvyuBC85w4NwAAAAAIVaY+vQ==",
+          "_contract": "capability"
+        }
+      ]
+    },
+    "batch2": {
+      "messages": [
+        {
+          "address": "0QBMOMmC0cocEpFKkAIwmw4WjF8aLcYW0HoVPE32TFLc0tND",
+          "amount": "100000000",
+          "stateInit": "te6cckECDgEAAS0AAgE0AQ0BFP8A9KQT9LzyyAsCAgFiAwQAwtD4kfJAINdJwSCRMODTH+1E0PpI0z/TH/QE0QWCEEFOQwG6jjf4kiPHBfLhkQPTP9dMUxWAQPQOb6ExUieAQPQXBZMDpAPfUwG8kTGRMOIByPpSyz/LH/QAye1U4IQP8vACASAFCAIBIAYHADG4uT7UTQ+kgx0z8x0x8x9ATRgED0Dm+hMYACO4Ud7UTQ+kjTPzHTHzH0BDHRgCASAJDAIBIAoLACu0vd2omh9JBjpn5jpj5j6AmjAIHo1wACO0TD2omh9JBjpn5jpj/oCGOjAAI7lxftRND6SDHTP9MfMfQEMdGABbgAUeBcc0HYkyf9dk5sx/M1xdfwxwDS5x+m/K4ELznDg3AAAAAAAAAAAAAAAACC7yhMM=",
+          "_contract": "anchor-index"
+        }
+      ]
+    }
+  },
+  "sandbox_confirmation": "sandbox OK — all five deploy active, owner==publisher, empty initial state",
+  "verdict": "READY — PENDING-DEPLOY (publisher broadcasts batch1 then batch2 via Path-2 harness)"
+}

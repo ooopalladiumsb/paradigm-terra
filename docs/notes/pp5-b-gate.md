@@ -35,17 +35,21 @@ reference body    pp2/artifacts/pp5/pp5-plan.json — cell hash 0xc19cb8f2…  (
 These are the items the offline work cannot produce. **PP#5-B does NOT open until every box is checked:**
 
 ```
-[ ] funded ton-testnet operator wallet (the collection owner + nft sender)
-      · address: ____________________   · balance ≥ ~0.5 TON (deploy ~0.2 · mint ~0.1 · send_nft 0.05 + fees)
-[ ] key custody confirmed for the operator wallet (Path 2 TON Connect, or a custodied signer)
-[ ] recipient address chosen (the new NFT owner) : ____________________
-[ ] re-derived, pinned for the real operator/recipient (offline, deterministic):
-      · collection address (from nft-compiled.json collection code + genesis-style collection data, owner=operator)
-      · item #0 address (collection getter get_nft_address_by_index(0), or the standard state-init derivation)
-      · send_nft body BoC + cell hash (nftBodyToCell{ nft_item, new_owner=recipient, query_id }) — the
-        pre-broadcast off-ramp value
-[ ] re-confirmation: pp2 suite green (28/0); sandbox owner-flip + non-owner-401 still hold
+[x] funded ton-testnet operator wallet — 0QAo8C45oOxJk_67JzZj-Zri6_hjgGlzj9N-VwIXnOHBuN9j
+      (raw 0:28f02e39…c1b8), active ~1.9 TON (the PP#4-B operator, reused)
+[x] key custody — PATH 2 (TON Connect, manual confirm in wallet)
+[x] recipient (new NFT owner) — 0QD6xP-v3wm4O6uV-PxXl6vVFFvEMg4C7kHiLFrV-3PyaF4Q (raw 0:fac4ffaf…f268)
+[x] re-derived + pinned for the real operator/recipient (pp2/artifacts/pp5/pp5b-plan.json, query_id 880013):
+      · collection address  0:c72cdb972e8c80d295680cd9763d3c4cf1bc79d99f31198ac1956f8a8c3dd3e6
+      · item #0 address     0:151ff7bea548ccdaac92c3c7f38f50a4f8701dcd30c22b719bda1801fa4b4dbb
+      · send_nft body hash  0x50d1521c741bb06eb3de2a5e6ff697477cff260e67206d8b1f87ae7b5b797d45
+[x] sandbox confirmation — pp2/scripts/pp5b-plan.ts: the EXACT builders deploy+mint+send_nft → owner flips
+    operator→recipient; item address == collection get_nft_address_by_index(0). pp2 suite 32/32.
 ```
+
+All boxes checked — §3 is OPEN. The two live steps (deploy+mint, then send_nft) are the only acts left,
+performed by the operator via the Path-2 harness (gh-pages `/pp5b/`); this repo writes no evidence until a
+real on-chain owner-flip is observed.
 
 ## 3. PP#5-B runbook (the live steps — GATED on §2)
 
