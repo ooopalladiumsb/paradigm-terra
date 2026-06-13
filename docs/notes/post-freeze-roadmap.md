@@ -49,26 +49,33 @@ Launch Readiness (Track A)        ✅ 2026-06-09  (release governance + gate →
 v1.x maintenance (M1–M3,A1,A2)    ✅ 2026-06-10  (CI hardening, registry reconciliation, durability, soak, observers)
 J1 — wallet.send_jetton           ✅ v1.1.0      (PP#3 SETTLED on ton-testnet, recipient 0→250)
 PFC-2 — Multisig v2.1             ✅ v2.0.0       (PP#4-B SETTLED, anchor tx 7aaabb93…; pfc2-consensus-freeze)
+wallet.send_nft (TEP-62)          ✅ v2.1.0       (PP#5-B SETTLED, NFT owner operator→recipient, tx 687c7d70…)
+Layer 2 — on-chain read-models    ✅ v2.2.0       (Registry/Treasury/FailureState/Capability/Anchor + genesis; Genesis-B live)
+Layer 3 Stage-A — gov/oracle/PTRA ✅ v2.3.0       (governance/oracle/ptra read-models; genesis → 8 contracts; Framing-A/Tier-M)
 ```
 
-## Forward roadmap (under v2.0.0)
+The `wallet.*` live-proof line is COMPLETE (send_ton/send_jetton/send_nft, all SETTLED on ton-testnet) and
+the on-chain observational suite (8 read-models) is built + genesis-deployable. The v2.x operational
+contour is closed. **The next major track is PFC-3 (Framing B — the on-chain decision economy).**
+
+## Forward roadmap (under v2.3.0)
 
 Layered by dependency; line tag = where it lands (🟢 Tier-M MINOR · 🔴 new PFC freeze/MAJOR · ⚪ off-consensus).
 Effort: S ≤1wk · M 2–4wk · L 1–2mo · XL 3–6mo · XXL 6mo+.
 
 ```
-Layer 1 — verb-publication completeness (logic already generic; only the §8.3 codec is missing)
-  wallet.send_nft (TEP-62 codec + PP#5)         S   🟢  ← cheapest next win, rides frozen consensus now
-  treasury.transfer on-chain publication        M   🟢/🔴 (needs Treasury contract, Layer 2)
-  ptra.stake/unstake publication                M   🔴  (needs PTRA token, Layer 3)
+Layer 1 — verb-publication completeness                                    ✅ DONE
+  wallet.send_ton/jetton/nft all live (PP#2/PP#3/PP#5-B SETTLED)
 
-Layer 2 — production on-chain contracts (Acton/Tolk) + genesis   ← GATE for most on-chain work
-  Acton/Tolk toolchain + golden harness         M   ★ first; unblocks all contracts
-  Registry · Treasury · FailureStateManager · Capability manager · genesis ceremony   L–XL  🔴/⚪
+Layer 2 — on-chain read-models + genesis (Tolk via @ton/tolk-js)          ✅ DONE (v2.2.0; Genesis-B live)
 
-Layer 3 — governance economy / oracle / PTRA (the bulk of the original vision)
-  NFT governance slots · quadratic voting · Capture Guard · Oracle feeds · PTRA token   XL–XXL  🔴
-  (each likely its own PFC freeze line → its own MAJOR)
+Layer 3 Stage-A — gov/oracle/PTRA read-models                             ✅ DONE (v2.3.0; Framing A, Tier-M)
+
+PFC-3 (Layer 3 Framing B) — the on-chain DECISION economy                 🔴 NEXT — Tier-C → MAJOR v3.0.0
+  PFC-3A Governance Authority : NFT-slot voting + quadratic tally + timelock execution
+  PFC-3B Oracle Authority     : on-chain feed aggregation + slashing
+  PFC-3C PTRA Economics       : real PTRA token + on-chain staking/reward emission
+  (each its own freeze sub-line; full PFC discipline — charter, golden vectors, parity, re-freeze, live proof)
 
 Layer 4 — distributed consensus + product
   Distributed validator set / real consensus    XXL  🔴  ← hidden critical path; start early, in parallel
@@ -79,9 +86,10 @@ Off-consensus / parked (NOT on the critical path)
   Confidential compute (Cocoon) · multilingual layer · EXPIRED_POST/AGENT_BUSY staged validator
 ```
 
-**Critical path to the full-vision mainnet ≈ Layer-2 toolchain → Registry → governance economy → launch
-(~11 mo)**, with the distributed validator set (Layer 4, XXL) as a near-parallel, easily-underestimated
-second path. **Cheapest immediate value:** `wallet.send_nft` (Tier-M, rides v2.0.0 today). **Highest hidden
+**Next major track = PFC-3** (the reserved on-chain governance/oracle/PTRA *economy* — qualitatively
+"decides/settles/governs/slashes/mints/stakes", vs Stage-A's "reflects/never decides"). Split into
+PFC-3A/B/C so the track isn't monolithic. The distributed validator set (Layer 4, XXL) remains the
+near-parallel, easily-underestimated second path. **Highest hidden
 risk:** distributed consensus — the spec assumes ≥3 validators (CONSENSUS_UNCERTAINTY exit), today it is a
 single node + observers.
 
