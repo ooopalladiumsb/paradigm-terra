@@ -12,7 +12,15 @@ projections of frozen consensus, never a source of truth) — `freeze-gate` byte
 
 ## [Unreleased]
 
-_Nothing yet — the next change above the Freeze Surface starts here._
+### Added — v2.x live-deploy packages (offline prep, Tier-M, above the Freeze Surface)
+- **PP#5-B gate** (`docs/notes/pp5-b-gate.md`) — pre-broadcast checkpoint for the live `send_nft` proof:
+  reproducibility (R1 code hashes + the pinned reference body), the operational prerequisites (funded
+  operator + custody + recipient + re-derived addresses/body), the deploy→mint→send_nft→observe runbook,
+  idempotent resume, evidence schema, and SC-1…SC-5. No network — the live steps are gated on a funded operator.
+- **Genesis-B gate** (`docs/notes/genesis-b-gate.md`) — pre-deploy checkpoint for the live Layer-2 genesis:
+  the pinned manifest + code hashes, prerequisites (funded publisher + re-derived `genesisManifest`), the
+  per-contract deploy runbook, idempotent resume (deterministic addresses), evidence schema, and SC-1…SC-5.
+  Framing A (read-models, no consensus created); gated on a funded publisher.
 
 ## [2.2.0] — 2026-06-13
 
