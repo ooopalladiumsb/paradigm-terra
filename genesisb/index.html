@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Paradigm Terra — Path-2 broadcast harness</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; max-width: 820px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    h1 { font-size: 1.15rem; } h2 { font-size: 1rem; margin-top: 1.4rem; }
+    code, pre { background: #f4f4f4; border-radius: 4px; padding: 0.1rem 0.3rem; word-break: break-all; }
+    pre { padding: 0.6rem; white-space: pre-wrap; font-size: 0.85rem; }
+    button { font: inherit; padding: 0.5rem 1rem; margin: 0.3rem 0.4rem 0.3rem 0; cursor: pointer; border-radius: 4px; border: 1px solid #888; }
+    button.go { background: #b00020; color: #fff; border: none; } button:disabled { background: #ddd; color: #999; border-color: #ccc; cursor: not-allowed; }
+    .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; background: #eee; font-size: 0.85rem; }
+    .ok { color: #0a7d28; } .warn { color: #b00020; }
+    .step { border: 1px solid #ddd; border-radius: 6px; padding: 0.6rem 0.9rem; margin: 0.6rem 0; }
+    a { color: #0645ad; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Paradigm Terra — Path-2 broadcast harness</h1>
+  <p id="subtitle" class="pill">loading plan…</p>
+  <p>Confirm each step in your <strong>testnet</strong> wallet. The key never leaves it. Steps are
+     pre-pinned + sandbox-verified offline; this page only relays them to TON Connect.</p>
+
+  <h2>1. Connect (testnet)</h2>
+  <button id="connect">Connect wallet</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <p>Status: <span class="pill" id="status">disconnected</span> <span id="addr"></span></p>
+  <p id="guard"></p>
+
+  <h2>2. Broadcast steps (in order)</h2>
+  <div id="steps"></div>
+
+  <h2>3. Verify on-chain</h2>
+  <pre id="verify"></pre>
+
+  <script type="module">
+    import { TonConnectUI } from "https://esm.sh/@tonconnect/ui@2.4.4";
+
+    const $ = (id) => document.getElementById(id);
+    const manifestUrl = new URL("./manifest.json", location.href).toString();
+    const tc = new TonConnectUI({ manifestUrl, buttonRootId: null });
+
+    let plan = null, expectedOwner = null;
+    (async () => {
+      plan = await (await fetch("./plan.json", { cache: "no-store" })).json();
+      expectedOwner = (plan.operator || plan.publisher || "").toLowerCase();
+      $("subtitle").textContent = plan.result || "plan loaded";
+      // verification block
+      const v = [];
+      if (plan.operator) v.push("operator  : " + plan.operator);
+      if (plan.recipient) v.push("recipient : " + plan.recipient);
+      if (plan.derived) for (const [k, val] of Object.entries(plan.derived)) v.push(k.padEnd(20) + ": " + val);
+      if (plan.contracts) for (const c of plan.contracts) v.push(c.name.padEnd(14) + ": " + c.address);
+      v.push("", "after broadcasting, inspect the addresses above on https://testnet.tonviewer.com/<address>");
+      $("verify").textContent = v.join("\n");
+      renderSteps();
+    })();
+
+    function renderSteps() {
+      const reqs = plan.tonconnect_requests || {};
+      const container = $("steps");
+      container.innerHTML = "";
+      Object.entries(reqs).forEach(([label, req], i) => {
+        const div = document.createElement("div"); div.className = "step";
+        const contracts = req.messages.map((m) => m._contract).filter(Boolean);
+        div.innerHTML = `<strong>Step ${i + 1}: ${label}</strong>` +
+          `<div class="pill">${req.messages.length} message(s)${contracts.length ? " — " + contracts.join(", ") : ""}</div> ` +
+          `<button class="go step-btn" data-label="${label}" disabled>Broadcast step ${i + 1}</button>` +
+          `<div class="result" id="res-${i}"></div>`;
+        container.appendChild(div);
+        div.querySelector(".step-btn").onclick = () => broadcast(label, req, i);
+      });
+      refreshGuards();
+    }
+
+    function refreshGuards() {
+      const wallet = tc.account;
+      const enabled = guardOk();
+      document.querySelectorAll(".step-btn").forEach((b) => (b.disabled = !enabled));
+    }
+
+    function guardOk() {
+      const acc = tc.account;
+      if (!acc) return false;
+      const raw = acc.address.toLowerCase();
+      const testnet = acc.chain === "-3";
+      const isOwner = raw === expectedOwner;
+      let msgs = [];
+      if (!testnet) msgs.push('<span class="warn">✗ wallet is NOT on testnet (chain ' + acc.chain + ')</span>');
+      if (!isOwner) msgs.push('<span class="warn">✗ connected wallet ≠ plan owner ' + expectedOwner + '</span>');
+      $("guard").innerHTML = msgs.length ? msgs.join("<br>") : '<span class="ok">✓ testnet + plan owner verified — safe to broadcast</span>';
+      return testnet && isOwner;
+    }
+
+    async function broadcast(label, req, i) {
+      const res = $("res-" + i);
+      res.innerHTML = "sending…";
+      const messages = req.messages.map((m) => {
+        const out = { address: m.address, amount: m.amount };
+        if (m.stateInit) out.stateInit = m.stateInit;
+        if (m.payload) out.payload = m.payload;
+        return out;
+      });
+      try {
+        const r = await tc.sendTransaction({ validUntil: Math.floor(Date.now() / 1000) + 600, messages });
+        res.innerHTML = '<span class="ok">✓ submitted</span> — signed BoC: <code>' + r.boc.slice(0, 48) + '…</code><br>' +
+          'inspect your wallet address on <a href="https://testnet.tonviewer.com/' + (plan.operator || plan.publisher) + '" target="_blank">tonviewer</a>, ' +
+          'then send me the tx hash for this step.';
+      } catch (e) {
+        res.innerHTML = '<span class="warn">✗ ' + (e && e.message ? e.message : String(e)) + '</span>';
+      }
+    }
+
+    tc.onStatusChange((wallet) => {
+      if (!wallet) { $("status").textContent = "disconnected"; $("addr").textContent = ""; $("disconnect").disabled = true; $("guard").innerHTML = ""; }
+      else { $("status").textContent = "connected"; $("addr").textContent = wallet.account.address; $("disconnect").disabled = false; }
+      refreshGuards();
+    });
+    $("connect").onclick = () => tc.openModal();
+    $("disconnect").onclick = () => tc.disconnect();
+  </script>
+</body>
+</html>
