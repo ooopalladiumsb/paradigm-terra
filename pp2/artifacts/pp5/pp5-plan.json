@@ -1,0 +1,27 @@
+{
+  "result": "PP#5-R1 OFFLINE (no broadcast)",
+  "framing": "the wallet.send_nft (TEP-62) publication path, proven against the official standard NFT in @ton/sandbox",
+  "network": "ton-testnet (live proof planned, GATED — PP#5-B)",
+  "nft_standard": "ton-blockchain/token-contract/main/nft (official TEP-62), vendored verbatim; func-js 0.11.0",
+  "code_hashes": {
+    "collection": "8e5aab17e2e503bec75c2f453b9dacf11a98bbb2cc202994710952a7271c7780",
+    "item": "ba4d975d2b66231c1f0a0ccca6e8ff8f7ba0610c4b7639584b8e98303dc3128c"
+  },
+  "reference_send_nft_body": {
+    "note": "fixed reference inputs — pins nftBodyToCell determinism; the live body uses the real PP#5-B recipient",
+    "op": "0x5fcc3d14",
+    "query_id": "880005",
+    "new_owner": "0:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "response_destination": "0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "forward_amount": "0",
+    "cell_hash": "0xc19cb8f2c5c61336681fb65a79b052f7b02272686e9fd5e3d834c9ca7bd8f625",
+    "boc_b64": "te6cckEBAQEAUgAAn1/MPRQAAAAAAA1thYAbu7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7AC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7uwIPPwwjg=="
+  },
+  "sandbox_proof": {
+    "harness": "pp2/test/pp5-sandbox.test.ts",
+    "deploy_collection_mint_item_to_operator": true,
+    "our_send_nft_flips_owner": "operator -> recipient (get_nft_data.owner_address)",
+    "non_owner_rejected": "exit 401, ownership unchanged (authorization faithful)"
+  },
+  "broadcast": "GATED — requires explicit go-ahead + funded testnet operator + key custody (PP#5-B)"
+}
