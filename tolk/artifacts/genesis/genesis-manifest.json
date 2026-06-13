@@ -1,0 +1,31 @@
+{
+  "note": "L2.6 genesis manifest for the REFERENCE owner (0:11..11) — deterministic deploy surface of the Layer-2 observational suite. The live genesis recomputes for the real publisher. Framing A: deploys read-model projections, creates no consensus.",
+  "referenceOwner": "0:1111111111111111111111111111111111111111111111111111111111111111",
+  "contracts": [
+    {
+      "name": "registry",
+      "codeHash": "1ed1c543a79e1b3186b5a4e67c3848f6b20541f8f697993c27a1162e9d443f4d",
+      "address": "0:ab63719df283c532bc9c3b11d4cb682b1588023dbf08966eef3ec2cc2c38fed2"
+    },
+    {
+      "name": "treasury",
+      "codeHash": "40df89f7eb7648b2440a9ba9a39ea890eab778e235f5a4863e73488b72e33e93",
+      "address": "0:de7f27c5914c7ad5abe3c6430a6a6f94813b95ebda15956ada10d28cf3d72a99"
+    },
+    {
+      "name": "failure-state",
+      "codeHash": "4b51086d22c8284435510c1e9fa96a9841f6736f1b3e619b8e09dd15ebc4417b",
+      "address": "0:8949f810322c0bf05dc4a3565c4b0f04bb96a5e7f75486d493e8444a033593b1"
+    },
+    {
+      "name": "capability",
+      "codeHash": "e6407a9e5c0f2c6333aa1e928b23821e347cd15ac057ce0884df878a52d3e567",
+      "address": "0:a07b0de3aedc958271ce03a4febd30d9d9f690d4684226dd33320b08f964b5ae"
+    },
+    {
+      "name": "anchor-index",
+      "codeHash": "f51ed423994e2df76880b5d39e593f712a515873fd30d2a28740a5b65419c2ca",
+      "address": "0:6d2ac0aa0459f6339d33228187b11de4936191ba8ba15ee78d1af374a0068ece"
+    }
+  ]
+}
