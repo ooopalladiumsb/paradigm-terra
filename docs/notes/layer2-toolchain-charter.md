@@ -137,8 +137,23 @@ DoD-4  A stranger can reproduce each contract's codeHash from source + the pinne
 R0   This charter (toolchain ruling + Framing A) ..................... ✅ RATIFIED 2026-06-13 (Framing A)
 L2.0 Shared build harness + worked example ........................... ✅ DONE (tolk/, example-counter)
 L2.1 Registry read-model (build + golden + sandbox) .................. ✅ DONE (tolk/contracts/registry.tolk)
-L2.2 Treasury view ................................................... ← NEXT — offline
-…    FailureStateManager / Capability / Anchor index / genesis ....... offline, each gated for live deploy
+L2.2 Treasury view (build + golden + sandbox) ........................ ✅ DONE (tolk/contracts/treasury.tolk)
+L2.3 FailureStateManager view ........................................ ← NEXT — offline
+…    Capability / Anchor index / genesis ............................. offline, each gated for live deploy
+```
+
+### L2.2 Treasury — Definition of Done ("Treasury observes, never settles")
+
+The Treasury view projects `state.accounting` (NAV, developer-fund balance, collected-fees window) and is
+**observational only** — it stores every figure *verbatim* (owner-gated), performs **no arithmetic**, and
+never recomputes NAV, distributes fees, or executes a settlement.
+
+```
+[x] reproducible golden codeHash (40DF89F7…), pinned compiler, drift-guarded
+[x] sandbox: deploy → owner snapshot write → getters read back exactly; idempotent re-write; newer overwrites
+[x] invariant: STORES, does not COMPUTE — nav is verbatim, NOT derived from fund+fees (proven)
+[x] invariant: non-owner write aborts 401; no settlement/compute op exists — unknown op aborts 0xffff
+[ ] live testnet deploy — a separate GATED step (funded operator)
 ```
 
 ### L2.1 Registry — Definition of Done (observational only)
