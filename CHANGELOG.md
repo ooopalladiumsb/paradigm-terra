@@ -31,6 +31,12 @@ projections of frozen consensus, never a source of truth) — `freeze-gate` byte
   `B67985C6…`; sandbox proves byte-identical read-back, params mirror, an inconsistent tally/status stored
   verbatim (not recomputed), non-owner → 401, unknown op → 0xffff. `ProposalRecord` codec in
   `tolk/src/proposal-record.ts`.
+- **L3.2 — Oracle view** (`tolk/contracts/oracle-view.tolk`): projects `state.oracles.feeds` (settled feed
+  value per feed_id), **observational only** ("reflects feeds, never aggregates") — stores the settled
+  `FeedRecord` verbatim (opaque ref, owner-gated), no aggregate/slash/force-update op. Golden codeHash
+  `DEE68103…`; sandbox proves byte-identical read-back, that a re-upsert REPLACES verbatim (no median/
+  average — the latest settled value wins), non-owner → 401, unknown op → 0xffff. `FeedRecord` codec in
+  `tolk/src/feed-record.ts`.
 
 ## [2.2.0] — 2026-06-13
 
