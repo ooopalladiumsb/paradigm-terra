@@ -11,7 +11,14 @@ it touches neither the PFC-1 nor the PFC-2 normative surface.
 
 ## [Unreleased]
 
-_Nothing yet — the next change above the Freeze Surface starts here._
+### Added — Layer 2 (on-chain contracts), Tier-M, above the Freeze Surface
+- **Layer-2 charter** (`docs/notes/layer2-toolchain-charter.md`) — toolchain ruled `@ton/tolk-js` (Acton
+  deferred-by-constraint); **Framing A ratified** (contracts are anchor/read-model projections of frozen
+  consensus state, never a source of consensus truth — the binding Layer-2 invariant). Framing B
+  (authoritative on-chain state) is explicitly a future PFC-3 / v3.0.0, not this track.
+- **L2.0 — shared Tolk build harness** (`tolk/`): reproducible `@ton/tolk-js` (pinned 1.4.1) compilation →
+  golden code-hash drift guard + `@ton/sandbox` behavior tests, with a worked example (`example-counter`).
+  New `tolk` CI job + `make tolk`. `freeze-gate` byte-identical.
 
 ## [2.1.0] — 2026-06-12
 

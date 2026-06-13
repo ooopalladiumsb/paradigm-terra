@@ -16,6 +16,7 @@
 #   scripts/repro.sh setup            # clean-room bootstrap: install + build TS packages in dep order
 #   scripts/repro.sh typecheck        # tsc --noEmit across every TS package that defines it
 #   scripts/repro.sh m2-registry      # M2-A (SC-1): reproducible Registry-reconciliation contract build + tests
+#   scripts/repro.sh tolk             # L2.0: shared Tolk build harness — golden codeHash + sandbox behavior
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -97,6 +98,13 @@ pp2() {
   (cd pp2 && npm install --silent && npx tsc --noEmit && npm test --silent)
 }
 
+# tolk — L2.0 shared Tolk build harness (Layer 2, Tier M, above the Freeze Surface). Reproducible
+# @ton/tolk-js build → golden codeHash drift guard + @ton/sandbox behavior tests. Standalone package.
+tolk() {
+  echo "→ tolk: L2.0 Tolk build harness (golden codeHash + sandbox behavior)"
+  (cd tolk && npm install --silent && npm run build --silent && npm run typecheck --silent && npm test --silent)
+}
+
 case "${1:-help}" in
   setup)           bash "$ROOT/scripts/setup.sh" ;;
   typecheck)       typecheck ;;
@@ -116,6 +124,7 @@ case "${1:-help}" in
   ovt3-griefing)   ovt3_griefing ;;
   m2-registry)     m2_registry ;;
   pp2)             pp2 ;;
+  tolk)            tolk ;;
   freeze-check)    freeze_check ;;
   help|*)          grep -E '^#   scripts/repro.sh ' "$0" | sed 's/^#   /  /' ;;
 esac

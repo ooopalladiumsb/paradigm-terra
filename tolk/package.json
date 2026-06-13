@@ -1,0 +1,22 @@
+{
+  "name": "@paradigm-terra/tolk-harness",
+  "version": "0.0.1",
+  "private": true,
+  "description": "L2.0 — shared Tolk build harness for Layer-2 contracts: reproducible @ton/tolk-js compilation, golden code-hash pinning, and @ton/sandbox behavior tests. Tier M, above the Freeze Surface. See docs/notes/layer2-toolchain-charter.md.",
+  "type": "module",
+  "scripts": {
+    "build": "tsx scripts/build.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ton/core": "0.63.1",
+    "@ton/tolk-js": "1.4.1"
+  },
+  "devDependencies": {
+    "@ton/sandbox": "0.42.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
