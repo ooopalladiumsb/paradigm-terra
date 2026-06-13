@@ -40,6 +40,14 @@ it touches neither the PFC-1 nor the PFC-2 normative surface.
   no authorization op (access decisions stay off-chain). Golden codeHash `E6407A9E…`; sandbox proves
   byte-identical read-back, idempotent upsert, non-owner → 401, unknown op → 0xffff. `CapabilityRecord`
   codec in `tolk/src/capability-record.ts`.
+- **L2.5 — Anchor index** (`tolk/contracts/anchor-index.tolk`): records, per projected state version, the
+  on-chain anchor that committed its STATE_ROOT (PP#2/PP#4-B pattern: state_root + tx hash + lt),
+  **observational only** ("indexes facts, never verifies consensus") — stores the observed `AnchorRecord`
+  verbatim (opaque ref, owner-gated), contains no op that re-derives or verifies a STATE_ROOT. Golden
+  codeHash `F51ED423…`; sandbox proves byte-identical read-back (indexing the real PP#4-B anchor),
+  `latestVersion`=max, idempotent record, non-owner → 401, unknown op → 0xffff. `AnchorRecord` codec in
+  `tolk/src/anchor-record.ts`. **Completes the Layer-2 observational set** (Registry · Treasury ·
+  FailureState · Capability · Anchor index); L2.6 genesis package is the remaining component.
 
 ## [2.1.0] — 2026-06-12
 

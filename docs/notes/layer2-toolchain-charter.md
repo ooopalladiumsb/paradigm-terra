@@ -140,9 +140,27 @@ L2.1 Registry read-model (build + golden + sandbox) .................. ✅ DONE 
 L2.2 Treasury view (build + golden + sandbox) ........................ ✅ DONE (tolk/contracts/treasury.tolk)
 L2.3 FailureStateManager view (build + golden + sandbox) ............. ✅ DONE (tolk/contracts/failure-state.tolk)
 L2.4 Capability view (build + golden + sandbox) ...................... ✅ DONE (tolk/contracts/capability.tolk)
-L2.5 Anchor index .................................................... ← NEXT — offline
-…    genesis ......................................................... offline, each gated for live deploy
+L2.5 Anchor index (build + golden + sandbox) ......................... ✅ DONE (tolk/contracts/anchor-index.tolk)
+L2.6 Genesis package ................................................. ← NEXT — offline (deterministic deploy)
 ```
+
+### L2.5 Anchor index — Definition of Done ("indexes facts, never verifies consensus")
+
+Records, per projected state version, the on-chain anchor that committed its STATE_ROOT (the PP#2/PP#4-B
+pattern: state_root + tx hash + lt). **Observational only** — it stores the observed anchor fact *verbatim*
+(opaque ref, owner-gated) and contains **no op that re-derives or verifies a STATE_ROOT** (re-derivation +
+tx confirmation are off-chain). It indexes facts; it does not bless them.
+
+```
+[x] reproducible golden codeHash (F51ED423…), pinned compiler, drift-guarded
+[x] sandbox: deploy → owner record → getAnchor reads back byte-identically; latestVersion = max; idempotent
+[x] invariant: non-owner record → 401; NO verify/re-derive op exists — unknown op → 0xffff
+[x] indexes the REAL PP#4-B anchor as a sample fact (state_root 0x4a14…, tx 7aaabb93…)
+[ ] live testnet deploy — a separate GATED step (funded operator)
+```
+
+**Layer-2 observational set is now complete** (Registry · Treasury · FailureState · Capability · Anchor
+index). L2.6 genesis is the deterministic deploy of the suite — the last Layer-2 component.
 
 ### L2.4 Capability — Definition of Done ("reflects grants, never authorizes")
 
