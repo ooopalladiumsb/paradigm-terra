@@ -13,7 +13,7 @@ const CONTRACTS_DIR = join(ROOT, "contracts");
 const BUILD_DIR = join(ROOT, "build");
 
 // The Layer-2 contract set (entrypoints under contracts/). Grows as L2.1+ land.
-const CONTRACTS = ["example-counter.tolk", "registry.tolk", "treasury.tolk", "failure-state.tolk"];
+const CONTRACTS = ["example-counter.tolk", "registry.tolk", "treasury.tolk", "failure-state.tolk", "capability.tolk"];
 
 async function main(): Promise<void> {
   const pinned = await pinnedTolkVersion();

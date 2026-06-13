@@ -34,6 +34,12 @@ it touches neither the PFC-1 nor the PFC-2 normative surface.
   transitions") — stores the decided mode verbatim, no transition logic. Golden codeHash `4B51086D…`;
   sandbox proves the mode may change across writes but the contract never transitions it itself and makes
   no inference (mode=BOUNDED with isBoundedMode=false stored verbatim), plus non-owner → 401 / unknown → 0xffff.
+- **L2.4 — Capability view** (`tolk/contracts/capability.tolk`): projects per-agent capability state
+  (granted_scopes + capability profile, keyed by agent_id), **observational only** ("reflects grants,
+  never authorizes") — stores the decided `CapabilityRecord` verbatim (opaque ref, owner-gated), contains
+  no authorization op (access decisions stay off-chain). Golden codeHash `E6407A9E…`; sandbox proves
+  byte-identical read-back, idempotent upsert, non-owner → 401, unknown op → 0xffff. `CapabilityRecord`
+  codec in `tolk/src/capability-record.ts`.
 
 ## [2.1.0] — 2026-06-12
 
