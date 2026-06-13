@@ -139,8 +139,23 @@ L2.0 Shared build harness + worked example ........................... ✅ DONE 
 L2.1 Registry read-model (build + golden + sandbox) .................. ✅ DONE (tolk/contracts/registry.tolk)
 L2.2 Treasury view (build + golden + sandbox) ........................ ✅ DONE (tolk/contracts/treasury.tolk)
 L2.3 FailureStateManager view (build + golden + sandbox) ............. ✅ DONE (tolk/contracts/failure-state.tolk)
-L2.4 Capability view ................................................. ← NEXT — offline
-…    Anchor index / genesis .......................................... offline, each gated for live deploy
+L2.4 Capability view (build + golden + sandbox) ...................... ✅ DONE (tolk/contracts/capability.tolk)
+L2.5 Anchor index .................................................... ← NEXT — offline
+…    genesis ......................................................... offline, each gated for live deploy
+```
+
+### L2.4 Capability — Definition of Done ("reflects grants, never authorizes")
+
+Projects per-agent capability state (`granted_scopes` + the capability profile) and is **observational
+only** — it stores the decided grants *verbatim* (opaque ref, owner-gated) and contains **no
+authorization op**: it never decides access, computes a permission, or checks a scope against an action
+(that §4.3 check is the off-chain validator's job).
+
+```
+[x] reproducible golden codeHash (E6407A9E…), pinned compiler, drift-guarded
+[x] sandbox: deploy → owner upsert → getCapability reads back byte-identically; idempotent on count
+[x] invariant: non-owner write → 401; NO authorization op exists — unknown op → 0xffff (grants nothing)
+[ ] live testnet deploy — a separate GATED step (funded operator)
 ```
 
 ### L2.3 FailureStateManager — Definition of Done ("reflects mode, never transitions")
