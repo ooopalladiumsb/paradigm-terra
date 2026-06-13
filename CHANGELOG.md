@@ -5,11 +5,22 @@ All notable changes to Paradigm Terra are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) under the policy in
 [`docs/notes/release-governance.md`](docs/notes/release-governance.md).
 
-**Current release: `v2.1.0`** (2026-06-12) — adds the `wallet.send_nft` publication path (TEP-62) above
-the Freeze Surface. MINOR on the 2.x line: a new operational capability, `freeze-gate` byte-identical —
-it touches neither the PFC-1 nor the PFC-2 normative surface.
+**Current release: `v2.2.0`** (2026-06-13) — **Layer 2**: the on-chain observational contract suite
+(Registry · Treasury · FailureState · Capability · Anchor index) + a deterministic genesis, on a pinned
+`@ton/tolk-js` build harness. MINOR on the 2.x line, Tier-M under the ratified **Framing A** (read-model
+projections of frozen consensus, never a source of truth) — `freeze-gate` byte-identical throughout.
 
 ## [Unreleased]
+
+_Nothing yet — the next change above the Freeze Surface starts here._
+
+## [2.2.0] — 2026-06-13
+
+The **Layer 2** release: the on-chain face of the frozen protocol — a suite of observational read-model
+contracts + their deterministic genesis, all **Tier-M** under the ratified **Framing A** (contracts are
+projections of the frozen off-chain consensus, never a source of consensus truth). The `freeze-gate` stayed
+byte-identical across all seven Layer-2 PRs. Live testnet deploy of each contract / the genesis is a
+separate GATED step (funded operator), like PP#3-B/PP#4-B/PP#5-B.
 
 ### Added — Layer 2 (on-chain contracts), Tier-M, above the Freeze Surface
 - **Layer-2 charter** (`docs/notes/layer2-toolchain-charter.md`) — toolchain ruled `@ton/tolk-js` (Acton
