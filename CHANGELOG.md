@@ -24,6 +24,11 @@ it touches neither the PFC-1 nor the PFC-2 normative surface.
   `AgentRecord` verbatim (opaque ref), owner-gated, never derives consensus. Golden codeHash `1ED1C543…`;
   sandbox proves byte-identical read-back, owner-gating (non-owner → 401), and no consensus-deriving op
   (unknown op → 0xffff). `AgentRecord` codec in `tolk/src/agent-record.ts`.
+- **L2.2 — Treasury view** (`tolk/contracts/treasury.tolk`): projects `state.accounting` (NAV,
+  developer-fund balance, collected-fees window) on-chain, **observational only** ("Treasury observes,
+  never settles") — stores every figure verbatim, owner-gated, performs no arithmetic. Golden codeHash
+  `40DF89F7…`; sandbox proves exact read-back, idempotent re-write, that nav is stored not derived, and
+  the invariants (non-owner → 401, unknown op → 0xffff).
 
 ## [2.1.0] — 2026-06-12
 
