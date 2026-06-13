@@ -47,11 +47,32 @@ the state as contracts" is NOT obviously consensus-neutral. Two coherent framing
 | **A. Anchor + read-model (RECOMMENDED)** | On-chain **projections** of the frozen off-chain state: the Registry mirrors `state.registry.agents` (owners, `mcp_schema_hash`) so on-chain parties + the publication leg can verify owner-pubkeys against an immutable source; Treasury mirrors balances/NAV for settlement observation. The off-chain fold stays authoritative. Extends the m2-registry reconciliation pattern. | **Tier-M / off-consensus**, MINOR, `freeze-gate` byte-identical | low — observes/anchors, never redefines consensus |
 | B. Authoritative on-chain state | The contracts BECOME the source of truth (the vision's literal genesis); the consensus boundary moves on-chain. | **Tier-C → new freeze line (PFC-3) → MAJOR**; its own charter | high — a real consensus-model change |
 
-**Recommended ruling (for explicit confirmation): Framing A.** It is consistent with everything shipped
-(off-chain consensus + on-chain anchor/publication), keeps Layer 2 off the Freeze Surface, and still
-delivers the vision's deployable contract suite — as the *on-chain face* of the frozen protocol, not a
-re-platforming of consensus. Framing B is a legitimate but separate, larger decision; if ever taken it
-starts its own PFC charter. **Until confirmed, Layer 2 proceeds under Framing A** (Tier-M, no freeze touch).
+**RULED — Framing A RATIFIED (2026-06-13).** Consistent with everything shipped (off-chain consensus +
+on-chain anchor/publication: PP#2/#3/#4/#5 all treat *truth = off-chain, chain = proof/publication/
+observability*). Layer 2 stays **Tier-M, off the Freeze Surface**, and still delivers the vision's
+deployable contract suite — as the *on-chain face* of the frozen protocol, not a re-platforming of
+consensus. **Framing B is explicitly OUT of this track**: it would invert the founding axiom
+(`off-chain consensus → on-chain projection` ⟶ `on-chain consensus state → off-chain services`) — that is
+**Paradigm Terra v3 / PFC-3**, a separate program (new charter, new Freeze Surface, new golden vectors, a
+fresh TS/Rust/Go parity cycle, a MAJOR), not a Layer-2 step.
+
+### 2.1 The Layer-2 invariant (ratified, binding)
+
+```
+Layer 2 contracts MUST NOT become a source of consensus truth.
+Layer 2 contracts ARE projections of frozen consensus state.
+```
+
+Per-contract, this means **reflects, never owns**:
+
+| Contract | Projects | MUST NOT |
+|---|---|---|
+| **Registry**   | `state.registry.agents` (owners[], mcp_schema_hash) | manage / mutate agent identity — it mirrors, the off-chain reducer owns |
+| **Treasury**   | `state.accounting` (NAV, balances, fees)            | compute accounting — it mirrors the reducer's result |
+| **Governance** | `state.governance`                                  | create consensus / decide votes — it mirrors finalized governance state |
+
+Any contract that would *manage*, *compute*, or *decide* (rather than *reflect*) has crossed into Framing
+B → **stop and charter a PFC line**. This invariant is the Layer-2 analog of the Freeze Surface rule.
 
 ## 3. The shared build harness (the first deliverable)
 
@@ -113,11 +134,13 @@ DoD-4  A stranger can reproduce each contract's codeHash from source + the pinne
 ## 7. The path
 
 ```
-R0   This charter (toolchain ruling + Framing A recommendation) ...... ← awaiting Framing confirmation
-L2.0 Shared build harness + worked example ........................... offline, the first build PR
+R0   This charter (toolchain ruling + Framing A) ..................... ✅ RATIFIED 2026-06-13 (Framing A)
+L2.0 Shared build harness + worked example ........................... ← NEXT — offline, the first build PR
 L2.1 Registry read-model (build + golden + sandbox) .................. offline
 …    Treasury / FailureStateManager / Capability / genesis ........... offline, each gated for live deploy
 ```
+
+PP#4-B and PP#5-B continue to wait on a funded operator and do NOT block Layer 2 (independent tracks).
 
 ## 8. Related
 - `post-freeze-roadmap.md` — Layer 2's place in the post-v2.0.0 roadmap.
