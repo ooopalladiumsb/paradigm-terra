@@ -138,8 +138,23 @@ R0   This charter (toolchain ruling + Framing A) ..................... ✅ RATIF
 L2.0 Shared build harness + worked example ........................... ✅ DONE (tolk/, example-counter)
 L2.1 Registry read-model (build + golden + sandbox) .................. ✅ DONE (tolk/contracts/registry.tolk)
 L2.2 Treasury view (build + golden + sandbox) ........................ ✅ DONE (tolk/contracts/treasury.tolk)
-L2.3 FailureStateManager view ........................................ ← NEXT — offline
-…    Capability / Anchor index / genesis ............................. offline, each gated for live deploy
+L2.3 FailureStateManager view (build + golden + sandbox) ............. ✅ DONE (tolk/contracts/failure-state.tolk)
+L2.4 Capability view ................................................. ← NEXT — offline
+…    Anchor index / genesis .......................................... offline, each gated for live deploy
+```
+
+### L2.3 FailureStateManager — Definition of Done ("reflects mode, never transitions")
+
+Projects `state.failure_mode` (the decided mode, is_bounded_mode, capture-guard commitment) and is
+**observational only** — it stores the off-chain-decided mode *verbatim*, with **no transition logic**: it
+never computes NORMAL→BOUNDED, decides an emergency, runs the capture guard, or checks a threshold.
+
+```
+[x] reproducible golden codeHash (4B51086D…), pinned compiler, drift-guarded
+[x] sandbox: deploy → owner write → getters read back exactly; idempotent; non-owner → 401; unknown → 0xffff
+[x] invariant: the stored mode MAY change across writes, but the contract NEVER transitions it itself —
+    and it makes NO inference (mode=BOUNDED with isBoundedMode=false is stored verbatim, not "fixed")
+[ ] live testnet deploy — a separate GATED step (funded operator)
 ```
 
 ### L2.2 Treasury — Definition of Done ("Treasury observes, never settles")

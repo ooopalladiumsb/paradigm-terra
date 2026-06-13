@@ -29,6 +29,11 @@ it touches neither the PFC-1 nor the PFC-2 normative surface.
   never settles") — stores every figure verbatim, owner-gated, performs no arithmetic. Golden codeHash
   `40DF89F7…`; sandbox proves exact read-back, idempotent re-write, that nav is stored not derived, and
   the invariants (non-owner → 401, unknown op → 0xffff).
+- **L2.3 — FailureStateManager view** (`tolk/contracts/failure-state.tolk`): projects `state.failure_mode`
+  (decided mode, is_bounded_mode, capture-guard commitment), **observational only** ("reflects mode, never
+  transitions") — stores the decided mode verbatim, no transition logic. Golden codeHash `4B51086D…`;
+  sandbox proves the mode may change across writes but the contract never transitions it itself and makes
+  no inference (mode=BOUNDED with isBoundedMode=false stored verbatim), plus non-owner → 401 / unknown → 0xffff.
 
 ## [2.1.0] — 2026-06-12
 
