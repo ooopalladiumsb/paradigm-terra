@@ -5,12 +5,21 @@ All notable changes to Paradigm Terra are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) under the policy in
 [`docs/notes/release-governance.md`](docs/notes/release-governance.md).
 
-**Current release: `v2.2.0`** (2026-06-13) — **Layer 2**: the on-chain observational contract suite
-(Registry · Treasury · FailureState · Capability · Anchor index) + a deterministic genesis, on a pinned
-`@ton/tolk-js` build harness. MINOR on the 2.x line, Tier-M under the ratified **Framing A** (read-model
-projections of frozen consensus, never a source of truth) — `freeze-gate` byte-identical throughout.
+**Current release: `v2.3.0`** (2026-06-13) — **Layer 3 Stage-A**: the governance / oracle / PTRA on-chain
+read-models + the v2.x operational contour closed live on ton-testnet (PP#5-B send_nft, Genesis-B Layer-2
+deploy). MINOR on the 2.x line, Tier-M under the ratified **Staged** framing (read-models reflect the
+frozen off-chain consensus, never decide); the on-chain economy (Framing B) is the reserved PFC-3 / v3.0.0.
 
 ## [Unreleased]
+
+_Nothing yet — the next change above the Freeze Surface starts here. (Next major: the PFC-3 charter — Framing B.)_
+
+## [2.3.0] — 2026-06-13
+
+The **Layer 3 Stage-A** release: on-chain read-model projections of governance / oracle / PTRA, plus the
+live closure of the v2.x operational contour. MINOR, **Tier-M** under the ratified **Staged** framing — the
+on-chain governance *economy* (voting/aggregation/staking that DECIDES) is the reserved Framing B / PFC-3 /
+v3.0.0, explicitly not in this release. `freeze-gate` byte-identical throughout.
 
 ### v2.x operational contour — CLOSED (live on ton-testnet, 2026-06-13), Tier-M
 - **PP#5-B SETTLED** — live `wallet.send_nft`: deployed the standard TEP-62 collection, minted item #0 to
