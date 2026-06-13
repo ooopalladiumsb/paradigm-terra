@@ -12,15 +12,25 @@ projections of frozen consensus, never a source of truth) — `freeze-gate` byte
 
 ## [Unreleased]
 
-### Added — v2.x live-deploy packages (offline prep, Tier-M, above the Freeze Surface)
-- **PP#5-B gate** (`docs/notes/pp5-b-gate.md`) — pre-broadcast checkpoint for the live `send_nft` proof:
-  reproducibility (R1 code hashes + the pinned reference body), the operational prerequisites (funded
-  operator + custody + recipient + re-derived addresses/body), the deploy→mint→send_nft→observe runbook,
-  idempotent resume, evidence schema, and SC-1…SC-5. No network — the live steps are gated on a funded operator.
-- **Genesis-B gate** (`docs/notes/genesis-b-gate.md`) — pre-deploy checkpoint for the live Layer-2 genesis:
-  the pinned manifest + code hashes, prerequisites (funded publisher + re-derived `genesisManifest`), the
-  per-contract deploy runbook, idempotent resume (deterministic addresses), evidence schema, and SC-1…SC-5.
-  Framing A (read-models, no consensus created); gated on a funded publisher.
+### v2.x operational contour — CLOSED (live on ton-testnet, 2026-06-13), Tier-M
+- **PP#5-B SETTLED** — live `wallet.send_nft`: deployed the standard TEP-62 collection, minted item #0 to
+  the operator, drove OUR `send_nft` → owner flipped operator → recipient (send_nft tx `687c7d70…`).
+  Completes the `wallet.*` live-proof line (send_ton/send_jetton/send_nft). `pp2/artifacts/pp5/pp5b-evidence.json`.
+- **Genesis-B SETTLED** — live Layer-2 genesis: one W5 external deployed all 5 read-model contracts
+  (deploy tx `78ffc1ea…`), each active / owner == publisher / empty. `tolk/artifacts/genesis/genesis-b-evidence.json`.
+- Local sign-and-print signers (`pp2/scripts/{pp5b,genesisb}-send-local.ts`) — the reliable broadcast
+  method (live seqno + 1-hour window + toncenter relay) after the TON-Connect path produced stale-seqno signatures.
+
+### Added — Layer 3 Stage-A (governance/oracle/PTRA read-models), Tier-M, above the Freeze Surface
+- **Layer-3 charter** (`docs/notes/layer3-charter.md`) — **Framing ratified: Staged** (A read-models now,
+  Tier-M; the on-chain governance economy = Framing B = a deferred PFC-3 / v3.0.0). The off-chain consensus
+  already decides governance/oracle/ptra (§2.3 actions); Stage-A projects that state on-chain.
+- **L3.1 — Governance view** (`tolk/contracts/governance-view.tolk`): projects `state.governance` (proposal
+  tallies/status + chain-wide params), **observational only** ("reflects tallies, never votes") — stores the
+  decided `ProposalRecord` verbatim (opaque ref, owner-gated), no vote/tally/finalize op. Golden codeHash
+  `B67985C6…`; sandbox proves byte-identical read-back, params mirror, an inconsistent tally/status stored
+  verbatim (not recomputed), non-owner → 401, unknown op → 0xffff. `ProposalRecord` codec in
+  `tolk/src/proposal-record.ts`.
 
 ## [2.2.0] — 2026-06-13
 
