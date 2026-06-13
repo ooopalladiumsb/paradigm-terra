@@ -1,0 +1,35 @@
+{
+  "result": "PP#5-B SETTLED",
+  "network": "ton-testnet",
+  "framing": "live wallet.send_nft (TEP-62) — NFT item ownership flips operator → recipient",
+  "operator": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "recipient": "0:fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+  "collection": {
+    "address": "0:c72cdb972e8c80d295680cd9763d3c4cf1bc79d99f31198ac1956f8a8c3dd3e6",
+    "code_hash": "8e5aab17e2e503bec75c2f453b9dacf11a98bbb2cc202994710952a7271c7780"
+  },
+  "item": { "index": 0, "address": "0:151ff7bea548ccdaac92c3c7f38f50a4f8701dcd30c22b719bda1801fa4b4dbb" },
+  "deploy_mint_tx": "8525fc1c8e7056ce53d146e7811b82468b88ed2e0717c7c2f7dbbb5bc47d2bb8",
+  "send_nft": {
+    "op": "0x5fcc3d14",
+    "query_id": "880013",
+    "body_cell_hash": "0x50d1521c741bb06eb3de2a5e6ff697477cff260e67206d8b1f87ae7b5b797d45",
+    "tx_hash": "687c7d704bd71072ea5c736dacf03954e9fdbecffeaccaabf8c04eec37bf3d76"
+  },
+  "owner_before": "0:28f02e39a0ec4993febb273663f99ae2ebf8638069738fd37e5702179ce1c1b8",
+  "owner_after": "0:fac4ffafdf09b83bab95f8fc5797abd5145bc4320e02ee41e22c5ad5fb73f268",
+  "offline_correlation": {
+    "pp5_plan": "pp2/artifacts/pp5/pp5b-plan.json",
+    "send_nft_body_matches_pinned": true,
+    "sandbox_proof": "pp2/test/pp5-sandbox.test.ts + pp2/scripts/pp5b-plan.ts (owner-flip pre-proven)"
+  },
+  "broadcast_note": "step2 (send_nft) was signed LOCALLY at the live seqno via pp2/scripts/pp5b-send-local.ts and relayed (toncenter v3, HTTP 200, message_hash 0M4+e4kFwWNoujzl7/wfpr4ENSbCEEsJ2Jp/mzU4Si8=). The Tonkeeper-extension TON Connect path produced stale-seqno signatures (msg_seqno=2 vs wallet_seqno=3) and did not broadcast — 3 rejected attempts; 'inspect before classifying' (PP#2 §3.1) caught each by reading the on-chain owner, and PP#5-B was never marked SETTLED until the owner actually flipped.",
+  "success_criteria": {
+    "SC-1_collection_item_deployed_item_minted_to_operator": true,
+    "SC-2_send_nft_body_byte_identical_to_pinned": true,
+    "SC-3_owner_after_send_nft_equals_recipient": true,
+    "SC-4_sandbox_proof_reproduces": true,
+    "SC-5_no_freeze_surface_defect": true
+  },
+  "verdict": "SETTLED"
+}
