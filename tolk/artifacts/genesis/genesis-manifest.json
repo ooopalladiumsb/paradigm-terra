@@ -26,6 +26,21 @@
       "name": "anchor-index",
       "codeHash": "f51ed423994e2df76880b5d39e593f712a515873fd30d2a28740a5b65419c2ca",
       "address": "0:6d2ac0aa0459f6339d33228187b11de4936191ba8ba15ee78d1af374a0068ece"
+    },
+    {
+      "name": "governance-view",
+      "codeHash": "b67985c65a00406e41a6d9b95c6136b5eb413366f5325ef952ccbd39b1eb1561",
+      "address": "0:9d4ac24015f2af309cd7893f73f69e878d345ddfbc90278675d9e1c795602c4f"
+    },
+    {
+      "name": "oracle-view",
+      "codeHash": "dee681030241ecfe80fb56eaaeeda937608b28388370bdeed92fd542a2a929c7",
+      "address": "0:a1de8d602b548829c252bebd1d6ff55dd855e1ea2e0b87bdc8533fe866892c5f"
+    },
+    {
+      "name": "ptra-view",
+      "codeHash": "61930fa761ec59572f700336dba6ed31133111c37e38abe53020b582f82f16ce",
+      "address": "0:3ed5ea9e7a2dcc5168b0fdac947e4db2dc8cf3fcca9a372c5198291cbdc36064"
     }
   ]
 }
