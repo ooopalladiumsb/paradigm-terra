@@ -141,7 +141,23 @@ L2.2 Treasury view (build + golden + sandbox) ........................ ✅ DONE 
 L2.3 FailureStateManager view (build + golden + sandbox) ............. ✅ DONE (tolk/contracts/failure-state.tolk)
 L2.4 Capability view (build + golden + sandbox) ...................... ✅ DONE (tolk/contracts/capability.tolk)
 L2.5 Anchor index (build + golden + sandbox) ......................... ✅ DONE (tolk/contracts/anchor-index.tolk)
-L2.6 Genesis package ................................................. ← NEXT — offline (deterministic deploy)
+L2.6 Genesis package (deterministic deploy + manifest) ............... ✅ DONE (tolk/src/genesis.ts)
+```
+
+**LAYER 2 COMPLETE (offline) — 2026-06-13.** The full observational suite + its deterministic genesis are
+built, golden-pinned, and sandbox-proven, all Tier-M with the freeze-gate byte-identical throughout. The
+only remaining act per contract is the **live testnet deploy** — a separate GATED step (funded operator),
+exactly like PP#3-B/PP#4-B/PP#5-B; the genesis manifest recomputes for the real publisher at that point.
+
+### L2.6 Genesis — Definition of Done (deterministic deploy of read-models)
+
+```
+[x] genesis manifest deterministic in the publisher owner — re-derives the committed reference addresses
+    + code hashes (drift-guarded); five distinct addresses (artifacts/genesis/genesis-manifest.json)
+[x] sandbox: the full suite (registry/treasury/failure-state/capability/anchor-index) deploys from genesis,
+    all active, all owned by the publisher, all initial state empty/zero (read-models, no consensus created)
+[x] Framing A holds — genesis deploys projections; it creates no consensus truth
+[ ] live testnet genesis — a separate GATED step (funded operator), manifest recomputed for the real publisher
 ```
 
 ### L2.5 Anchor index — Definition of Done ("indexes facts, never verifies consensus")

@@ -46,8 +46,14 @@ it touches neither the PFC-1 nor the PFC-2 normative surface.
   verbatim (opaque ref, owner-gated), contains no op that re-derives or verifies a STATE_ROOT. Golden
   codeHash `F51ED423…`; sandbox proves byte-identical read-back (indexing the real PP#4-B anchor),
   `latestVersion`=max, idempotent record, non-owner → 401, unknown op → 0xffff. `AnchorRecord` codec in
-  `tolk/src/anchor-record.ts`. **Completes the Layer-2 observational set** (Registry · Treasury ·
-  FailureState · Capability · Anchor index); L2.6 genesis package is the remaining component.
+  `tolk/src/anchor-record.ts`. Completes the Layer-2 observational set (Registry · Treasury ·
+  FailureState · Capability · Anchor index).
+- **L2.6 — Genesis package** (`tolk/src/genesis.ts`): the deterministic deploy of the observational suite
+  (SIMULATION_PREVIEW Tick-0, as read-models — Framing A, no consensus created). Per-contract genesis c4
+  storage + deploy-address derivation; a pinned reference manifest (`tolk/artifacts/genesis/genesis-manifest.json`,
+  five distinct addresses, drift-guarded). Sandbox proves the full suite deploys from genesis to an
+  all-empty initial state, each active + owned by the publisher. **Layer 2 complete offline** — live
+  testnet genesis is a separate GATED step (funded operator).
 
 ## [2.1.0] — 2026-06-12
 
